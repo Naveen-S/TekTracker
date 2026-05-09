@@ -1,12 +1,12 @@
 import React from 'react';
 
-export function Metric({ label, value, detail, icon, warning = false, customColor = null }) {
+export function Metric({ label, value, detail, icon, warning = false, customColor = null, tone = null }) {
+  const toneClass = tone ? `metric-${tone}` : warning ? 'metric-warn' : '';
   return (
     <article
-      className={`metric-card ${warning ? 'warning' : ''}`}
-      style={customColor ? {
-        borderLeft: `4px solid ${customColor}`,
-        background: `linear-gradient(135deg, ${customColor}08 0%, transparent 100%)`,
+      className={`metric-card ${toneClass}`}
+      style={!tone && customColor ? {
+        borderTop: `3px solid ${customColor}`,
       } : {}}
     >
       {icon && <div className="metric-icon">{icon}</div>}

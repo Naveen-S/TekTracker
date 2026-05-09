@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AlertTriangle, CheckCircle2, Clock3, Download, Filter, Link2, Plus, RefreshCcw, Search, SlidersHorizontal, TrendingUp, X } from 'lucide-react';
 import './styles.css';
-import { IssueRow, Metric, VelocityMetric } from './components/index.js';
+import { IssueRow, Metric, VelocityMetric, TopBar } from './components/index.js';
 import { fetchFilterIssues, fetchJQLIssues, transformFilter } from './jiraService.js';
 import {
   calculateWeightedCompletion,
@@ -112,6 +112,11 @@ function App() {
   const [issueStages, setIssueStages] = useState(persistedData.stages);
   const [sprintConfig, setSprintConfig] = useState(persistedData.config);
   const [searchQuery, setSearchQuery] = useState('');
+  const [shareToast, setShareToast] = useState('');
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [appModal, setAppModal] = useState(null);
+
+  const showAlert = (title, body, tone = 'info') => setAppModal({ title, body, tone });
 
   // Check for shared state in URL on mount
   useEffect(() => {
@@ -120,7 +125,7 @@ function App() {
 
     if (shareParam) {
       try {
-        const decoded = JSON.parse(atob(shareParam));
+        const decoded = JSON.parse(decodeURIComponent(escape(atob(shareParam))));
 
         console.log('📥 Loading shared view from link');
         console.log('  Sprint:', decoded.config.name);
@@ -155,7 +160,7 @@ function App() {
 
       } catch (error) {
         console.error('❌ Failed to restore shared state:', error);
-        alert('⚠️ Could not load shared view. The link may be invalid or corrupted.');
+        showAlert('Could Not Load Shared View', 'The link may be invalid or corrupted.', 'error');
       }
     }
   }, []); // Run only once on mount
@@ -420,7 +425,7 @@ function App() {
       setShowAddModal(false);
       setLastSync(new Date());
     } catch (error) {
-      alert(`Failed to add source: ${error.message}`);
+      showAlert('Failed to Add Source', error.message, 'error');
     } finally {
       setLoading(false);
     }
@@ -553,13 +558,13 @@ function App() {
             return `  ${filter.name}: ${oldCount} → ${newCount} (${change >= 0 ? '+' : ''}${change})`;
           }).join('\n');
 
-          alert(`Sync completed!\n\n${message.join('\n')}\n\nPer-filter changes:\n${filterBreakdown}`);
+          showAlert('Sync Completed', `${message.join('\n')}\n\nPer-filter changes:\n${filterBreakdown}`, 'success');
         } else {
           // Still show per-filter info even if no changes detected
           const filterInfo = updatedFilters.map(f =>
             `  ${f.name}: ${f.issues.length} issues`
           ).join('\n');
-          alert(`✅ Sync completed! No changes detected.\n\nCurrent state:\n${filterInfo}`);
+          showAlert('Sync Completed', `No changes detected.\n\nCurrent state:\n${filterInfo}`, 'success');
         }
       }, 100); // Small delay to ensure state updates
 
@@ -579,7 +584,7 @@ function App() {
         errorMessage += '\n\n💡 Filter not found. Check that the filter ID or JQL is correct.';
       }
 
-      alert(errorMessage);
+      showAlert('Sync Failed', errorMessage, 'error');
     } finally {
       setLoading(false);
       console.log('🏁 Sync operation completed');
@@ -670,7 +675,6 @@ function App() {
 
   // Share functionality - generate shareable link
   const handleShare = () => {
-    const sprintKey = getSprintKey(sprintConfig);
     const shareData = {
       config: sprintConfig,
       filters: dynamicFilters,
@@ -679,169 +683,231 @@ function App() {
       timestamp: new Date().toISOString(),
     };
 
-    // Compress and encode the data
-    const encoded = btoa(JSON.stringify(shareData));
+    // Unicode-safe encoding (btoa only handles Latin-1)
+    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(shareData))));
     const shareUrl = `${window.location.origin}${window.location.pathname}?share=${encoded}`;
 
-    // Copy to clipboard
     navigator.clipboard.writeText(shareUrl).then(() => {
-      alert(`✅ Shareable link copied to clipboard!\n\nYour coworkers can paste this link to see:\n• Sprint: ${sprintConfig.name}\n• Filters: ${dynamicFilters.length} filter(s)\n• All progress and stages\n• View density: ${viewDensity}\n\nLink:\n${shareUrl}`);
+      setShareToast('Shareable link copied to clipboard');
+      setTimeout(() => setShareToast(''), 3000);
     }).catch(() => {
-      // Fallback: show the link in an alert
-      prompt('Copy this shareable link:', shareUrl);
+      setAppModal({ title: 'Share Link', body: 'Clipboard access was blocked. Copy the link below:', copyUrl: shareUrl });
     });
   };
 
-  // PDF Export functionality
-  const handleExportPDF = async () => {
+  // Export functionality (PDF or Image)
+  const handleExport = async (format = 'pdf') => {
     try {
       setLoading(true);
+      setShowExportMenu(false);
 
-      // Dynamically import libraries to reduce initial bundle size
       const html2canvas = (await import('html2canvas')).default;
-      const { jsPDF } = await import('jspdf');
+      const velocity = getWeeklyVelocity();
+      const inProgressIssues = issues.filter(i => i.percent > 0 && i.percent < 100);
+      const completedIssues  = issues.filter(i => i.percent === 100);
+      const notStartedIssues = issues.filter(i => i.percent === 0);
 
-      // Create a temporary container for the PDF content
-      const pdfContainer = document.createElement('div');
-      pdfContainer.style.position = 'absolute';
-      pdfContainer.style.left = '-9999px';
-      pdfContainer.style.width = '1200px';
-      pdfContainer.style.background = '#ffffff';
-      pdfContainer.style.padding = '40px';
-      document.body.appendChild(pdfContainer);
-
-      // Build the infographic content
       const date = new Date().toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
       });
 
+      const pdfContainer = document.createElement('div');
+      pdfContainer.style.cssText = 'position:absolute;left:-9999px;width:1200px;background:#fff;padding:48px;';
+      document.body.appendChild(pdfContainer);
+
       pdfContainer.innerHTML = `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
-          <!-- Header -->
-          <div style="text-align: center; margin-bottom: 40px; padding-bottom: 30px; border-bottom: 3px solid #667eea;">
-            <h1 style="font-size: 42px; font-weight: 800; color: #1a202c; margin: 0 0 12px 0;">
-              ${sprintConfig.name} - Sprint Report
-            </h1>
-            <p style="font-size: 18px; color: #64748b; margin: 0;">
-              ${formatDate(sprintConfig.startDate)} - ${formatDate(sprintConfig.endDate)}
-            </p>
-            <p style="font-size: 14px; color: #94a3b8; margin: 8px 0 0 0;">
-              Generated on ${date}
-            </p>
-          </div>
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111827;">
 
-          <!-- Key Metrics -->
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 40px;">
-            <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); padding: 24px; border-radius: 16px; border-left: 4px solid ${sprintHealth.color};">
-              <div style="font-size: 14px; font-weight: 600; color: #64748b; margin-bottom: 8px;">SPRINT HEALTH</div>
-              <div style="font-size: 36px; font-weight: 800; color: #111827; margin-bottom: 4px;">${sprintHealth.status}</div>
-              <div style="font-size: 13px; color: #64748b;">${featureAheadCount + featureOnTrackCount}/${totalFeatureIssues} on track</div>
+          <!-- HEADER -->
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:36px;padding-bottom:24px;border-bottom:3px solid #00BFA5;">
+            <div>
+              <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#00BFA5;margin-bottom:6px;">Sprint Report</div>
+              <h1 style="font-size:38px;font-weight:800;color:#0B1620;margin:0 0 6px;">${sprintConfig.name}</h1>
+              <p style="font-size:15px;color:#64748b;margin:0;">${formatDate(sprintConfig.startDate)} – ${formatDate(sprintConfig.endDate)}</p>
             </div>
-
-            <div style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); padding: 24px; border-radius: 16px; border-left: 4px solid #3b82f6;">
-              <div style="font-size: 14px; font-weight: 600; color: #64748b; margin-bottom: 8px;">COMPLETION</div>
-              <div style="font-size: 36px; font-weight: 800; color: #111827; margin-bottom: 4px;">${avgProgress}%</div>
-              <div style="font-size: 13px; color: #64748b;">${Math.round(completedPoints)}/${points} points</div>
-            </div>
-
-            <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); padding: 24px; border-radius: 16px; border-left: 4px solid #f59e0b;">
-              <div style="font-size: 14px; font-weight: 600; color: #64748b; margin-bottom: 8px;">VELOCITY</div>
-              <div style="font-size: 36px; font-weight: 800; color: #111827; margin-bottom: 4px;">${getWeeklyVelocity().velocity} pts</div>
-              <div style="font-size: 13px; color: #64748b;">per week</div>
+            <div style="text-align:right;">
+              <div style="font-size:13px;color:#94a3b8;">Generated on</div>
+              <div style="font-size:14px;font-weight:600;color:#334155;">${date}</div>
             </div>
           </div>
 
-          <!-- Work Breakdown -->
-          <div style="margin-bottom: 40px;">
-            <h2 style="font-size: 24px; font-weight: 700; color: #1a202c; margin: 0 0 20px 0;">Work Breakdown</h2>
+          <!-- THIS WEEK'S UPDATE -->
+          <div style="margin-bottom:40px;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#00BFA5;margin-bottom:12px;">This Week's Update — Week ${velocity.weeksElapsed} of ${velocity.totalWeeks}</div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
+              <div style="background:#f0fdf4;border-radius:12px;padding:18px;border-top:3px solid #10b981;">
+                <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Week</div>
+                <div style="font-size:28px;font-weight:800;color:#0B1620;">${velocity.weeksElapsed} / ${velocity.totalWeeks}</div>
+                <div style="font-size:12px;color:#64748b;">${velocity.onTrack ? '✓ On track' : '⚠ Behind pace'}</div>
+              </div>
+              <div style="background:#eff6ff;border-radius:12px;padding:18px;border-top:3px solid #3b82f6;">
+                <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Velocity</div>
+                <div style="font-size:28px;font-weight:800;color:#0B1620;">${velocity.velocity} pts</div>
+                <div style="font-size:12px;color:#64748b;">per week · ${velocity.weeksNeeded}w needed</div>
+              </div>
+              <div style="background:#f0fdf4;border-radius:12px;padding:18px;border-top:3px solid #00BFA5;">
+                <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">In Progress</div>
+                <div style="font-size:28px;font-weight:800;color:#0B1620;">${inProgressIssues.length}</div>
+                <div style="font-size:12px;color:#64748b;">of ${issues.length} issues</div>
+              </div>
+              <div style="background:${blockedCount > 0 ? '#fef2f2' : '#f0fdf4'};border-radius:12px;padding:18px;border-top:3px solid ${blockedCount > 0 ? '#ef4444' : '#10b981'};">
+                <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Blocked</div>
+                <div style="font-size:28px;font-weight:800;color:${blockedCount > 0 ? '#ef4444' : '#0B1620'};">${blockedCount}</div>
+                <div style="font-size:12px;color:#64748b;">${behindCount} behind · ${atRiskCount} at risk</div>
+              </div>
+            </div>
+
+            <!-- Per-filter this week -->
+            <div style="display:grid;grid-template-columns:repeat(${Math.min(allFilters.length, 3)},1fr);gap:12px;">
+              ${allFilters.map(filter => {
+                const fi = issues.filter(i => i.filter === filter.name);
+                const active = fi.filter(i => i.percent > 0 && i.percent < 100).length;
+                const done   = fi.filter(i => i.percent === 100).length;
+                const fp     = fi.reduce((s, i) => s + i.points, 0);
+                const fc     = fi.reduce((s, i) => s + (i.points * i.percent / 100), 0);
+                const fpct   = fp > 0 ? Math.round((fc / fp) * 100) : 0;
+                return `
+                  <div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px;border-left:4px solid ${filter.accent};">
+                    <div style="font-size:13px;font-weight:700;color:#111827;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${filter.name}</div>
+                    <div style="font-size:11px;color:#64748b;margin-bottom:8px;">${done} done · ${active} active · ${fi.length} total</div>
+                    <div style="background:#e2e8f0;height:6px;border-radius:999px;overflow:hidden;">
+                      <div style="background:${filter.accent};height:100%;width:${fpct}%;border-radius:999px;"></div>
+                    </div>
+                    <div style="font-size:12px;font-weight:700;color:#111827;margin-top:5px;">${fpct}%</div>
+                  </div>`;
+              }).join('')}
+            </div>
+          </div>
+
+          <!-- OVERALL METRICS -->
+          <div style="margin-bottom:40px;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#00BFA5;margin-bottom:12px;">Overall Sprint Metrics</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;">
+              <div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);padding:22px;border-radius:14px;border-left:4px solid ${sprintHealth.color};">
+                <div style="font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px;">SPRINT HEALTH</div>
+                <div style="font-size:32px;font-weight:800;color:#111827;margin-bottom:4px;">${sprintHealth.status}</div>
+                <div style="font-size:12px;color:#64748b;">${featureAheadCount + featureOnTrackCount}/${totalFeatureIssues} features on track</div>
+              </div>
+              <div style="background:linear-gradient(135deg,#eff6ff,#dbeafe);padding:22px;border-radius:14px;border-left:4px solid #3b82f6;">
+                <div style="font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px;">COMPLETION</div>
+                <div style="font-size:32px;font-weight:800;color:#111827;margin-bottom:4px;">${avgProgress}%</div>
+                <div style="font-size:12px;color:#64748b;">${Math.round(completedPoints)} / ${points} story points</div>
+              </div>
+              <div style="background:linear-gradient(135deg,#fef3c7,#fde68a);padding:22px;border-radius:14px;border-left:4px solid #f59e0b;">
+                <div style="font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px;">PROJECTED</div>
+                <div style="font-size:32px;font-weight:800;color:#111827;margin-bottom:4px;">${Math.round(velocity.projectedPoints)} pts</div>
+                <div style="font-size:12px;color:#64748b;">by end of sprint</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- WORK BREAKDOWN -->
+          <div style="margin-bottom:40px;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#00BFA5;margin-bottom:12px;">Work Breakdown by Filter</div>
             ${allFilters.map(filter => {
-        const filterIssues = issues.filter(i => i.filter === filter.name);
-        const filterPoints = filterIssues.reduce((sum, i) => sum + i.points, 0);
-        const filterCompleted = filterIssues.reduce((sum, i) => sum + (i.points * (i.percent / 100)), 0);
-        const filterProgress = Math.round((filterCompleted / filterPoints) * 100) || 0;
-
-        return `
-                <div style="background: #f8fafc; padding: 20px; border-radius: 12px; margin-bottom: 16px; border-left: 4px solid ${filter.accent};">
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              const filterIssues  = issues.filter(i => i.filter === filter.name);
+              const filterPoints  = filterIssues.reduce((s, i) => s + i.points, 0);
+              const filterDone    = filterIssues.reduce((s, i) => s + (i.points * i.percent / 100), 0);
+              const filterPct     = filterPoints > 0 ? Math.round((filterDone / filterPoints) * 100) : 0;
+              const filterStages  = getStagesForFilter(filter);
+              return `
+                <div style="background:#f8fafc;border-radius:12px;margin-bottom:14px;overflow:hidden;border:1px solid #e2e8f0;">
+                  <!-- filter header -->
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-left:5px solid ${filter.accent};">
                     <div>
-                      <div style="font-size: 18px; font-weight: 700; color: #111827;">${filter.name}</div>
-                      <div style="font-size: 13px; color: #64748b; margin-top: 4px;">${WORKFLOWS[filter.workflow || 'feature'].name}</div>
+                      <div style="font-size:17px;font-weight:700;color:#111827;">${filter.name}</div>
+                      <div style="font-size:12px;color:#64748b;margin-top:2px;">${WORKFLOWS[filter.workflow || 'feature'].name} · ${filterIssues.length} issues</div>
                     </div>
-                    <div style="text-align: right;">
-                      <div style="font-size: 28px; font-weight: 800; color: #111827;">${filterProgress}%</div>
-                      <div style="font-size: 13px; color: #64748b;">${Math.round(filterCompleted)}/${filterPoints} pts</div>
+                    <div style="text-align:right;">
+                      <div style="font-size:26px;font-weight:800;color:#111827;">${filterPct}%</div>
+                      <div style="font-size:12px;color:#64748b;">${Math.round(filterDone)} / ${filterPoints} pts</div>
                     </div>
                   </div>
-                  <div style="background: #e2e8f0; height: 8px; border-radius: 999px; overflow: hidden;">
-                    <div style="background: ${filter.accent}; height: 100%; width: ${filterProgress}%; border-radius: 999px;"></div>
+                  <!-- progress bar -->
+                  <div style="background:#e2e8f0;height:6px;">
+                    <div style="background:${filter.accent};height:100%;width:${filterPct}%;"></div>
                   </div>
-                  <div style="font-size: 13px; color: #64748b; margin-top: 8px;">${filterIssues.length} issues</div>
-                </div>
-              `;
-      }).join('')}
+                  <!-- issue table -->
+                  <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                    <thead>
+                      <tr style="background:#f1f5f9;">
+                        <th style="padding:8px 12px;text-align:left;font-weight:700;color:#64748b;width:90px;">KEY</th>
+                        <th style="padding:8px 12px;text-align:left;font-weight:700;color:#64748b;">TITLE</th>
+                        <th style="padding:8px 12px;text-align:center;font-weight:700;color:#64748b;width:70px;">PROGRESS</th>
+                        <th style="padding:8px 12px;text-align:center;font-weight:700;color:#64748b;width:90px;">STAGES</th>
+                        <th style="padding:8px 12px;text-align:center;font-weight:700;color:#64748b;width:80px;">HEALTH</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${filterIssues.map((issue, idx) => {
+                        const stageData = issueStages[issue.key];
+                        const stagesArr = stageData?.stages ?? new Array(filterStages.length).fill(false);
+                        const doneStages = stagesArr.filter(Boolean).length;
+                        const health = getHealthStatus(issue.percent, stageData?.blocked ?? false, sprintConfig);
+                        const rowBg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+                        const pctColor = issue.percent === 100 ? '#10b981' : issue.percent > 0 ? '#3b82f6' : '#94a3b8';
+                        return `
+                          <tr style="background:${rowBg};border-top:1px solid #f1f5f9;">
+                            <td style="padding:9px 12px;font-family:monospace;font-weight:600;color:#00917A;">${issue.key}</td>
+                            <td style="padding:9px 12px;color:#111827;max-width:300px;">${issue.title.length > 60 ? issue.title.substring(0,60)+'…' : issue.title}</td>
+                            <td style="padding:9px 12px;text-align:center;font-weight:700;color:${pctColor};">${issue.percent}%</td>
+                            <td style="padding:9px 12px;text-align:center;color:#64748b;">${doneStages} / ${filterStages.length}</td>
+                            <td style="padding:9px 12px;text-align:center;">
+                              <span style="display:inline-block;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;background:${health.bgColor};color:${health.color};border:1px solid ${health.borderColor};">${health.status}</span>
+                            </td>
+                          </tr>`;
+                      }).join('')}
+                    </tbody>
+                  </table>
+                </div>`;
+            }).join('')}
           </div>
 
-          <!-- Risk Summary -->
-          <div style="background: ${riskCount > 0 ? '#fef2f2' : '#f0fdf4'}; padding: 24px; border-radius: 16px; border-left: 4px solid ${riskCount > 0 ? '#ef4444' : '#10b981'};">
-            <h3 style="font-size: 18px; font-weight: 700; color: #111827; margin: 0 0 16px 0;">Risk Summary</h3>
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
-              <div>
-                <div style="font-size: 13px; font-weight: 600; color: #64748b;">BLOCKED</div>
-                <div style="font-size: 24px; font-weight: 800; color: #ef4444;">${blockedCount}</div>
-              </div>
-              <div>
-                <div style="font-size: 13px; font-weight: 600; color: #64748b;">BEHIND</div>
-                <div style="font-size: 24px; font-weight: 800; color: #f59e0b;">${behindCount}</div>
-              </div>
-              <div>
-                <div style="font-size: 13px; font-weight: 600; color: #64748b;">AT RISK</div>
-                <div style="font-size: 24px; font-weight: 800; color: #f97316;">${atRiskCount}</div>
-              </div>
+          <!-- RISK SUMMARY -->
+          <div style="background:${riskCount > 0 ? '#fef2f2' : '#f0fdf4'};padding:24px;border-radius:14px;border-left:5px solid ${riskCount > 0 ? '#ef4444' : '#10b981'};margin-bottom:40px;">
+            <div style="font-size:15px;font-weight:700;color:#111827;margin-bottom:16px;">Risk Summary</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+              <div><div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;">Blocked</div><div style="font-size:28px;font-weight:800;color:#ef4444;">${blockedCount}</div></div>
+              <div><div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;">Behind</div><div style="font-size:28px;font-weight:800;color:#f59e0b;">${behindCount}</div></div>
+              <div><div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;">At Risk</div><div style="font-size:28px;font-weight:800;color:#f97316;">${atRiskCount}</div></div>
             </div>
           </div>
 
-          <!-- Footer -->
-          <div style="margin-top: 40px; padding-top: 20px; border-top: 2px solid #e2e8f0; text-align: center; color: #94a3b8; font-size: 12px;">
-            Generated by Sprint Tracker • ${date}
+          <!-- FOOTER -->
+          <div style="padding-top:20px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;color:#94a3b8;font-size:12px;">
+            <span>Sprint Tracker · Tekion Corp</span>
+            <span>${date}</span>
           </div>
         </div>
       `;
 
-      // Capture the content as canvas
-      const canvas = await html2canvas(pdfContainer, {
-        scale: 2,
-        logging: false,
-        backgroundColor: '#ffffff'
-      });
-
-      // Remove temporary container
+      const canvas = await html2canvas(pdfContainer, { scale: 2, logging: false, backgroundColor: '#ffffff' });
       document.body.removeChild(pdfContainer);
 
-      // Create PDF
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      });
+      const baseName = `${sprintConfig.name.replace(/\s+/g, '_')}_Week${velocity.weeksElapsed}_Report_${new Date().toISOString().split('T')[0]}`;
 
-      const imgWidth = 210; // A4 width in mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-
-      // Save the PDF
-      const fileName = `${sprintConfig.name.replace(/\s+/g, '_')}_Report_${new Date().toISOString().split('T')[0]}.pdf`;
-      pdf.save(fileName);
-
-      alert(`✅ PDF report generated successfully!\n\nFile: ${fileName}`);
+      if (format === 'image') {
+        const link = document.createElement('a');
+        link.download = `${baseName}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        setShareToast('Image exported successfully');
+        setTimeout(() => setShareToast(''), 3000);
+      } else {
+        const { jsPDF } = await import('jspdf');
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        const imgWidth = 210;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+        pdf.save(`${baseName}.pdf`);
+        setShareToast('PDF exported successfully');
+        setTimeout(() => setShareToast(''), 3000);
+      }
 
     } catch (error) {
-      console.error('PDF generation error:', error);
-      alert(`❌ Failed to generate PDF:\n\n${error.message}\n\nPlease make sure you have an active internet connection.`);
+      console.error('Export error:', error);
+      showAlert('Export Failed', error.message, 'error');
     } finally {
       setLoading(false);
     }
@@ -851,6 +917,13 @@ function App() {
   const showWelcomeState = dynamicFilters.length === 0;
 
   return (
+    <div className="app">
+    <TopBar
+      onAddFilter={() => setShowAddModal(true)}
+      onSync={handleSyncAll}
+      syncing={loading}
+      userInitials="RG"
+    />
     <main className={`app-shell ${viewDensity}`}>
       {showWelcomeState ? (
         // Compact welcome header for executive-friendly first impression
@@ -869,12 +942,12 @@ function App() {
             )}
 
             <div className="welcome-actions">
-              <button className="primary-button large" onClick={() => setShowAddModal(true)}>
-                <Plus size={20} />
+              <button className="btn btn-on-dark btn-primary-on-dark primary-button large" onClick={() => setShowAddModal(true)}>
+                <Plus size={18} />
                 Add Jira Filter to Get Started
               </button>
-              <button className="secondary-button" onClick={() => setShowSprintConfigModal(true)}>
-                <Clock3 size={18} />
+              <button className="btn btn-on-dark secondary-button" onClick={() => setShowSprintConfigModal(true)}>
+                <Clock3 size={16} />
                 {sprintConfig ? 'Change Sprint' : 'Configure Sprint Dates'}
               </button>
             </div>
@@ -910,41 +983,42 @@ function App() {
 
           <div className="hero-actions">
             <button
-              className="secondary-button"
+              className="btn btn-on-dark btn-sm"
               onClick={() => setViewDensity(viewDensity === 'dense' ? 'relaxed' : 'dense')}
               title={viewDensity === 'dense' ? 'Switch to Relaxed View' : 'Switch to Dense View'}
             >
-              <SlidersHorizontal size={17} /> {viewDensity === 'dense' ? 'Relaxed' : 'Dense'}
+              <SlidersHorizontal size={16} /> {viewDensity === 'dense' ? 'Relaxed' : 'Dense'}
             </button>
-            <button className="secondary-button" onClick={() => setShowSprintConfigModal(true)}>
-              <Clock3 size={17} /> Configure Sprint
+            <button className="btn btn-on-dark btn-sm" onClick={() => setShowSprintConfigModal(true)}>
+              <Clock3 size={16} /> Configure Sprint
             </button>
-            <button className="secondary-button" onClick={() => setShowAddModal(true)} disabled={loading}>
-              <Filter size={17} /> Add Jira filter
-            </button>
+            <div style={{ position: 'relative' }}>
+              <button
+                className="btn btn-on-dark btn-sm"
+                onClick={() => setShowExportMenu(v => !v)}
+                disabled={loading || dynamicFilters.length === 0}
+              >
+                <Download size={16} /> Export ▾
+              </button>
+              {showExportMenu && (
+                <div className="export-dropdown">
+                  <button onClick={() => handleExport('pdf')}>Export as PDF</button>
+                  <button onClick={() => handleExport('image')}>Export as Image (PNG)</button>
+                </div>
+              )}
+            </div>
             <button
-              className="secondary-button"
-              onClick={handleExportPDF}
-              disabled={loading || dynamicFilters.length === 0}
-              title="Export sprint report as PDF for leadership"
-            >
-              <Download size={17} /> Export PDF
-            </button>
-            <button
-              className="secondary-button"
+              className="btn btn-on-dark btn-sm"
               onClick={handleShare}
               disabled={dynamicFilters.length === 0}
-              title="Generate shareable link to this exact view"
             >
-              <Link2 size={17} /> Share View
-            </button>
-            <button className="primary-button" onClick={handleSyncAll} disabled={loading || dynamicFilters.length === 0}>
-              <RefreshCcw size={17} /> {loading ? 'Syncing...' : 'Sync Jira'}
+              <Link2 size={16} /> Share View
             </button>
           </div>
         </section>
       )}
 
+      {appModal && <AppAlertModal modal={appModal} onClose={() => setAppModal(null)} />}
       {showAddModal && <AddFilterModal onAdd={handleAddFilter} onClose={() => setShowAddModal(false)} loading={loading} />}
       {showSprintConfigModal && (
         <SprintConfigModal
@@ -968,26 +1042,32 @@ function App() {
         <>
           <section className="metric-grid" aria-label="Sprint summary metrics">
             <Metric
+              tone="success"
               label="Sprint Health"
               value={sprintHealth.status}
               detail={`${featureAheadCount + featureOnTrackCount}/${totalFeatureIssues} features on track · ${featureBlockedCount} blocked`}
-              icon={<span style={{ fontSize: '1.5rem' }}>{sprintHealth.icon}</span>}
-              customColor={sprintHealth.color}
+              icon={<CheckCircle2 size={16} />}
             />
-            <Metric label="Issues in scope" value={issues.length} detail={`${points} total story points`} icon={<Link2 size={18} />} />
             <Metric
+              label="Issues in scope"
+              value={issues.length}
+              detail={`${points} total story points`}
+              icon={<Link2 size={16} />}
+            />
+            <Metric
+              tone="brand"
               label="Completion"
               value={`${avgProgress}%`}
               detail={`${Math.round(completedPoints)}/${points} weighted story points`}
-              icon={<CheckCircle2 size={18} />}
+              icon={<CheckCircle2 size={16} />}
             />
             <VelocityMetric velocity={getWeeklyVelocity()} totalPoints={points} completedPoints={completedPoints} />
             <Metric
+              tone={riskCount > 0 ? 'warn' : null}
               label="At-risk work"
               value={riskCount}
-              detail={`${atRiskCount} at risk · ${behindCount} behind · ${blockedCount} blocked (all workflows)`}
-              icon={<AlertTriangle size={18} />}
-              warning={riskCount > 0}
+              detail={`${atRiskCount} at risk · ${behindCount} behind · ${blockedCount} blocked`}
+              icon={<AlertTriangle size={16} />}
             />
           </section>
 
@@ -1044,30 +1124,44 @@ function App() {
                         <p>Try a filter name, owner, issue key, or Jira status</p>
                       </div>
                     ) : (
-                      visibleFilters.map((filter) => (
-                        <article className="filter-card" key={filter.id} style={{ '--accent': filter.accent }}>
-                          <div className="filter-card-title">
-                            <span className="filter-dot" />
-                            <strong>{filter.name}</strong>
-                            <button
-                              className="remove-filter-btn"
-                              onClick={() => handleRemoveFilter(filter.id)}
-                              aria-label="Remove filter"
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
-                          <p title={filter.jql}>
-                            {filter.jql && filter.jql.length > 80
-                              ? `${filter.jql.substring(0, 80)}...`
-                              : filter.jql}
-                          </p>
-                          <div className="filter-stats">
-                            <span>{filter.issues.length} issues</span>
-                            <span>{filter.issues.reduce((sum, issue) => sum + issue.points, 0)} pts</span>
-                          </div>
-                        </article>
-                      ))
+                      visibleFilters.map((filter) => {
+                        const totalPts = filter.issues.reduce((sum, issue) => sum + issue.points, 0);
+                        const donePts  = filter.issues.reduce((sum, issue) => sum + (issue.percent === 100 ? issue.points : 0), 0);
+                        const pct = totalPts > 0 ? Math.round((donePts / totalPts) * 100) : 0;
+                        return (
+                          <article
+                            className="filter-card"
+                            key={filter.id}
+                            style={{ '--accent': filter.accent }}
+                            onClick={() => document.getElementById(`filter-section-${filter.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                          >
+                            <div className="filter-card-title">
+                              <span className="filter-dot" />
+                              <strong>{filter.name}</strong>
+                              <button
+                                className="remove-filter-btn"
+                                onClick={() => handleRemoveFilter(filter.id)}
+                                aria-label="Remove filter"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                            <p title={filter.jql}>
+                              {filter.jql && filter.jql.length > 80
+                                ? `${filter.jql.substring(0, 80)}…`
+                                : filter.jql}
+                            </p>
+                            <div className="filter-stats">
+                              <span>{filter.issues.length} issues</span>
+                              <span>{totalPts} pts</span>
+                              <span>{pct}%</span>
+                            </div>
+                            <div className="filter-card-bar">
+                              <span style={{ width: `${pct}%` }} />
+                            </div>
+                          </article>
+                        );
+                      })
                     )}
                   </div>
                 </>
@@ -1077,11 +1171,11 @@ function App() {
             <section className="planner-panel">
               <div className="panel-heading planner-heading">
                 <div>
-                  <p className="eyebrow">Roadmap matrix</p>
+                  <p className="eyebrow">Delivery matrix</p>
                   <h2>Sprint status by delivery stage</h2>
                   {allFilters.length > 0 && (
-                    <small style={{ color: '#64748b', fontWeight: 600, marginTop: '4px', display: 'block' }}>
-                      💡 Click on any stage to mark it complete or incomplete
+                    <small style={{ color: 'var(--fg-3)', fontWeight: 600, marginTop: '4px', display: 'block', fontSize: '12px' }}>
+                      Click any stage cell to mark it complete or incomplete
                     </small>
                   )}
                 </div>
@@ -1111,7 +1205,7 @@ function App() {
                       const filterStages = getStagesForFilter(filter);
 
                       return (
-                        <div className="filter-section" key={filter.id}>
+                        <div className="filter-section" key={filter.id} id={`filter-section-${filter.id}`}>
                           <div className="section-label" style={{ '--accent': filter.accent }}>
                             <span>{filter.name}</span>
                             <em>{filter.issues.length} items · {WORKFLOWS[filter.workflow || 'feature'].name}</em>
@@ -1146,9 +1240,48 @@ function App() {
         </>
       )}
 
+      {shareToast && <div className="share-toast">{shareToast}</div>}
     </main>
+    </div>
   );
 };
+
+function AppAlertModal({ modal, onClose }) {
+  const { title, body, tone = 'info', copyUrl } = modal;
+  const accentColor = { error: 'var(--danger)', success: 'var(--success)', warning: 'var(--warning)', info: 'var(--brand-teal)' }[tone] || 'var(--brand-teal)';
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(copyUrl).then(onClose);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content app-alert-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header" style={{ borderTop: `3px solid ${accentColor}` }}>
+          <h2>{title}</h2>
+          <button className="icon-btn" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="app-alert-body">
+          {body && <p className="app-alert-text">{body}</p>}
+          {copyUrl && (
+            <div className="app-alert-copy-row">
+              <input
+                readOnly
+                value={copyUrl}
+                className="app-alert-copy-input"
+                onFocus={e => e.target.select()}
+              />
+              <button className="btn btn-primary btn-sm" onClick={handleCopy}>Copy</button>
+            </div>
+          )}
+        </div>
+        <div className="modal-actions">
+          <button className="btn btn-primary btn-sm" onClick={onClose}>OK</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function AddFilterModal({ onAdd, onClose, loading }) {
   const [sourceType, setSourceType] = useState('filter'); // 'filter' or 'jql'
