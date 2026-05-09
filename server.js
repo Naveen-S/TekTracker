@@ -27,13 +27,46 @@ try {
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Jira configuration - these would typically come from environment variables
-const JIRA_BASE_URL = process.env.JIRA_BASE_URL || 'https://tekion.atlassian.net';
-const JIRA_API_BASE = process.env.JIRA_API_BASE || 'https://api.atlassian.com/ex/jira/92da72f4-8c05-4b25-a53d-cb44c0205f44/rest/api/3';
+function requireEnv(name) {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value.replace(/\/+$/, '');
+}
+
+let JIRA_BASE_URL;
+let JIRA_API_BASE;
+try {
+  JIRA_BASE_URL = requireEnv('JIRA_BASE_URL');
+  JIRA_API_BASE = requireEnv('JIRA_API_BASE');
+} catch (error) {
+  console.error(`❌ ${error.message}`);
+  console.error('   Copy .env.example to .env and set your Jira URLs before starting the server.');
+  process.exit(1);
+}
 
 // API token authentication (required for SSO)
 const JIRA_EMAIL = process.env.JIRA_EMAIL;
 const JIRA_API_TOKEN = process.env.JIRA_API_TOKEN;
+const STORY_POINTS_FIELD = 'customfield_10008';
+const LEGACY_STORY_POINTS_FIELD = 'customfield_10016';
+const DEFAULT_ALLOWED_ORIGINS = ['http://localhost:3000', 'http://localhost:5173'];
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || DEFAULT_ALLOWED_ORIGINS.join(','))
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+const DEFAULT_FIELDS = [
+  'summary',
+  'status',
+  'assignee',
+  'issuetype',
+  STORY_POINTS_FIELD,
+  LEGACY_STORY_POINTS_FIELD,
+  'duedate',
+  'priority',
+  'customfield_10020',
+];
 
 if (JIRA_EMAIL && JIRA_API_TOKEN) {
   console.log('✅ Using Jira API token authentication');
@@ -43,8 +76,88 @@ if (JIRA_EMAIL && JIRA_API_TOKEN) {
   console.log('   See SETUP_AUTH.md for instructions');
 }
 
-app.use(cors());
-app.use(express.json());
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error('Origin is not allowed by CORS'));
+  },
+}));
+app.use(express.json({ limit: '64kb' }));
+
+function sendClientError(res, message, details) {
+  res.status(400).json({ error: message, details });
+}
+
+function sendProxyError(res, error, details) {
+  const status = Number.isInteger(error.status) ? error.status : 500;
+  res.status(status).json({
+    error: error.publicMessage || 'Jira proxy request failed',
+    details,
+  });
+}
+
+async function assertJiraOk(response, action) {
+  if (response.ok) {
+    return;
+  }
+
+  const errorBody = await response.text();
+  console.error(`Jira API error while ${action}: ${response.status} ${response.statusText}`);
+  if (errorBody) {
+    console.error(`Jira API error body length: ${errorBody.length}`);
+  }
+
+  const error = new Error(`Jira API error: ${response.status} ${response.statusText}`);
+  error.status = response.status >= 400 && response.status < 500 ? response.status : 502;
+  error.publicMessage = `Jira API error: ${response.status} ${response.statusText}`;
+  throw error;
+}
+
+function requireNumericParam(res, value, label) {
+  if (/^\d+$/.test(String(value || ''))) {
+    return String(value);
+  }
+  sendClientError(res, `${label} must be numeric.`);
+  return null;
+}
+
+function requireIssueKeyParam(res, value) {
+  const issueKey = String(value || '').trim().toUpperCase();
+  if (/^[A-Z][A-Z0-9_]*-\d+$/.test(issueKey)) {
+    return issueKey;
+  }
+  sendClientError(res, 'Issue key is invalid.');
+  return null;
+}
+
+function normalizeMaxResults(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed)) {
+    return 50;
+  }
+  return Math.min(Math.max(parsed, 1), 100);
+}
+
+function normalizeStartAt(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed) || parsed < 0) return 0;
+  return parsed;
+}
+
+function normalizeFields(fields) {
+  if (!Array.isArray(fields)) {
+    return DEFAULT_FIELDS;
+  }
+
+  const cleanFields = fields
+    .map(field => String(field).trim())
+    .filter(field => /^[A-Za-z0-9_.-]+$/.test(field));
+
+  return cleanFields.length > 0 ? cleanFields : DEFAULT_FIELDS;
+}
 
 // Middleware to add Jira auth headers
 // Note: In production, you'd use OAuth or API tokens stored securely
@@ -67,7 +180,9 @@ function addJiraHeaders(headers = {}) {
 // Get filter details
 app.get('/api/jira/filter/:filterId', async (req, res) => {
   try {
-    const { filterId } = req.params;
+    const filterId = requireNumericParam(res, req.params.filterId, 'Filter ID');
+    if (!filterId) return;
+
     console.log(`Fetching filter ${filterId} from Jira...`);
 
     const response = await fetch(`${JIRA_API_BASE}/filter/${filterId}`, {
@@ -77,74 +192,63 @@ app.get('/api/jira/filter/:filterId', async (req, res) => {
 
     console.log(`Jira response status: ${response.status}`);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Jira API error: ${response.status} - ${errorText}`);
-      throw new Error(`Jira API error: ${response.status} ${response.statusText}. ${errorText}`);
-    }
+    await assertJiraOk(response, `fetching filter ${filterId}`);
 
     const data = await response.json();
     console.log(`Successfully fetched filter: ${data.name}`);
     res.json(data);
   } catch (error) {
     console.error('Error fetching filter:', error);
-    res.status(500).json({
-      error: error.message,
-      details: 'Make sure you are logged into Jira and have access to this filter.'
-    });
+    sendProxyError(res, error, 'Make sure you are logged into Jira and have access to this filter.');
   }
 });
 
 // Search for issues using JQL
 app.post('/api/jira/search', async (req, res) => {
   try {
-    const { jql, maxResults = 50, fields } = req.body;
-    console.log(`Searching Jira with JQL: ${jql.substring(0, 100)}...`);
+    const { jql, maxResults = 50, startAt = 0, fields } = req.body;
+    const normalizedJql = typeof jql === 'string' ? jql.trim() : '';
+    if (!normalizedJql) {
+      sendClientError(res, 'JQL is required.');
+      return;
+    }
+    if (normalizedJql.length > 4000) {
+      sendClientError(res, 'JQL is too long.', 'Keep JQL under 4000 characters.');
+      return;
+    }
+
+    console.log(`Searching Jira with JQL: ${normalizedJql.substring(0, 100)}...`);
 
     // Use the new /search/jql endpoint (the old /search endpoint is deprecated)
     const response = await fetch(`${JIRA_API_BASE}/search/jql`, {
       method: 'POST',
       headers: addJiraHeaders(),
       body: JSON.stringify({
-        jql,
-        maxResults,
-        fields: fields || [
-          'summary',
-          'status',
-          'assignee',
-          'issuetype',
-          'customfield_10016',
-          'duedate',
-          'priority',
-          'customfield_10020',
-        ],
+        jql: normalizedJql,
+        maxResults: normalizeMaxResults(maxResults),
+        startAt: normalizeStartAt(startAt),
+        fields: normalizeFields(fields),
       }),
     });
 
     console.log(`Jira search response status: ${response.status}`);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Jira API error: ${response.status} - ${errorText}`);
-      throw new Error(`Jira API error: ${response.status} ${response.statusText}. ${errorText}`);
-    }
+    await assertJiraOk(response, 'searching issues');
 
     const data = await response.json();
     console.log(`Successfully fetched ${data.issues?.length || 0} issues`);
     res.json(data);
   } catch (error) {
     console.error('Error searching issues:', error);
-    res.status(500).json({
-      error: error.message,
-      details: 'Make sure you are logged into Jira and have access to these issues.'
-    });
+    sendProxyError(res, error, 'Make sure you are logged into Jira and have access to these issues.');
   }
 });
 
 // Get issue details
 app.get('/api/jira/issue/:issueKey', async (req, res) => {
   try {
-    const { issueKey } = req.params;
+    const issueKey = requireIssueKeyParam(res, req.params.issueKey);
+    if (!issueKey) return;
 
     const response = await fetch(`${JIRA_API_BASE}/issue/${issueKey}`, {
       method: 'GET',
@@ -152,22 +256,22 @@ app.get('/api/jira/issue/:issueKey', async (req, res) => {
       credentials: 'include',
     });
 
-    if (!response.ok) {
-      throw new Error(`Jira API error: ${response.status} ${response.statusText}`);
-    }
+    await assertJiraOk(response, `fetching issue ${issueKey}`);
 
     const data = await response.json();
     res.json(data);
   } catch (error) {
     console.error('Error fetching issue:', error);
-    res.status(500).json({ error: error.message });
+    sendProxyError(res, error, 'Make sure you are logged into Jira and have access to this issue.');
   }
 });
 
 // Get dashboard details
 app.get('/api/jira/dashboard/:dashboardId', async (req, res) => {
   try {
-    const { dashboardId } = req.params;
+    const dashboardId = requireNumericParam(res, req.params.dashboardId, 'Dashboard ID');
+    if (!dashboardId) return;
+
     console.log(`Fetching dashboard ${dashboardId} from Jira...`);
 
     const response = await fetch(`${JIRA_API_BASE}/dashboard/${dashboardId}`, {
@@ -177,11 +281,7 @@ app.get('/api/jira/dashboard/:dashboardId', async (req, res) => {
 
     console.log(`Jira dashboard response status: ${response.status}`);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Jira API error: ${response.status} - ${errorText}`);
-      throw new Error(`Jira API error: ${response.status} ${response.statusText}. ${errorText}`);
-    }
+    await assertJiraOk(response, `fetching dashboard ${dashboardId}`);
 
     const data = await response.json();
     console.log(`Successfully fetched dashboard: ${data.name}`);
@@ -189,17 +289,17 @@ app.get('/api/jira/dashboard/:dashboardId', async (req, res) => {
     res.json(data);
   } catch (error) {
     console.error('Error fetching dashboard:', error);
-    res.status(500).json({
-      error: error.message,
-      details: 'Make sure you are logged into Jira and have access to this dashboard.'
-    });
+    sendProxyError(res, error, 'Make sure you are logged into Jira and have access to this dashboard.');
   }
 });
 
 // Get specific gadget from dashboard
 app.get('/api/jira/dashboard/:dashboardId/gadget/:gadgetId', async (req, res) => {
   try {
-    const { dashboardId, gadgetId } = req.params;
+    const dashboardId = requireNumericParam(res, req.params.dashboardId, 'Dashboard ID');
+    const gadgetId = requireNumericParam(res, req.params.gadgetId, 'Gadget ID');
+    if (!dashboardId || !gadgetId) return;
+
     console.log(`Fetching gadget ${gadgetId} from dashboard ${dashboardId}...`);
 
     // Fetch all gadgets from the dashboard
@@ -210,11 +310,7 @@ app.get('/api/jira/dashboard/:dashboardId/gadget/:gadgetId', async (req, res) =>
 
     console.log(`Jira dashboard gadgets response status: ${response.status}`);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Jira API error: ${response.status} - ${errorText}`);
-      throw new Error(`Jira API error: ${response.status} ${response.statusText}. ${errorText}`);
-    }
+    await assertJiraOk(response, `fetching gadgets for dashboard ${dashboardId}`);
 
     const data = await response.json();
     console.log(`Successfully fetched ${data.gadgets?.length || 0} gadgets from dashboard`);
@@ -225,30 +321,30 @@ app.get('/api/jira/dashboard/:dashboardId/gadget/:gadgetId', async (req, res) =>
     if (!targetGadget) {
       const availableGadgets = data.gadgets?.map(g => `${g.id} (${g.title})`).join(', ') || 'none';
       console.error(`Gadget ${gadgetId} not found. Available: ${availableGadgets}`);
-      throw new Error(
-        `Gadget ${gadgetId} not found in dashboard ${dashboardId}.\n` +
-        `Available gadgets: ${availableGadgets}`
-      );
+      const error = new Error(`Gadget ${gadgetId} not found in dashboard ${dashboardId}.`);
+      error.status = 404;
+      error.publicMessage = error.message;
+      throw error;
     }
 
     console.log(`Successfully found gadget: ${targetGadget.title || 'Untitled'}`);
     console.log(`Gadget type: ${targetGadget.moduleKey || 'unknown'}`);
-    console.log(`Gadget properties:`, JSON.stringify(targetGadget.properties, null, 2));
+    console.log(`Gadget has properties: ${Boolean(targetGadget.properties)}`);
 
     res.json(targetGadget);
   } catch (error) {
     console.error('Error fetching gadget:', error);
-    res.status(500).json({
-      error: error.message,
-      details: 'Make sure you are logged into Jira and have access to this dashboard and gadget.'
-    });
+    sendProxyError(res, error, 'Make sure you are logged into Jira and have access to this dashboard and gadget.');
   }
 });
 
 // Scrape dashboard widget for issue keys
 app.post('/api/jira/scrape-dashboard', async (req, res) => {
   try {
-    const { dashboardId, gadgetId } = req.body;
+    const dashboardId = requireNumericParam(res, req.body?.dashboardId, 'Dashboard ID');
+    const gadgetId = requireNumericParam(res, req.body?.gadgetId, 'Gadget ID');
+    if (!dashboardId || !gadgetId) return;
+
     console.log(`Scraping dashboard ${dashboardId} gadget ${gadgetId}...`);
 
     // First, get the dashboard HTML
@@ -262,16 +358,10 @@ app.post('/api/jira/scrape-dashboard', async (req, res) => {
       }),
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch dashboard HTML: ${response.status} ${response.statusText}`);
-    }
+    await assertJiraOk(response, `fetching dashboard HTML for ${dashboardId}`);
 
     const html = await response.text();
     console.log(`Received HTML, length: ${html.length} characters`);
-
-    // Save a sample of the HTML for debugging
-    const htmlSample = html.substring(0, 500);
-    console.log('HTML sample:', htmlSample);
 
     // Extract issue keys from HTML using regex
     // Jira issue keys typically match: PROJECT-NUMBER (e.g., DR_GM-123, GM-456)
@@ -318,11 +408,28 @@ app.post('/api/jira/scrape-dashboard', async (req, res) => {
     });
   } catch (error) {
     console.error('Error scraping dashboard:', error);
-    res.status(500).json({
-      error: error.message,
-      details: 'Failed to scrape dashboard. Make sure you have access to the dashboard.'
-    });
+    sendProxyError(res, error, 'Failed to scrape dashboard. Make sure you have access to the dashboard.');
   }
+});
+
+app.use((error, req, res, next) => {
+  if (res.headersSent) {
+    next(error);
+    return;
+  }
+
+  if (error instanceof SyntaxError && 'body' in error) {
+    res.status(400).json({ error: 'Invalid JSON request body.' });
+    return;
+  }
+
+  if (error.message === 'Origin is not allowed by CORS') {
+    res.status(403).json({ error: 'Origin is not allowed by CORS.' });
+    return;
+  }
+
+  console.error('Unhandled proxy error:', error);
+  res.status(500).json({ error: 'Unexpected proxy error.' });
 });
 
 app.listen(PORT, () => {

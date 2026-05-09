@@ -1,10 +1,19 @@
 // Jira integration service for fetching filters and issues
 
-const JIRA_BASE_URL = 'https://tekion.atlassian.net';
-const USE_PROXY = true; // Set to false to use direct Jira API (requires CORS configuration)
+const normalizeBaseUrl = (url) => (url || '').replace(/\/+$/, '');
+
+export const JIRA_BASE_URL = normalizeBaseUrl(import.meta.env.VITE_JIRA_BASE_URL);
+const USE_PROXY = import.meta.env.VITE_USE_JIRA_PROXY !== 'false';
+const PROXY_API_BASE = normalizeBaseUrl(import.meta.env.VITE_JIRA_API_BASE_URL);
+const STORY_POINTS_FIELD = 'customfield_10008';
+const LEGACY_STORY_POINTS_FIELD = 'customfield_10016';
 
 // Determine the API base URL
-const API_BASE = USE_PROXY ? 'http://localhost:3001/api/jira' : JIRA_BASE_URL;
+const API_BASE = USE_PROXY ? PROXY_API_BASE : JIRA_BASE_URL;
+
+export function getJiraIssueUrl(issueKey) {
+  return JIRA_BASE_URL ? `${JIRA_BASE_URL}/browse/${issueKey}` : '#';
+}
 
 /**
  * Fetch filter details by filter ID
@@ -30,55 +39,48 @@ export async function fetchFilterDetails(filterId) {
     return await response.json();
   } catch (error) {
     console.error('Error fetching filter details:', error);
-    throw new Error(`Cannot connect to Jira API. Make sure the proxy server is running on port 3001. Error: ${error.message}`);
+    throw new Error(`Cannot connect to Jira API. Make sure the proxy server is running and VITE_JIRA_API_BASE_URL is configured. Error: ${error.message}`);
   }
 }
 
-/**
- * Fetch issues from a Jira filter
- */
-export async function fetchFilterIssues(filterId, maxResults = 50) {
-  try {
-    // First get the filter to extract the JQL
-    const filter = await fetchFilterDetails(filterId);
+const FIELDS = [
+  'summary',
+  'status',
+  'assignee',
+  'issuetype',
+  STORY_POINTS_FIELD,
+  LEGACY_STORY_POINTS_FIELD,
+  'duedate',
+  'priority',
+  'customfield_10020',
+];
 
-    // Build the search URL
-    const fields = [
-      'summary',
-      'status',
-      'assignee',
-      'issuetype',
-      'customfield_10008', // Story points (Tekion)
-      'duedate',
-      'priority',
-      'customfield_10020', // Sprint
-    ];
+const PAGE_SIZE = 100;
 
+async function searchAllIssues(jql) {
+  let startAt = 0;
+  let allIssues = [];
+  let total = Infinity;
+
+  while (allIssues.length < total) {
     let response;
     if (USE_PROXY) {
       response = await fetch(`${API_BASE}/search`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          jql: filter.jql,
-          maxResults,
-          fields,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jql, maxResults: PAGE_SIZE, startAt, fields: FIELDS }),
       });
     } else {
       const params = new URLSearchParams({
-        jql: filter.jql,
-        maxResults: maxResults.toString(),
-        fields: fields.join(','),
+        jql,
+        maxResults: PAGE_SIZE.toString(),
+        startAt: startAt.toString(),
+        fields: FIELDS.join(','),
       });
       response = await fetch(`${JIRA_BASE_URL}/rest/api/3/search?${params}`, {
         method: 'GET',
         credentials: 'include',
-        headers: {
-          'Accept': 'application/json',
-        },
+        headers: { 'Accept': 'application/json' },
       });
     }
 
@@ -88,10 +90,24 @@ export async function fetchFilterIssues(filterId, maxResults = 50) {
     }
 
     const data = await response.json();
-    return {
-      filter,
-      issues: data.issues || [],
-    };
+    total = data.total ?? 0;
+    const page = data.issues || [];
+    allIssues = allIssues.concat(page);
+    startAt += PAGE_SIZE;
+    if (page.length < PAGE_SIZE) break;
+  }
+
+  return allIssues;
+}
+
+/**
+ * Fetch issues from a Jira filter
+ */
+export async function fetchFilterIssues(filterId) {
+  try {
+    const filter = await fetchFilterDetails(filterId);
+    const issues = await searchAllIssues(filter.jql);
+    return { filter, issues };
   } catch (error) {
     console.error('Error fetching filter issues:', error);
     throw error;
@@ -132,7 +148,7 @@ export async function fetchDashboardGadgetIssues(dashboardId, gadgetId, maxResul
           `2. You don't have permission to access this dashboard\n` +
           `3. The gadget was removed from the dashboard\n\n` +
           `Please verify by visiting:\n` +
-          `https://tekion.atlassian.net/jira/dashboards/${dashboardId}?maximized=${gadgetId}`;
+          `${JIRA_BASE_URL || 'https://your-domain.atlassian.net'}/jira/dashboards/${dashboardId}?maximized=${gadgetId}`;
       } else if (gadgetResponse.status === 403) {
         errorMessage += `\n\nYou don't have permission to access this dashboard/gadget.`;
       }
@@ -221,65 +237,15 @@ export async function fetchDashboardGadgetIssues(dashboardId, gadgetId, maxResul
 /**
  * Fetch issues from a direct JQL query
  */
-export async function fetchJQLIssues(jql, filterName, maxResults = 50) {
+export async function fetchJQLIssues(jql, filterName) {
   try {
-    const fields = [
-      'summary',
-      'status',
-      'assignee',
-      'issuetype',
-      'customfield_10008', // Story points (Tekion)
-      'duedate',
-      'priority',
-      'customfield_10020', // Sprint
-    ];
-
-    let response;
-    if (USE_PROXY) {
-      response = await fetch(`${API_BASE}/search`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          jql,
-          maxResults,
-          fields,
-        }),
-      });
-    } else {
-      const params = new URLSearchParams({
-        jql,
-        maxResults: maxResults.toString(),
-        fields: fields.join(','),
-      });
-      response = await fetch(`${JIRA_BASE_URL}/rest/api/3/search?${params}`, {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
-    }
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to fetch issues (${response.status}): ${errorText || response.statusText}`);
-    }
-
-    const data = await response.json();
-
-    // Create a pseudo-filter object for the JQL query
+    const issues = await searchAllIssues(jql);
     const filter = {
-      id: `jql-${Date.now()}`, // Generate a unique ID
+      id: `jql-${Date.now()}`,
       name: filterName,
-      jql: jql,
+      jql,
     };
-
-    return {
-      filter,
-      issues: data.issues || [],
-    };
+    return { filter, issues };
   } catch (error) {
     console.error('Error fetching JQL issues:', error);
     throw error;
@@ -300,8 +266,8 @@ export function transformJiraIssue(jiraIssue, index) {
     owner = displayName.split(' ')[0];
   }
 
-  // Extract story points - customfield_10008 for Tekion Jira instance
-  const points = fields.customfield_10008 || 0;
+  // Extract story points - customfield_10008 is the current Tekion field.
+  const points = fields[STORY_POINTS_FIELD] ?? fields[LEGACY_STORY_POINTS_FIELD] ?? 0;
 
   // Map Jira status to app status
   const statusMapping = {
@@ -420,7 +386,8 @@ export async function scrapeDashboardWidget(dashboardId, gadgetId, maxResults = 
       'status',
       'assignee',
       'issuetype',
-      'customfield_10008', // Story points (Tekion)
+      STORY_POINTS_FIELD, // Story points (Tekion)
+      LEGACY_STORY_POINTS_FIELD, // Legacy story points field fallback
       'duedate',
       'priority',
       'customfield_10020', // Sprint

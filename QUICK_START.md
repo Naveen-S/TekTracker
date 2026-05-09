@@ -13,8 +13,8 @@ npm run dev:all
 
 Open your Jira filter URL:
 ```
-https://tekion.atlassian.net/issues?filter=65834
-                                            ^^^^^ This is your filter ID
+https://your-domain.atlassian.net/issues?filter=65834
+                                                 ^^^^^ This is your filter ID
 ```
 
 ### 3️⃣ Add to Sprint Tracker

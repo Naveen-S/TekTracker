@@ -28,19 +28,27 @@ console.log('3. Give it a name (e.g., "Sprint Tracker")');
 console.log('4. Copy the token\n');
 
 async function setup() {
-  const email = await question('Enter your Tekion email: ');
+  const email = await question('Enter your Jira email: ');
   const token = await question('Enter your Jira API token: ');
+  const jiraBaseUrl = await question('Enter your Jira site URL (e.g., https://your-domain.atlassian.net): ');
+  const jiraApiBase = await question('Enter your Jira REST API base URL: ');
 
   const envContent = `# Jira Authentication
 JIRA_EMAIL=${email.trim()}
 JIRA_API_TOKEN=${token.trim()}
 
 # Jira Configuration
-JIRA_BASE_URL=https://tekion.atlassian.net
-JIRA_API_BASE=https://api.atlassian.com/ex/jira/92da72f4-8c05-4b25-a53d-cb44c0205f44/rest/api/3
+JIRA_BASE_URL=${jiraBaseUrl.trim()}
+JIRA_API_BASE=${jiraApiBase.trim()}
+
+# Frontend Configuration
+VITE_JIRA_BASE_URL=${jiraBaseUrl.trim()}
+VITE_JIRA_API_BASE_URL=http://localhost:3001/api/jira
+VITE_USE_JIRA_PROXY=true
 
 # Server Configuration
 PORT=3001
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 `;
 
   writeFileSync(join(__dirname, '.env'), envContent);

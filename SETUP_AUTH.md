@@ -15,12 +15,23 @@ Since your organization uses SSO, you need to create a Jira API token for authen
 Create a file named `.env` in your project root with:
 
 ```bash
-JIRA_EMAIL=your-email@tekion.com
+JIRA_BASE_URL=https://your-domain.atlassian.net
+JIRA_API_BASE=https://api.atlassian.com/ex/jira/your-cloud-id/rest/api/3
 JIRA_API_TOKEN=your-api-token-here
+JIRA_EMAIL=your-email@example.com
+
+VITE_JIRA_BASE_URL=https://your-domain.atlassian.net
+VITE_JIRA_API_BASE_URL=http://localhost:3001/api/jira
+VITE_USE_JIRA_PROXY=true
+
+PORT=3001
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 ```
 
 Replace:
-- `your-email@tekion.com` with your Tekion email
+- `your-domain.atlassian.net` with your Jira site URL
+- `your-cloud-id` with your Atlassian cloud ID
+- `your-email@example.com` with your Jira email
 - `your-api-token-here` with the token you just created
 
 ## Step 3: Restart the Server
@@ -54,3 +65,5 @@ Now the authentication should work!
 **401 Unauthorized?**
 - Double-check your email and API token
 - Make sure there are no extra spaces in the `.env` file
+- Verify `JIRA_BASE_URL`, `JIRA_API_BASE`, and `VITE_JIRA_BASE_URL` are set
+- If the browser reports CORS errors, add the frontend URL to `ALLOWED_ORIGINS`

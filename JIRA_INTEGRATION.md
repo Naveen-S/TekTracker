@@ -43,14 +43,14 @@ npm run dev:server
 
 The application will be available at:
 - Frontend: http://localhost:3000 (or the port Vite assigns)
-- Backend API: http://localhost:3001
+- Backend API: the value of `VITE_JIRA_API_BASE_URL` (defaults to `http://localhost:3001/api/jira` locally)
 
 ## How to Add a Jira Filter
 
 ### Step 1: Get Your Filter ID
 
 1. Go to Jira and navigate to your filter
-2. Look at the URL: `https://tekion.atlassian.net/issues?filter=65834`
+2. Look at the URL: `https://your-domain.atlassian.net/issues?filter=65834`
 3. The filter ID is the number at the end: `65834`
 
 ### Step 2: Add the Filter to Sprint Tracker
@@ -80,7 +80,7 @@ The app automatically maps Jira data to the sprint tracker format:
 | Assignee | owner |
 | Status | status (mapped to: Done, On Track, In Progress, At Risk, New) |
 | Issue Type | type |
-| Story Points (customfield_10016) | points |
+| Story Points (customfield_10008, with customfield_10016 fallback) | points |
 | Due Date | due |
 
 ### Status Mapping

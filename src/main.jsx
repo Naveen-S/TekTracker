@@ -1,196 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createPortal } from 'react-dom';
 import { AlertTriangle, CheckCircle2, Clock3, Download, Filter, Link2, Plus, RefreshCcw, Search, SlidersHorizontal, TrendingUp, X } from 'lucide-react';
 import './styles.css';
+import { IssueRow, Metric, VelocityMetric } from './components/index.js';
 import { fetchFilterIssues, fetchJQLIssues, transformFilter } from './jiraService.js';
-
-// ┌─────────────────────────────────────────────┐
-// │ EARLY STAGES (Heavy effort - 80%)          │
-// ├─────────────────────────────────────────────┤
-// │ 1. PM clarification          → 15%  ████████│
-// │ 2. HLD/LLD                   → 20%  ██████████│
-// │ 3. API contracts             → 15%  ████████│
-// │ 4. Working APIs              → 15%  ████████│
-// │ 5. FE integration            → 15%  ████████│
-// ├─────────────────────────────────────────────┤
-// │ LATER STAGES (Lighter effort - 20%)        │
-// ├─────────────────────────────────────────────┤
-// │ 6. E2E testing               → 8%   ████    │
-// │ 7. QA/PM demo                → 5%   ██      │
-// │ 8. PR approved               → 3%   █       │
-// │ 9. Release ready             → 2%   █       │
-// │ 10. 1st Stage Env deployment → 2%   █       │
-// └─────────────────────────────────────────────┘
-// Workflow definitions with weighted stages
-const WORKFLOWS = {
-  feature: {
-    name: 'Feature Development',
-    priority: 1, // Display first
-    stages: [
-      'PM clarification',
-      'HLD/LLD',
-      'API contracts',
-      'Working APIs',
-      'FE integration',
-      'E2E testing',
-      'QA/PM demo',
-      'PR approved',
-      'Release ready',
-      '1st Stage Env deployment',
-    ],
-    // Weights representing relative effort/time for each stage
-    // Early stages (1-5) are more time-consuming than later stages (6-10)
-    weights: [
-      15, // PM clarification - heavy upfront planning
-      20, // HLD/LLD - most time-consuming design phase
-      15, // API contracts - detailed specification
-      15, // Working APIs - core development
-      15, // FE integration - significant implementation
-      8,  // E2E testing - testing phase
-      5,  // QA/PM demo - demo and feedback
-      3,  // PR approved - quick review
-      2,  // Release ready - final prep
-      2,  // 1st Stage Env deployment - deployment
-    ] // Total: 100
-  },
-  support: {
-    name: 'Support Bugs',
-    priority: 2, // Display second
-    stages: [
-      'Triaged',
-      'In Progress',
-      'Code Review',
-      'In QA',
-    ],
-    // Support bugs: Triage and fixing take most time
-    weights: [20, 60, 15, 5] // Total: 100
-  },
-  techdebt: {
-    name: 'Tech Debt',
-    priority: 3, // Display third
-    stages: [
-      'Triaged',
-      'In Progress',
-      'Code Review',
-      'In QA',
-    ],
-    // Tech debt: Implementation heavy
-    weights: [15, 65, 15, 5] // Total: 100
-  }
-};
-
-// Legacy support - default to feature workflow
-const stages = WORKFLOWS.feature.stages;
-
-// Helper function to get stages for a filter
-function getStagesForFilter(filter) {
-  const workflow = filter.workflow || 'feature';
-  return WORKFLOWS[workflow].stages;
-}
-
-// Helper function to get weights for a filter
-function getWeightsForFilter(filter) {
-  const workflow = filter.workflow || 'feature';
-  return WORKFLOWS[workflow].weights;
-}
-
-// Calculate weighted completion percentage
-function calculateWeightedCompletion(stageCompletion, weights) {
-  if (!weights || weights.length !== stageCompletion.length) {
-    // Fallback to equal weights if weights not defined
-    return Math.round((stageCompletion.filter(Boolean).length / stageCompletion.length) * 100);
-  }
-
-  let totalWeight = 0;
-  let completedWeight = 0;
-
-  stageCompletion.forEach((completed, index) => {
-    const weight = weights[index] || 0;
-    totalWeight += weight;
-    if (completed) {
-      completedWeight += weight;
-    }
-  });
-
-  return totalWeight > 0 ? Math.round((completedWeight / totalWeight) * 100) : 0;
-}
-
-// Calculate health status based on progress vs timeline
-function getHealthStatus(completionPercent, isBlocked, sprintConfig) {
-  // If manually marked as blocked
-  if (isBlocked) {
-    return {
-      status: 'Blocked',
-      color: '#ef4444',
-      borderColor: '#dc2626',
-      bgColor: '#fef2f2',
-      icon: '⊗'
-    };
-  }
-
-  // Calculate expected progress based on time elapsed
-  const today = new Date();
-  const startDate = new Date(sprintConfig.startDate);
-  const endDate = new Date(sprintConfig.endDate);
-  const totalDays = (endDate - startDate) / (1000 * 60 * 60 * 24);
-  const elapsedDays = (today - startDate) / (1000 * 60 * 60 * 24);
-  const expectedProgress = Math.max(0, Math.min(100, (elapsedDays / totalDays) * 100));
-
-  // Determine health based on actual vs expected progress
-  const progressDelta = completionPercent - expectedProgress;
-
-  if (completionPercent === 100) {
-    return {
-      status: 'Done',
-      color: '#10b981',
-      borderColor: '#059669',
-      bgColor: '#ecfdf5',
-      icon: '✓'
-    };
-  } else if (completionPercent === 0 && expectedProgress < 5) {
-    // Only show "Not Started" if we're very early in the sprint (< 5% time elapsed)
-    return {
-      status: 'Not Started',
-      color: '#6b7280',
-      borderColor: '#9ca3af',
-      bgColor: '#f9fafb',
-      icon: '○'
-    };
-  } else if (progressDelta >= 10) {
-    return {
-      status: 'Ahead',
-      color: '#10b981',
-      borderColor: '#059669',
-      bgColor: '#ecfdf5',
-      icon: '↗'
-    };
-  } else if (progressDelta >= -10) {
-    return {
-      status: 'On Track',
-      color: '#3b82f6',
-      borderColor: '#2563eb',
-      bgColor: '#eff6ff',
-      icon: '→'
-    };
-  } else if (progressDelta >= -25) {
-    return {
-      status: 'At Risk',
-      color: '#f59e0b',
-      borderColor: '#d97706',
-      bgColor: '#fffbeb',
-      icon: '⚠'
-    };
-  } else {
-    return {
-      status: 'Behind',
-      color: '#ef4444',
-      borderColor: '#dc2626',
-      bgColor: '#fef2f2',
-      icon: '↓'
-    };
-  }
-}
+import {
+  calculateWeightedCompletion,
+  getHealthStatus,
+  getStagesForFilter,
+  getWeightsForFilter,
+  SPRINT_GATES,
+  stages,
+  WORKFLOWS,
+} from './workflows.js';
 
 // Start with no filters - users will add them dynamically from Jira
 const filters = [];
@@ -217,6 +39,16 @@ function summarize() {
   return { issues, points, donePoints, riskCount, avgProgress };
 }
 
+function migrateStages(stages) {
+  const migrated = {};
+  for (const [key, value] of Object.entries(stages)) {
+    migrated[key] = Array.isArray(value)
+      ? { stages: value, blocked: false }
+      : value;
+  }
+  return migrated;
+}
+
 function App() {
   // Load persisted data from localStorage
   const loadPersistedData = () => {
@@ -240,7 +72,7 @@ function App() {
       return {
         sprintData,
         filters: currentSprintData.filters,
-        stages: currentSprintData.stages,
+        stages: migrateStages(currentSprintData.stages || {}),
         config,
         density: savedDensity || 'dense',
         collapsed: savedCollapsed === 'true',
@@ -279,6 +111,7 @@ function App() {
   const [isFiltersPanelCollapsed, setIsFiltersPanelCollapsed] = useState(persistedData.collapsed);
   const [issueStages, setIssueStages] = useState(persistedData.stages);
   const [sprintConfig, setSprintConfig] = useState(persistedData.config);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Check for shared state in URL on mount
   useEffect(() => {
@@ -301,7 +134,7 @@ function App() {
           ...currentSprintData,
           [sprintKey]: {
             filters: decoded.filters,
-            stages: decoded.stages,
+            stages: migrateStages(decoded.stages || {}),
           },
         };
         localStorage.setItem('sprintTracker_sprintData', JSON.stringify(updatedSprintData));
@@ -312,7 +145,7 @@ function App() {
         setSprintData(updatedSprintData);
         setSprintConfig(decoded.config);
         setDynamicFilters(decoded.filters);
-        setIssueStages(decoded.stages);
+        setIssueStages(migrateStages(decoded.stages || {}));
         setViewDensity(decoded.viewDensity || 'dense');
 
         console.log('✅ Shared view restored successfully');
@@ -372,21 +205,34 @@ function App() {
     }
   }, [isFiltersPanelCollapsed]);
 
-  // Combine static mock filters with dynamic Jira filters and sort by workflow priority
-  const allFilters = [...filters, ...dynamicFilters].sort((a, b) => {
-    const priorityA = WORKFLOWS[a.workflow || 'feature'].priority;
-    const priorityB = WORKFLOWS[b.workflow || 'feature'].priority;
-    return priorityA - priorityB;
-  });
+  const allFilters = useMemo(() => (
+    [...filters, ...dynamicFilters].sort((a, b) => {
+      const priorityA = WORKFLOWS[a.workflow || 'feature'].priority;
+      const priorityB = WORKFLOWS[b.workflow || 'feature'].priority;
+      return priorityA - priorityB;
+    })
+  ), [dynamicFilters]);
 
-  // Update getAllIssues to use allFilters and calculate progress from stage completion
-  function getAllIssuesFromFilters() {
-    return allFilters.flatMap((filter) => {
+  const issueFilterMap = useMemo(() => {
+    const nextIssueFilterMap = new Map();
+    allFilters.forEach((filter) => {
+      filter.issues?.forEach((issue) => {
+        nextIssueFilterMap.set(issue.key, filter);
+      });
+    });
+    return nextIssueFilterMap;
+  }, [allFilters]);
+
+  const todayKey = new Date().toDateString();
+
+  const sprintMetrics = useMemo(() => {
+    const issues = allFilters.flatMap((filter) => {
       const filterStages = getStagesForFilter(filter);
       const weights = getWeightsForFilter(filter);
 
       return filter.issues.map((issue) => {
-        const stageCompletion = issueStages[issue.key] || new Array(filterStages.length).fill(false);
+        const issueStageData = issueStages[issue.key];
+        const stageCompletion = issueStageData?.stages ?? new Array(filterStages.length).fill(false);
         const completedStages = stageCompletion.filter(Boolean).length;
         const percent = calculateWeightedCompletion(stageCompletion, weights);
 
@@ -411,83 +257,131 @@ function App() {
         };
       });
     });
-  }
 
-  const issues = getAllIssuesFromFilters();
-  const points = issues.reduce((sum, issue) => sum + issue.points, 0);
+    const points = issues.reduce((sum, issue) => sum + issue.points, 0);
+    const avgProgress = issues.length > 0
+      ? Math.round(issues.reduce((sum, issue) => sum + issue.percent, 0) / issues.length)
+      : 0;
+    const completedPoints = issues.reduce((sum, issue) => {
+      return sum + (issue.points * (issue.percent / 100));
+    }, 0);
 
-  // Calculate completion based on average stage completion percentage
-  const avgProgress = issues.length > 0 ? Math.round(issues.reduce((sum, issue) => sum + issue.percent, 0) / issues.length) : 0;
+    const issueHealthStats = issues.map(issue => {
+      const filter = issueFilterMap.get(issue.key) || { workflow: 'feature' };
+      const filterStages = getStagesForFilter(filter);
+      const weights = getWeightsForFilter(filter);
+      const issueStageData = issueStages[issue.key];
+      const stageCompletion = issueStageData?.stages ?? new Array(filterStages.length).fill(false);
+      const completionPercent = calculateWeightedCompletion(stageCompletion, weights);
+      const isBlocked = issueStageData?.blocked ?? false;
+      return getHealthStatus(completionPercent, isBlocked, sprintConfig);
+    });
 
-  // Calculate completed points based on weighted completion
-  const completedPoints = issues.reduce((sum, issue) => {
-    return sum + (issue.points * (issue.percent / 100));
-  }, 0);
+    const featureIssues = issues.filter(issue => issueFilterMap.get(issue.key)?.workflow === 'feature');
+    const featureHealthStats = featureIssues.map(issue => {
+      const filter = issueFilterMap.get(issue.key) || { workflow: 'feature' };
+      const filterStages = getStagesForFilter(filter);
+      const weights = getWeightsForFilter(filter);
+      const issueStageData = issueStages[issue.key];
+      const stageCompletion = issueStageData?.stages ?? new Array(filterStages.length).fill(false);
+      const completionPercent = calculateWeightedCompletion(stageCompletion, weights);
+      const isBlocked = issueStageData?.blocked ?? false;
+      return getHealthStatus(completionPercent, isBlocked, sprintConfig);
+    });
 
-  // Calculate sprint-level health based on FEATURE tickets only
-  // Support bugs and tech debt are tracked separately and don't impact sprint health
-  const featureIssues = issues.filter(issue => {
-    const filter = allFilters.find(f => f.issues && f.issues.some(i => i.key === issue.key));
-    return filter && filter.workflow === 'feature';
-  });
+    const countStatuses = (healthStats) => ({
+      blocked: healthStats.filter(h => h.status === 'Blocked').length,
+      behind: healthStats.filter(h => h.status === 'Behind').length,
+      atRisk: healthStats.filter(h => h.status === 'At Risk').length,
+      onTrack: healthStats.filter(h => h.status === 'On Track').length,
+      ahead: healthStats.filter(h => h.status === 'Ahead').length,
+      done: healthStats.filter(h => h.status === 'Done').length,
+    });
 
-  const featureHealthStats = featureIssues.map(issue => {
-    const filter = allFilters.find(f => f.issues && f.issues.some(i => i.key === issue.key));
-    const filterStages = getStagesForFilter(filter || { workflow: 'feature' });
-    const weights = getWeightsForFilter(filter || { workflow: 'feature' });
-    const stageCompletion = issueStages[issue.key] || new Array(filterStages.length).fill(false);
-    const completionPercent = calculateWeightedCompletion(stageCompletion, weights);
-    const isBlocked = stageCompletion.blocked || false;
-    return getHealthStatus(completionPercent, isBlocked, sprintConfig);
-  });
+    const allHealthCounts = countStatuses(issueHealthStats);
+    const featureHealthCounts = countStatuses(featureHealthStats);
+    const totalFeatureIssues = featureIssues.length;
 
-  // Calculate all issue health stats for the "At-risk work" metric
-  const issueHealthStats = issues.map(issue => {
-    const filter = allFilters.find(f => f.issues && f.issues.some(i => i.key === issue.key));
-    const filterStages = getStagesForFilter(filter || { workflow: 'feature' });
-    const weights = getWeightsForFilter(filter || { workflow: 'feature' });
-    const stageCompletion = issueStages[issue.key] || new Array(filterStages.length).fill(false);
-    const completionPercent = calculateWeightedCompletion(stageCompletion, weights);
-    const isBlocked = stageCompletion.blocked || false;
-    return getHealthStatus(completionPercent, isBlocked, sprintConfig);
-  });
+    let sprintHealth;
+    if (totalFeatureIssues === 0) {
+      sprintHealth = { status: 'No Data', color: '#9ca3af', icon: '○' };
+    } else if (featureHealthCounts.blocked > 0 || featureHealthCounts.behind > totalFeatureIssues * 0.3) {
+      sprintHealth = { status: 'Critical', color: '#dc2626', icon: '⚠️' };
+    } else if (featureHealthCounts.atRisk + featureHealthCounts.behind > totalFeatureIssues * 0.2) {
+      sprintHealth = { status: 'At Risk', color: '#f59e0b', icon: '⚠' };
+    } else if (featureHealthCounts.done === totalFeatureIssues) {
+      sprintHealth = { status: 'Complete', color: '#16a34a', icon: '✓' };
+    } else if (avgProgress >= 90) {
+      sprintHealth = { status: 'Excellent', color: '#16a34a', icon: '🎯' };
+    } else if (featureHealthCounts.ahead + featureHealthCounts.onTrack > totalFeatureIssues * 0.7) {
+      sprintHealth = { status: 'Healthy', color: '#0891b2', icon: '✓' };
+    } else {
+      sprintHealth = { status: 'Fair', color: '#0891b2', icon: '→' };
+    }
 
-  // Health counts for "At-risk work" metric (all issues)
-  const blockedCount = issueHealthStats.filter(h => h.status === 'Blocked').length;
-  const behindCount = issueHealthStats.filter(h => h.status === 'Behind').length;
-  const atRiskCount = issueHealthStats.filter(h => h.status === 'At Risk').length;
-  const onTrackCount = issueHealthStats.filter(h => h.status === 'On Track').length;
-  const aheadCount = issueHealthStats.filter(h => h.status === 'Ahead').length;
-  const doneCount = issueHealthStats.filter(h => h.status === 'Done').length;
+    return {
+      issues,
+      points,
+      avgProgress,
+      completedPoints,
+      sprintHealth,
+      totalFeatureIssues,
+      blockedCount: allHealthCounts.blocked,
+      behindCount: allHealthCounts.behind,
+      atRiskCount: allHealthCounts.atRisk,
+      riskCount: allHealthCounts.blocked + allHealthCounts.behind + allHealthCounts.atRisk,
+      featureBlockedCount: featureHealthCounts.blocked,
+      featureOnTrackCount: featureHealthCounts.onTrack,
+      featureAheadCount: featureHealthCounts.ahead,
+    };
+  }, [allFilters, issueFilterMap, issueStages, sprintConfig, todayKey]);
 
-  // Sprint health counts (FEATURE TICKETS ONLY)
-  const featureBlockedCount = featureHealthStats.filter(h => h.status === 'Blocked').length;
-  const featureBehindCount = featureHealthStats.filter(h => h.status === 'Behind').length;
-  const featureAtRiskCount = featureHealthStats.filter(h => h.status === 'At Risk').length;
-  const featureOnTrackCount = featureHealthStats.filter(h => h.status === 'On Track').length;
-  const featureAheadCount = featureHealthStats.filter(h => h.status === 'Ahead').length;
-  const featureDoneCount = featureHealthStats.filter(h => h.status === 'Done').length;
+  const {
+    issues,
+    points,
+    avgProgress,
+    completedPoints,
+    sprintHealth,
+    totalFeatureIssues,
+    blockedCount,
+    behindCount,
+    atRiskCount,
+    riskCount,
+    featureBlockedCount,
+    featureOnTrackCount,
+    featureAheadCount,
+  } = sprintMetrics;
 
-  // Determine overall sprint health based on FEATURE tickets only
-  let sprintHealth;
-  const totalFeatureIssues = featureIssues.length;
-  if (totalFeatureIssues === 0) {
-    sprintHealth = { status: 'No Data', color: '#9ca3af', icon: '○' };
-  } else if (featureBlockedCount > 0 || featureBehindCount > totalFeatureIssues * 0.3) {
-    sprintHealth = { status: 'Critical', color: '#dc2626', icon: '⚠️' };
-  } else if (featureAtRiskCount + featureBehindCount > totalFeatureIssues * 0.2) {
-    sprintHealth = { status: 'At Risk', color: '#f59e0b', icon: '⚠' };
-  } else if (featureDoneCount === totalFeatureIssues) {
-    sprintHealth = { status: 'Complete', color: '#16a34a', icon: '✓' };
-  } else if (avgProgress >= 90) {
-    sprintHealth = { status: 'Excellent', color: '#16a34a', icon: '🎯' };
-  } else if (featureAheadCount + featureOnTrackCount > totalFeatureIssues * 0.7) {
-    sprintHealth = { status: 'Healthy', color: '#0891b2', icon: '✓' };
-  } else {
-    sprintHealth = { status: 'Fair', color: '#0891b2', icon: '→' };
-  }
+  const visibleFilters = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) {
+      return allFilters;
+    }
 
-  const riskCount = blockedCount + behindCount + atRiskCount;
+    return allFilters.reduce((matches, filter) => {
+      const filterMatches = [
+        filter.name,
+        filter.jql,
+        WORKFLOWS[filter.workflow || 'feature'].name,
+      ].some(value => String(value || '').toLowerCase().includes(query));
+
+      const matchingIssues = filter.issues.filter(issue => [
+        issue.key,
+        issue.title,
+        issue.owner,
+        issue.type,
+        issue.jiraStatus,
+      ].some(value => String(value || '').toLowerCase().includes(query)));
+
+      if (filterMatches) {
+        matches.push(filter);
+      } else if (matchingIssues.length > 0) {
+        matches.push({ ...filter, issues: matchingIssues });
+      }
+
+      return matches;
+    }, []);
+  }, [allFilters, searchQuery]);
 
   const handleAddFilter = async (source) => {
     setLoading(true);
@@ -518,7 +412,7 @@ function App() {
       const filterStages = getStagesForFilter(transformedFilter);
       transformedFilter.issues.forEach(issue => {
         if (!newStages[issue.key]) {
-          newStages[issue.key] = new Array(filterStages.length).fill(false);
+          newStages[issue.key] = { stages: new Array(filterStages.length).fill(false), blocked: false };
         }
       });
       setIssueStages(newStages);
@@ -617,7 +511,7 @@ function App() {
         const filterStages = getStagesForFilter(filter);
         filter.issues.forEach(issue => {
           if (!newStages[issue.key]) {
-            newStages[issue.key] = new Array(filterStages.length).fill(false);
+            newStages[issue.key] = { stages: new Array(filterStages.length).fill(false), blocked: false };
           }
         });
       });
@@ -695,37 +589,29 @@ function App() {
   const toggleStage = (issueKey, stageIndex, filter) => {
     const filterStages = getStagesForFilter(filter);
     const newStages = { ...issueStages };
-    if (!newStages[issueKey]) {
-      newStages[issueKey] = new Array(filterStages.length).fill(false);
-    }
+    const current = newStages[issueKey] ?? { stages: new Array(filterStages.length).fill(false), blocked: false };
+    const stagesArr = [...current.stages];
 
-    // Toggle the stage
-    newStages[issueKey][stageIndex] = !newStages[issueKey][stageIndex];
+    stagesArr[stageIndex] = !stagesArr[stageIndex];
 
-    // Auto-complete all previous stages if this stage is marked complete
-    if (newStages[issueKey][stageIndex]) {
+    if (stagesArr[stageIndex]) {
       for (let i = 0; i < stageIndex; i++) {
-        newStages[issueKey][i] = true;
+        stagesArr[i] = true;
       }
-    }
-    // Auto-uncomplete all subsequent stages if this stage is unmarked
-    else {
+    } else {
       for (let i = stageIndex + 1; i < filterStages.length; i++) {
-        newStages[issueKey][i] = false;
+        stagesArr[i] = false;
       }
     }
 
+    newStages[issueKey] = { ...current, stages: stagesArr };
     setIssueStages(newStages);
   };
 
   const toggleBlocked = (issueKey) => {
     const newStages = { ...issueStages };
-    if (!newStages[issueKey]) {
-      newStages[issueKey] = new Array(stages.length).fill(false);
-    }
-
-    // Toggle blocked flag (stored as special property)
-    newStages[issueKey].blocked = !newStages[issueKey].blocked;
+    const current = newStages[issueKey] ?? { stages: new Array(stages.length).fill(false), blocked: false };
+    newStages[issueKey] = { ...current, blocked: !current.blocked };
     setIssueStages(newStages);
   };
 
@@ -1016,7 +902,7 @@ function App() {
             <h1>Multi-filter sprint planner</h1>
             <p className="hero-copy">
               A single operating view for roadmap, support, tech debt, and AI Jira filters with status, blockers, completion, and stage-by-stage delivery visibility.
-              <span style={{ display: 'block', marginTop: '8px', fontWeight: 700, color: getDaysRemaining() < 3 ? '#dc2626' : '#10b981' }}>
+              <span className={`days-remaining ${getDaysRemaining() < 3 ? 'urgent' : ''}`}>
                 {getDaysRemaining() > 0 ? `${getDaysRemaining()} days remaining` : getDaysRemaining() === 0 ? 'Last day!' : 'Sprint ended'}
               </span>
             </p>
@@ -1136,7 +1022,11 @@ function App() {
                 <>
                   <label className="search-box">
                     <Search size={17} />
-                    <input placeholder="Search filters, owners, keys" />
+                    <input
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      placeholder="Search filters, owners, keys"
+                    />
                   </label>
 
                   <div className="filter-list">
@@ -1147,8 +1037,14 @@ function App() {
                         <p>Click "Add Jira filter" above to get started</p>
                         <small>You'll need a filter ID from Jira</small>
                       </div>
+                    ) : visibleFilters.length === 0 ? (
+                      <div className="empty-state compact">
+                        <Search size={36} strokeWidth={1.5} />
+                        <h3>No matches</h3>
+                        <p>Try a filter name, owner, issue key, or Jira status</p>
+                      </div>
                     ) : (
-                      allFilters.map((filter) => (
+                      visibleFilters.map((filter) => (
                         <article className="filter-card" key={filter.id} style={{ '--accent': filter.accent }}>
                           <div className="filter-card-title">
                             <span className="filter-dot" />
@@ -1203,9 +1099,15 @@ function App() {
                     <h3>No sprint data to display</h3>
                     <p>Add a Jira filter to see your sprint delivery matrix</p>
                   </div>
+                ) : visibleFilters.length === 0 ? (
+                  <div className="empty-state-matrix">
+                    <Search size={56} strokeWidth={1.5} />
+                    <h3>No matching work</h3>
+                    <p>Clear the search to return to the full sprint matrix</p>
+                  </div>
                 ) : (
                   <>
-                    {allFilters.map((filter) => {
+                    {visibleFilters.map((filter) => {
                       const filterStages = getStagesForFilter(filter);
 
                       return (
@@ -1226,7 +1128,8 @@ function App() {
                               issue={issue}
                               filter={filter}
                               key={issue.key}
-                              stageCompletion={issueStages[issue.key] || new Array(filterStages.length).fill(false)}
+                              stageCompletion={issueStages[issue.key]?.stages ?? new Array(filterStages.length).fill(false)}
+                              isBlocked={issueStages[issue.key]?.blocked ?? false}
                               onToggleStage={toggleStage}
                               onToggleBlocked={toggleBlocked}
                               sprintConfig={sprintConfig}
@@ -1246,296 +1149,6 @@ function App() {
     </main>
   );
 };
-
-function Metric({ label, value, detail, icon, warning = false, customColor = null }) {
-  return (
-    <article
-      className={`metric-card ${warning ? 'warning' : ''}`}
-      style={customColor ? {
-        borderLeft: `4px solid ${customColor}`,
-        background: `linear-gradient(135deg, ${customColor}08 0%, transparent 100%)`
-      } : {}}
-    >
-      {icon && <div className="metric-icon">{icon}</div>}
-      <p className="metric-label">{label}</p>
-      <strong className="metric-value">{value}</strong>
-      <span className="metric-detail">{detail}</span>
-    </article>
-  );
-}
-
-function VelocityMetric({ velocity, totalPoints, completedPoints }) {
-  const [showExplanation, setShowExplanation] = React.useState(false);
-
-  const remainingPoints = totalPoints - completedPoints;
-  const projectedTotal = velocity.velocity * velocity.totalWeeks;
-  const percentOnTrack = totalPoints > 0 ? Math.min(100, Math.round((projectedTotal / totalPoints) * 100)) : 0;
-
-  return (
-    <article
-      className="metric-card velocity-card"
-      style={{
-        borderLeft: `4px solid ${velocity.onTrack ? '#10b981' : '#f59e0b'}`,
-        background: `linear-gradient(135deg, ${velocity.onTrack ? '#10b981' : '#f59e0b'}08 0%, transparent 100%)`,
-        position: 'relative'
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div className="metric-icon"><TrendingUp size={18} /></div>
-            <p className="metric-label">Weekly Velocity</p>
-            <button
-              onClick={() => setShowExplanation(!showExplanation)}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '2px 6px',
-                borderRadius: '4px',
-                fontSize: '0.7rem',
-                fontWeight: '700',
-                color: '#6b7280',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={(e) => e.target.style.background = '#f3f4f6'}
-              onMouseLeave={(e) => e.target.style.background = 'none'}
-              title="Click to learn how velocity is calculated"
-            >
-              ?
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '8px' }}>
-            <strong className="metric-value">{velocity.velocity} pts</strong>
-            <span style={{ fontSize: '0.7rem', color: '#6b7280', fontWeight: '600' }}>/ week</span>
-          </div>
-
-          <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.68rem', color: '#6b7280', fontWeight: '600' }}>
-                Week {velocity.weeksElapsed} of {velocity.totalWeeks}
-              </span>
-              <span style={{
-                fontSize: '0.68rem',
-                fontWeight: '700',
-                color: velocity.onTrack ? '#10b981' : '#f59e0b'
-              }}>
-                {velocity.onTrack ? '✓ On track' : `⚠ ${velocity.weeksNeeded} weeks needed`}
-              </span>
-            </div>
-
-            <div style={{ marginTop: '4px' }}>
-              <div style={{
-                height: '6px',
-                background: '#e5e7eb',
-                borderRadius: '3px',
-                overflow: 'hidden'
-              }}>
-                <div style={{
-                  height: '100%',
-                  width: `${Math.min(100, percentOnTrack)}%`,
-                  background: velocity.onTrack ?
-                    'linear-gradient(90deg, #10b981 0%, #059669 100%)' :
-                    'linear-gradient(90deg, #f59e0b 0%, #d97706 100%)',
-                  transition: 'width 0.3s ease'
-                }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
-                <span style={{ fontSize: '0.65rem', color: '#9ca3af', fontWeight: '600' }}>
-                  {Math.round(completedPoints)} pts done
-                </span>
-                <span style={{ fontSize: '0.65rem', color: '#9ca3af', fontWeight: '600' }}>
-                  {Math.round(projectedTotal)} pts projected
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {showExplanation && createPortal(
-        <>
-          {/* Backdrop */}
-          <div
-            style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: 'rgba(0, 0, 0, 0.3)',
-              backdropFilter: 'blur(2px)',
-              zIndex: 9998,
-              animation: 'fadeIn 0.2s ease'
-            }}
-            onClick={() => setShowExplanation(false)}
-          />
-
-          {/* Popover */}
-          <div style={{
-            position: 'fixed',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            zIndex: 9999,
-            maxWidth: '500px',
-            width: '90%',
-            padding: '20px',
-            background: 'white',
-            borderRadius: '16px',
-            boxShadow: '0 24px 48px rgba(0, 0, 0, 0.2)',
-            fontSize: '0.85rem',
-            color: '#374151',
-            lineHeight: '1.6',
-            animation: 'slideIn 0.2s ease'
-          }}>
-            <button
-              onClick={() => setShowExplanation(false)}
-              style={{
-                position: 'absolute',
-                top: '12px',
-                right: '12px',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '4px 8px',
-                fontSize: '1.2rem',
-                color: '#9ca3af',
-                transition: 'color 0.2s'
-              }}
-              onMouseEnter={(e) => e.target.style.color = '#374151'}
-              onMouseLeave={(e) => e.target.style.color = '#9ca3af'}
-            >
-              ×
-            </button>
-
-            <div style={{ fontWeight: '700', marginBottom: '12px', color: '#111827', fontSize: '1rem' }}>
-              📊 How Velocity is Calculated
-            </div>
-            <div style={{ marginBottom: '10px' }}>
-              <strong>Velocity</strong> = Completed Points ÷ Weeks Elapsed
-            </div>
-            <div style={{ marginBottom: '10px' }}>
-              <strong>Current:</strong> {Math.round(completedPoints)} pts ÷ {velocity.weeksElapsed} weeks = <strong>{velocity.velocity} pts/week</strong>
-            </div>
-            <div style={{ marginBottom: '10px' }}>
-              <strong>Projection:</strong> {velocity.velocity} pts/week × {velocity.totalWeeks} weeks = <strong>{Math.round(projectedTotal)} pts</strong>
-            </div>
-            <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e5e7eb' }}>
-              {velocity.onTrack ? (
-                <span style={{ color: '#10b981' }}>
-                  ✓ At current pace, you'll complete {Math.round(projectedTotal)} of {totalPoints} pts ({percentOnTrack}%)
-                </span>
-              ) : (
-                <span style={{ color: '#f59e0b' }}>
-                  ⚠ At current pace, you'll complete {Math.round(projectedTotal)} of {totalPoints} pts ({percentOnTrack}%). Need {velocity.weeksNeeded} weeks to finish all work.
-                </span>
-              )}
-            </div>
-          </div>
-        </>,
-        document.body
-      )}
-    </article>
-  );
-}
-
-function IssueRow({ issue, filter, stageCompletion, onToggleStage, onToggleBlocked, sprintConfig }) {
-  const filterStages = getStagesForFilter(filter);
-  const weights = getWeightsForFilter(filter);
-  const completedCount = stageCompletion.filter(Boolean).length;
-  const completionPercent = calculateWeightedCompletion(stageCompletion, weights);
-  const isBlocked = stageCompletion.blocked || false;
-  const health = getHealthStatus(completionPercent, isBlocked, sprintConfig);
-
-  return (
-    <div className="matrix-grid issue-row" style={{ '--stage-count': filterStages.length, '--accent': filter.accent }}>
-      <div className="sticky-cell issue-cell">
-        <div className="issue-cell-header">
-          <a
-            href={`https://tekion.atlassian.net/browse/${issue.key}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="issue-key-link"
-            title="Open in Jira"
-          >
-            {issue.key}
-          </a>
-          <span className={`completion-badge ${completionPercent === 100 ? 'complete' : completionPercent > 0 ? 'in-progress' : 'not-started'}`}>
-            {completionPercent}%
-          </span>
-        </div>
-        <strong className="issue-title">{issue.title}</strong>
-        <div className="issue-metadata">
-          <span>{issue.owner}</span>
-          <span>·</span>
-          <span>{issue.type}</span>
-          <span>·</span>
-          <span>{issue.points} pts</span>
-          {issue.jiraStatus && (
-            <>
-              <span>·</span>
-              <span className="jira-status-inline">{issue.jiraStatus}</span>
-            </>
-          )}
-        </div>
-        <a
-          href={`https://tekion.atlassian.net/browse/${issue.key}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="view-in-jira-link"
-        >
-          View in Jira →
-        </a>
-        <div className="mini-progress-bar">
-          <div className="mini-progress-fill" style={{ width: `${completionPercent}%` }}></div>
-        </div>
-      </div>
-
-      {filterStages.map((stage, index) => {
-        const isCompleted = stageCompletion[index];
-        const completedCount = stageCompletion.filter(Boolean).length;
-        const isCurrent = !isCompleted && (index === 0 || stageCompletion[index - 1]);
-
-        // Calculate cumulative percentage range for tooltip only
-        const percentPerStage = Math.round(100 / filterStages.length);
-        const stageStartPercent = (index * percentPerStage);
-        const stageEndPercent = ((index + 1) * percentPerStage);
-        const percentageRange = `${stageStartPercent}% - ${stageEndPercent}%`;
-
-        return (
-          <div
-            className={`stage-cell ${isCompleted ? 'is-done' : ''} ${isCurrent ? 'is-current' : ''} clickable-stage`}
-            key={stage}
-            onClick={() => onToggleStage(issue.key, index, filter)}
-            title={`${stage}\n${isCompleted ? `✓ Complete (${percentageRange})` : `Click to mark complete (${percentageRange})`}`}
-          >
-            {isCompleted && <span className="stage-check">✓</span>}
-            {isCurrent && !isCompleted && <span className="stage-progress">○</span>}
-            {!isCompleted && !isCurrent && <span className="stage-empty">○</span>}
-          </div>
-        );
-      })}
-
-      <div className="status-cell">
-        <div
-          className="health-indicator"
-          style={{
-            color: health.color,
-            borderColor: health.borderColor,
-            backgroundColor: health.bgColor
-          }}
-          onClick={() => onToggleBlocked(issue.key)}
-          title={`${health.status}${isBlocked ? ' - Click to unblock' : ' - Click to mark as blocked'}\n\nProgress: ${completionPercent}%`}
-        >
-          <span className="health-icon">{health.icon}</span>
-          <span className="health-label">{health.status}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function AddFilterModal({ onAdd, onClose, loading }) {
   const [sourceType, setSourceType] = useState('filter'); // 'filter' or 'jql'
@@ -1723,40 +1336,6 @@ function AddFilterModal({ onAdd, onClose, loading }) {
     </div>
   );
 }
-
-// Sprint gate presets based on GM release calendar
-const SPRINT_GATES = {
-  'June-26': {
-    name: 'June 2026 Release',
-    developmentStart: '2026-04-23',
-    developmentEnd: '2026-05-21',
-    releaseDate: '2026-06-10',
-  },
-  'July-26': {
-    name: 'July 2026 Release',
-    developmentStart: '2026-05-28',
-    developmentEnd: '2026-06-25',
-    releaseDate: '2026-07-15',
-  },
-  'Aug-26': {
-    name: 'August 2026 Release',
-    developmentStart: '2026-06-25',
-    developmentEnd: '2026-07-23',
-    releaseDate: '2026-08-12',
-  },
-  'Sep-26': {
-    name: 'September 2026 Release',
-    developmentStart: '2026-07-23',
-    developmentEnd: '2026-08-20',
-    releaseDate: '2026-09-09',
-  },
-  'Oct-26': {
-    name: 'October 2026 Release',
-    developmentStart: '2026-08-20',
-    developmentEnd: '2026-09-17',
-    releaseDate: '2026-10-07',
-  },
-};
 
 function SprintConfigModal({ config, onSave, onClose }) {
   const [configMode, setConfigMode] = useState('gates'); // 'gates' or 'manual'

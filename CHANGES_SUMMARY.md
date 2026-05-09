@@ -63,7 +63,7 @@ For filter `65834` (PreCheckout - June release), you'll see:
 - **Issues**: 8 Stories
 - **Assignees**: Real team member names (first name only)
 - **Status**: Mapped from Jira (Groomed → New, etc.)
-- **Story Points**: From customfield_10016
+- **Story Points**: From customfield_10008, with customfield_10016 fallback
 - **Delivery Stages**: Calculated based on status
 - **Progress**: Percentage based on workflow status
 
