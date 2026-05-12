@@ -1,7 +1,17 @@
 import React from 'react';
-import { RefreshCcw, Plus, Search } from 'lucide-react';
+import { RefreshCcw, Plus, Search, LogOut } from 'lucide-react';
 
-export function TopBar({ onAddFilter, onSync, syncing, userInitials = 'RG' }) {
+function getInitials(displayName) {
+  if (!displayName) return '?';
+  const parts = displayName.trim().split(/\s+/);
+  return parts.length >= 2
+    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    : displayName.slice(0, 2).toUpperCase();
+}
+
+export function TopBar({ onAddFilter, onSync, syncing, user, onLogout }) {
+  const initials = getInitials(user?.displayName || user?.email);
+
   return (
     <header className="topbar">
       <div className="topbar-left">
@@ -35,7 +45,12 @@ export function TopBar({ onAddFilter, onSync, syncing, userInitials = 'RG' }) {
           <RefreshCcw size={16} className={syncing ? 'spin' : ''} />
           {syncing ? 'Syncing…' : 'Sync Jira'}
         </button>
-        <div className="topbar-avatar" title={userInitials}>{userInitials}</div>
+        <div className="topbar-avatar" title={user?.displayName || user?.email || ''}>{initials}</div>
+        {onLogout && (
+          <button className="topbar-icon-btn" onClick={onLogout} title="Sign out" aria-label="Sign out">
+            <LogOut size={16} />
+          </button>
+        )}
       </div>
     </header>
   );

@@ -26,7 +26,7 @@ export async function fetchFilterDetails(filterId) {
 
     const response = await fetch(url, {
       method: 'GET',
-      credentials: USE_PROXY ? 'omit' : 'include',
+      credentials: 'include',
       headers: {
         'Accept': 'application/json',
       },
@@ -58,23 +58,25 @@ const FIELDS = [
 const PAGE_SIZE = 100;
 
 async function searchAllIssues(jql) {
-  let startAt = 0;
   let allIssues = [];
-  let total = Infinity;
+  let nextPageToken = null;
+  let isLast = false;
 
-  while (allIssues.length < total) {
+  while (!isLast) {
     let response;
     if (USE_PROXY) {
+      const body = { jql, maxResults: PAGE_SIZE, fields: FIELDS };
+      if (nextPageToken) body.nextPageToken = nextPageToken;
       response = await fetch(`${API_BASE}/search`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jql, maxResults: PAGE_SIZE, startAt, fields: FIELDS }),
+        body: JSON.stringify(body),
       });
     } else {
       const params = new URLSearchParams({
         jql,
         maxResults: PAGE_SIZE.toString(),
-        startAt: startAt.toString(),
         fields: FIELDS.join(','),
       });
       response = await fetch(`${JIRA_BASE_URL}/rest/api/3/search?${params}`, {
@@ -90,10 +92,10 @@ async function searchAllIssues(jql) {
     }
 
     const data = await response.json();
-    total = data.total ?? 0;
     const page = data.issues || [];
     allIssues = allIssues.concat(page);
-    startAt += PAGE_SIZE;
+    isLast = data.isLast ?? true;
+    nextPageToken = data.nextPageToken ?? null;
     if (page.length < PAGE_SIZE) break;
   }
 
@@ -128,7 +130,7 @@ export async function fetchDashboardGadgetIssues(dashboardId, gadgetId, maxResul
 
     const gadgetResponse = await fetch(url, {
       method: 'GET',
-      credentials: USE_PROXY ? 'omit' : 'include',
+      credentials: 'include',
       headers: {
         'Accept': 'application/json',
       },
@@ -340,6 +342,7 @@ export async function scrapeDashboardWidget(dashboardId, gadgetId, maxResults = 
     // Call the scraping endpoint
     const scrapeResponse = await fetch(url, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -395,6 +398,7 @@ export async function scrapeDashboardWidget(dashboardId, gadgetId, maxResults = 
 
     const searchResponse = await fetch(`${API_BASE}/search`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
       },

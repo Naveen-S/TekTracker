@@ -1385,3 +1385,28 @@ select:focus-visible,
   :root { --sidebar-w: 260px; }
   .matrix-grid { grid-template-columns: 190px repeat(var(--stage-count), minmax(80px, 1fr)) 95px; }
 }
+
+/* Login page */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-base);
+  padding: 24px;
+}
+
+.login-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 40px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.08);
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 4px;
+}

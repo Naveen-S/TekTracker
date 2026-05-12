@@ -3,6 +3,8 @@ import cors from 'cors';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import session from 'express-session';
+import FileStore from 'session-file-store';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -46,9 +48,6 @@ try {
   process.exit(1);
 }
 
-// API token authentication (required for SSO)
-const JIRA_EMAIL = process.env.JIRA_EMAIL;
-const JIRA_API_TOKEN = process.env.JIRA_API_TOKEN;
 const STORY_POINTS_FIELD = 'customfield_10008';
 const LEGACY_STORY_POINTS_FIELD = 'customfield_10016';
 const DEFAULT_ALLOWED_ORIGINS = ['http://localhost:3000', 'http://localhost:5173'];
@@ -68,13 +67,12 @@ const DEFAULT_FIELDS = [
   'customfield_10020',
 ];
 
-if (JIRA_EMAIL && JIRA_API_TOKEN) {
-  console.log('✅ Using Jira API token authentication');
-  console.log(`📧 Email: ${JIRA_EMAIL}`);
-} else {
-  console.log('⚠️  No Jira credentials found. Please set JIRA_EMAIL and JIRA_API_TOKEN in .env file');
-  console.log('   See SETUP_AUTH.md for instructions');
+const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-in-production';
+if (!process.env.SESSION_SECRET) {
+  console.warn('⚠️  SESSION_SECRET not set. Using default (insecure). Set SESSION_SECRET in .env for production.');
 }
+
+const SessionFileStore = FileStore(session);
 
 app.use(cors({
   origin(origin, callback) {
@@ -84,8 +82,26 @@ app.use(cors({
     }
     callback(new Error('Origin is not allowed by CORS'));
   },
+  credentials: true,
 }));
 app.use(express.json({ limit: '64kb' }));
+app.use(session({
+  store: new SessionFileStore({
+    path: join(__dirname, '.sessions'),
+    ttl: 30 * 24 * 60 * 60,
+    retries: 1,
+    reapInterval: 24 * 60 * 60,
+  }),
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  },
+}));
 
 function sendClientError(res, message, details) {
   res.status(400).json({ error: message, details });
@@ -141,11 +157,6 @@ function normalizeMaxResults(value) {
   return Math.min(Math.max(parsed, 1), 100);
 }
 
-function normalizeStartAt(value) {
-  const parsed = Number.parseInt(value, 10);
-  if (Number.isNaN(parsed) || parsed < 0) return 0;
-  return parsed;
-}
 
 function normalizeFields(fields) {
   if (!Array.isArray(fields)) {
@@ -159,23 +170,77 @@ function normalizeFields(fields) {
   return cleanFields.length > 0 ? cleanFields : DEFAULT_FIELDS;
 }
 
-// Middleware to add Jira auth headers
-// Note: In production, you'd use OAuth or API tokens stored securely
-function addJiraHeaders(headers = {}) {
-  const baseHeaders = {
+function requireAuth(req, res, next) {
+  if (req.session?.jiraEmail && req.session?.jiraToken) {
+    next();
+    return;
+  }
+  res.status(401).json({ error: 'Not authenticated' });
+}
+
+function addJiraHeaders(req, extraHeaders = {}) {
+  const email = req.session?.jiraEmail;
+  const token = req.session?.jiraToken;
+  const headers = {
     'Accept': 'application/json',
     'Content-Type': 'application/json',
-    ...headers,
+    ...extraHeaders,
   };
-
-  // If API token is configured, use it for authentication
-  if (JIRA_EMAIL && JIRA_API_TOKEN) {
-    const authString = Buffer.from(`${JIRA_EMAIL}:${JIRA_API_TOKEN}`).toString('base64');
-    baseHeaders['Authorization'] = `Basic ${authString}`;
+  if (email && token) {
+    const authString = Buffer.from(`${email}:${token}`).toString('base64');
+    headers['Authorization'] = `Basic ${authString}`;
   }
-
-  return baseHeaders;
+  return headers;
 }
+
+// Auth endpoints (public — no session required)
+app.post('/api/auth/login', async (req, res) => {
+  const { email, token } = req.body || {};
+  if (!email?.trim() || !token?.trim()) {
+    return res.status(400).json({ error: 'Email and token are required' });
+  }
+  try {
+    const authString = Buffer.from(`${email.trim()}:${token.trim()}`).toString('base64');
+    const response = await fetch(`${JIRA_API_BASE}/myself`, {
+      headers: {
+        'Authorization': `Basic ${authString}`,
+        'Accept': 'application/json',
+      },
+    });
+    if (!response.ok) {
+      return res.status(401).json({ error: 'Invalid credentials. Check your Jira email and API token.' });
+    }
+    const user = await response.json();
+    req.session.jiraEmail = email.trim();
+    req.session.jiraToken = token.trim();
+    req.session.displayName = user.displayName || email.trim();
+    res.json({ email: email.trim(), displayName: user.displayName || email.trim() });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Failed to validate credentials with Jira' });
+  }
+});
+
+app.get('/api/auth/me', (req, res) => {
+  if (req.session?.jiraEmail) {
+    res.json({ email: req.session.jiraEmail, displayName: req.session.displayName || req.session.jiraEmail });
+  } else {
+    res.status(401).json({ error: 'Not authenticated' });
+  }
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('Session destroy error:', err);
+      return res.status(500).json({ error: 'Logout failed' });
+    }
+    res.json({ ok: true });
+  });
+});
+
+// All /api/jira/* routes require a valid session
+app.use('/api/jira', requireAuth);
 
 // Get filter details
 app.get('/api/jira/filter/:filterId', async (req, res) => {
@@ -187,7 +252,7 @@ app.get('/api/jira/filter/:filterId', async (req, res) => {
 
     const response = await fetch(`${JIRA_API_BASE}/filter/${filterId}`, {
       method: 'GET',
-      headers: addJiraHeaders(),
+      headers: addJiraHeaders(req),
     });
 
     console.log(`Jira response status: ${response.status}`);
@@ -206,7 +271,7 @@ app.get('/api/jira/filter/:filterId', async (req, res) => {
 // Search for issues using JQL
 app.post('/api/jira/search', async (req, res) => {
   try {
-    const { jql, maxResults = 50, startAt = 0, fields } = req.body;
+    const { jql, maxResults = 50, nextPageToken, fields } = req.body;
     const normalizedJql = typeof jql === 'string' ? jql.trim() : '';
     if (!normalizedJql) {
       sendClientError(res, 'JQL is required.');
@@ -219,16 +284,19 @@ app.post('/api/jira/search', async (req, res) => {
 
     console.log(`Searching Jira with JQL: ${normalizedJql.substring(0, 100)}...`);
 
-    // Use the new /search/jql endpoint (the old /search endpoint is deprecated)
+    const jiraBody = {
+      jql: normalizedJql,
+      maxResults: normalizeMaxResults(maxResults),
+      fields: normalizeFields(fields),
+    };
+    if (nextPageToken) {
+      jiraBody.nextPageToken = String(nextPageToken);
+    }
+
     const response = await fetch(`${JIRA_API_BASE}/search/jql`, {
       method: 'POST',
-      headers: addJiraHeaders(),
-      body: JSON.stringify({
-        jql: normalizedJql,
-        maxResults: normalizeMaxResults(maxResults),
-        startAt: normalizeStartAt(startAt),
-        fields: normalizeFields(fields),
-      }),
+      headers: addJiraHeaders(req),
+      body: JSON.stringify(jiraBody),
     });
 
     console.log(`Jira search response status: ${response.status}`);
@@ -252,8 +320,7 @@ app.get('/api/jira/issue/:issueKey', async (req, res) => {
 
     const response = await fetch(`${JIRA_API_BASE}/issue/${issueKey}`, {
       method: 'GET',
-      headers: addJiraHeaders(),
-      credentials: 'include',
+      headers: addJiraHeaders(req),
     });
 
     await assertJiraOk(response, `fetching issue ${issueKey}`);
@@ -276,7 +343,7 @@ app.get('/api/jira/dashboard/:dashboardId', async (req, res) => {
 
     const response = await fetch(`${JIRA_API_BASE}/dashboard/${dashboardId}`, {
       method: 'GET',
-      headers: addJiraHeaders(),
+      headers: addJiraHeaders(req),
     });
 
     console.log(`Jira dashboard response status: ${response.status}`);
@@ -302,10 +369,9 @@ app.get('/api/jira/dashboard/:dashboardId/gadget/:gadgetId', async (req, res) =>
 
     console.log(`Fetching gadget ${gadgetId} from dashboard ${dashboardId}...`);
 
-    // Fetch all gadgets from the dashboard
     const response = await fetch(`${JIRA_API_BASE}/dashboard/${dashboardId}/gadget`, {
       method: 'GET',
-      headers: addJiraHeaders(),
+      headers: addJiraHeaders(req),
     });
 
     console.log(`Jira dashboard gadgets response status: ${response.status}`);
@@ -315,7 +381,6 @@ app.get('/api/jira/dashboard/:dashboardId/gadget/:gadgetId', async (req, res) =>
     const data = await response.json();
     console.log(`Successfully fetched ${data.gadgets?.length || 0} gadgets from dashboard`);
 
-    // Find the specific gadget by ID
     const targetGadget = data.gadgets?.find(g => String(g.id) === String(gadgetId));
 
     if (!targetGadget) {
@@ -328,9 +393,6 @@ app.get('/api/jira/dashboard/:dashboardId/gadget/:gadgetId', async (req, res) =>
     }
 
     console.log(`Successfully found gadget: ${targetGadget.title || 'Untitled'}`);
-    console.log(`Gadget type: ${targetGadget.moduleKey || 'unknown'}`);
-    console.log(`Gadget has properties: ${Boolean(targetGadget.properties)}`);
-
     res.json(targetGadget);
   } catch (error) {
     console.error('Error fetching gadget:', error);
@@ -347,15 +409,12 @@ app.post('/api/jira/scrape-dashboard', async (req, res) => {
 
     console.log(`Scraping dashboard ${dashboardId} gadget ${gadgetId}...`);
 
-    // First, get the dashboard HTML
     const dashboardUrl = `${JIRA_BASE_URL}/jira/dashboards/${dashboardId}?maximized=${gadgetId}`;
     console.log(`Fetching dashboard HTML from: ${dashboardUrl}`);
 
     const response = await fetch(dashboardUrl, {
       method: 'GET',
-      headers: addJiraHeaders({
-        'Accept': 'text/html,application/xhtml+xml,application/xml',
-      }),
+      headers: addJiraHeaders(req, { 'Accept': 'text/html,application/xhtml+xml,application/xml' }),
     });
 
     await assertJiraOk(response, `fetching dashboard HTML for ${dashboardId}`);
@@ -363,8 +422,6 @@ app.post('/api/jira/scrape-dashboard', async (req, res) => {
     const html = await response.text();
     console.log(`Received HTML, length: ${html.length} characters`);
 
-    // Extract issue keys from HTML using regex
-    // Jira issue keys typically match: PROJECT-NUMBER (e.g., DR_GM-123, GM-456)
     const issueKeyRegex = /\b([A-Z][A-Z0-9_]*-\d+)\b/g;
     const matches = html.match(issueKeyRegex);
 
@@ -372,28 +429,20 @@ app.post('/api/jira/scrape-dashboard', async (req, res) => {
 
     if (!matches) {
       console.log('No issue keys found in HTML');
-      console.log('This might be because:');
-      console.log('1. The page requires JavaScript to render');
-      console.log('2. The authentication failed');
-      console.log('3. The HTML structure is different');
       return res.json({ issueKeys: [], count: 0 });
     }
 
-    // Remove duplicates
     const allUniqueKeys = [...new Set(matches)];
     console.log(`Found ${allUniqueKeys.length} unique issue keys total:`, allUniqueKeys.slice(0, 20));
 
-    // Try DR_GM first
     let issueKeys = allUniqueKeys.filter(key => key.startsWith('DR_GM'));
     console.log(`Filtered to ${issueKeys.length} DR_GM issues:`, issueKeys);
 
-    // If no DR_GM issues, try just GM
     if (issueKeys.length === 0) {
       issueKeys = allUniqueKeys.filter(key => key.startsWith('GM-'));
       console.log(`No DR_GM found, trying GM-: ${issueKeys.length} issues:`, issueKeys);
     }
 
-    // If still nothing, return all unique keys
     if (issueKeys.length === 0) {
       console.log(`No DR_GM or GM- issues found, returning all ${allUniqueKeys.length} issue keys`);
       issueKeys = allUniqueKeys;
@@ -404,7 +453,7 @@ app.post('/api/jira/scrape-dashboard', async (req, res) => {
       count: issueKeys.length,
       dashboardUrl,
       totalMatches: allUniqueKeys.length,
-      allKeys: allUniqueKeys.slice(0, 50) // Send first 50 for debugging
+      allKeys: allUniqueKeys.slice(0, 50),
     });
   } catch (error) {
     console.error('Error scraping dashboard:', error);

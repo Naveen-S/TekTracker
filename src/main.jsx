@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AlertTriangle, CheckCircle2, Clock3, Download, Filter, Link2, Plus, RefreshCcw, Search, SlidersHorizontal, TrendingUp, X } from 'lucide-react';
 import './styles.css';
-import { IssueRow, Metric, VelocityMetric, TopBar } from './components/index.js';
+import { IssueRow, Metric, VelocityMetric, TopBar, LoginForm } from './components/index.js';
 import { fetchFilterIssues, fetchJQLIssues, transformFilter } from './jiraService.js';
 import {
   calculateWeightedCompletion,
@@ -49,7 +49,39 @@ function migrateStages(stages) {
   return migrated;
 }
 
-function App() {
+const PROXY_ROOT = (import.meta.env.VITE_JIRA_API_BASE_URL || 'http://localhost:3001/api/jira')
+  .replace(/\/api\/jira\/?$/, '');
+
+function Root() {
+  const [authReady, setAuthReady] = useState(false);
+  const [authUser, setAuthUser] = useState(null);
+
+  useEffect(() => {
+    fetch(`${PROXY_ROOT}/api/auth/me`, { credentials: 'include' })
+      .then(res => res.ok ? res.json() : null)
+      .then(user => { setAuthUser(user); setAuthReady(true); })
+      .catch(() => setAuthReady(true));
+  }, []);
+
+  const handleLogin = (user) => setAuthUser(user);
+
+  const handleLogout = async () => {
+    await fetch(`${PROXY_ROOT}/api/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
+    setAuthUser(null);
+  };
+
+  if (!authReady) {
+    return <div className="app" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', color: 'var(--fg-3)' }}>Loading…</div>;
+  }
+
+  if (!authUser) {
+    return <LoginForm onLogin={handleLogin} />;
+  }
+
+  return <App authUser={authUser} onLogout={handleLogout} />;
+}
+
+function App({ authUser, onLogout }) {
   // Load persisted data from localStorage
   const loadPersistedData = () => {
     try {
@@ -922,7 +954,8 @@ function App() {
       onAddFilter={() => setShowAddModal(true)}
       onSync={handleSyncAll}
       syncing={loading}
-      userInitials="RG"
+      user={authUser}
+      onLogout={onLogout}
     />
     <main className={`app-shell ${viewDensity}`}>
       {showWelcomeState ? (
@@ -1675,4 +1708,4 @@ function SprintConfigModal({ config, onSave, onClose }) {
   );
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById('root')).render(<Root />);
