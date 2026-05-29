@@ -182,9 +182,7 @@ export function App({ authUser, onLogout }) {
         <ExportModal
           sprintConfig={sprintConfig}
           allFilters={allFilters}
-          issues={issues}
           issueStages={issueStages}
-          sprintMetrics={sprintMetrics}
           onClose={() => exportHook.setShowExportModal(false)}
           onExport={exportHook.handleExport}
           loading={loading}

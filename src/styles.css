@@ -1648,6 +1648,74 @@ select:focus-visible,
   background: var(--bg-subtle);
 }
 
+/* ---- Include-filters toggles ---- */
+.export-filter-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.export-filter-toggles-label {
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brand-teal);
+}
+
+.export-filter-toggles-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.export-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  background: var(--bg-canvas);
+  color: var(--fg-3);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--dur-base) var(--ease-out),
+              background var(--dur-base) var(--ease-out),
+              color var(--dur-base) var(--ease-out);
+}
+
+.export-filter-toggle::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--accent, var(--border-strong));
+  opacity: 0.4;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+
+.export-filter-toggle:hover {
+  border-color: var(--border-strong);
+  color: var(--fg-2);
+}
+
+.export-filter-toggle.is-active {
+  border-color: var(--accent, var(--brand-teal));
+  background: color-mix(in srgb, var(--accent, var(--brand-teal)) 12%, var(--bg-canvas));
+  color: var(--fg-1);
+}
+
+.export-filter-toggle.is-active::before {
+  opacity: 1;
+}
+
+.export-filter-toggles-hint {
+  font-size: var(--fs-small);
+  color: var(--danger);
+}
+
 /* Visible preview page card */
 .export-page-content {
   background: var(--bg-canvas);

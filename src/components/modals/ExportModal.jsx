@@ -1,30 +1,34 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { X, Download } from 'lucide-react';
 import { getWeeklyVelocity, formatDate } from '../../utils/sprintUtils.js';
 import { getHealthStatus, WORKFLOWS } from '../../workflows.js';
+import { computeSprintMetrics } from '../../utils/sprintMetricsCompute.js';
 
 const ISSUES_PER_PAGE = 15;
-const EXPORT_WORKFLOWS = ['feature', 'techdebt'];
 
 export function ExportModal({
-  sprintConfig, allFilters, issues, issueStages, sprintMetrics, onClose, onExport, loading,
+  sprintConfig, allFilters, issueStages, onClose, onExport, loading,
 }) {
   const [currentPage, setCurrentPage] = useState(0);
+  const [selectedIds, setSelectedIds] = useState(() => new Set(allFilters.map(f => f.id)));
   const offScreenRef = useRef(null);
 
-  const exportFilters = useMemo(
-    () => allFilters.filter(f => EXPORT_WORKFLOWS.includes(f.workflow)),
-    [allFilters]
+  const selectedFilters = useMemo(
+    () => allFilters.filter(f => selectedIds.has(f.id)),
+    [allFilters, selectedIds]
   );
 
-  const exportIssues = useMemo(
-    () => issues.filter(i => EXPORT_WORKFLOWS.includes(i.workflow)),
-    [issues]
+  // All report numbers (completion, velocity, health, counts) come from this
+  // single recompute over the selected filters, so preview and capture match.
+  const exportMetrics = useMemo(
+    () => computeSprintMetrics(selectedFilters, issueStages, sprintConfig),
+    [selectedFilters, issueStages, sprintConfig]
   );
+  const exportIssues = exportMetrics.issues;
 
   const allRows = useMemo(() => {
     const rows = [];
-    exportFilters.forEach(filter => {
+    selectedFilters.forEach(filter => {
       const fi = exportIssues.filter(i => i.filter === filter.name);
       if (!fi.length) return;
       const fp   = fi.reduce((s, i) => s + i.points, 0);
@@ -34,7 +38,7 @@ export function ExportModal({
       fi.forEach(issue => rows.push({ kind: 'issue', issue, filter }));
     });
     return rows;
-  }, [exportFilters, exportIssues]);
+  }, [selectedFilters, exportIssues]);
 
   const pages = useMemo(() => {
     const result = [{ type: 'summary' }];
@@ -44,9 +48,30 @@ export function ExportModal({
     return result;
   }, [allRows]);
 
-  const velocity = getWeeklyVelocity(sprintConfig, sprintMetrics.velocityCompletedPoints, sprintMetrics.velocityPoints);
-  const page = pages[currentPage];
+  // Keep the previewed page in range when deselecting filters drops pages.
+  useEffect(() => {
+    setCurrentPage(p => Math.min(p, Math.max(0, pages.length - 1)));
+  }, [pages.length]);
+
+  // Velocity over ALL included items (every selected filter's effort counts).
+  const velocity = useMemo(
+    () => getWeeklyVelocity(sprintConfig, exportMetrics.completedPoints, exportMetrics.points),
+    [sprintConfig, exportMetrics]
+  );
+
+  const toggleFilter = (id) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+
+  const nothingSelected = selectedIds.size === 0;
   const totalPages = pages.length;
+  // Render-safe index: the clamp effect above syncs state after render, but the
+  // first render after a shrink could still index out of range here.
+  const pageIndex = Math.min(currentPage, totalPages - 1);
+  const page = pages[pageIndex];
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -61,14 +86,14 @@ export function ExportModal({
             <button
               className="btn btn-primary btn-sm"
               onClick={() => onExport('pdf', offScreenRef)}
-              disabled={loading}
+              disabled={loading || nothingSelected}
             >
               <Download size={14} /> Export PDF
             </button>
             <button
               className="btn btn-secondary btn-sm"
               onClick={() => onExport('image', offScreenRef)}
-              disabled={loading}
+              disabled={loading || nothingSelected}
             >
               <Download size={14} /> Export PNG
             </button>
@@ -79,14 +104,38 @@ export function ExportModal({
         </div>
 
         <div className="export-modal-body">
+          <div className="export-filter-toggles">
+            <span className="export-filter-toggles-label">Include filters</span>
+            <div className="export-filter-toggles-row">
+              {allFilters.map(f => {
+                const active = selectedIds.has(f.id);
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className={`export-filter-toggle${active ? ' is-active' : ''}`}
+                    style={{ '--accent': f.accent }}
+                    aria-pressed={active}
+                    onClick={() => toggleFilter(f.id)}
+                  >
+                    {f.name}
+                  </button>
+                );
+              })}
+            </div>
+            {nothingSelected && (
+              <span className="export-filter-toggles-hint">Select at least one filter to export.</span>
+            )}
+          </div>
+
           <div className="export-page-content">
             {page.type === 'summary' ? (
               <SummaryPage
                 sprintConfig={sprintConfig}
-                exportFilters={exportFilters}
+                exportFilters={selectedFilters}
                 exportIssues={exportIssues}
                 issueStages={issueStages}
-                sprintMetrics={sprintMetrics}
+                exportMetrics={exportMetrics}
                 velocity={velocity}
               />
             ) : (
@@ -94,7 +143,7 @@ export function ExportModal({
                 rows={page.rows}
                 issueStages={issueStages}
                 sprintConfig={sprintConfig}
-                pageNumber={currentPage}
+                pageNumber={pageIndex}
                 totalPages={totalPages}
               />
             )}
@@ -104,16 +153,16 @@ export function ExportModal({
             <div className="export-pagination">
               <button
                 className="btn btn-ghost btn-sm"
-                onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
-                disabled={currentPage === 0}
+                onClick={() => setCurrentPage(Math.max(0, pageIndex - 1))}
+                disabled={pageIndex === 0}
               >
                 ← Previous
               </button>
-              <span className="export-pagination-label">Page {currentPage + 1} of {totalPages}</span>
+              <span className="export-pagination-label">Page {pageIndex + 1} of {totalPages}</span>
               <button
                 className="btn btn-ghost btn-sm"
-                onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
-                disabled={currentPage === totalPages - 1}
+                onClick={() => setCurrentPage(Math.min(totalPages - 1, pageIndex + 1))}
+                disabled={pageIndex === totalPages - 1}
               >
                 Next →
               </button>
@@ -125,10 +174,10 @@ export function ExportModal({
           <div className="export-print-page">
             <SummaryPage
               sprintConfig={sprintConfig}
-              exportFilters={exportFilters}
+              exportFilters={selectedFilters}
               exportIssues={exportIssues}
               issueStages={issueStages}
-              sprintMetrics={sprintMetrics}
+              exportMetrics={exportMetrics}
               velocity={velocity}
             />
           </div>
@@ -151,21 +200,18 @@ export function ExportModal({
 }
 
 
-function SummaryPage({ sprintConfig, exportFilters, exportIssues, issueStages, sprintMetrics, velocity }) {
-  const exportHealthStats = exportIssues.map(i =>
-    getHealthStatus(i.percent, issueStages[i.key]?.blocked ?? false, sprintConfig)
-  );
-  const blockedCount    = exportHealthStats.filter(h => h.status === 'Blocked').length;
-  const behindCount     = exportHealthStats.filter(h => h.status === 'Behind').length;
-  const atRiskCount     = exportHealthStats.filter(h => h.status === 'At Risk').length;
+function SummaryPage({ sprintConfig, exportFilters, exportIssues, issueStages, exportMetrics, velocity }) {
+  const blockedCount    = exportMetrics.blockedCount;
+  const behindCount     = exportMetrics.behindCount;
+  const atRiskCount     = exportMetrics.atRiskCount;
   const inProgressCount = exportIssues.filter(i => i.percent > 0 && i.percent < 100).length;
 
-  const healthStatus  = sprintMetrics.sprintHealth.status;
-  const completionPct = sprintMetrics.points > 0
-    ? Math.round((sprintMetrics.completedPoints / sprintMetrics.points) * 100)
+  const healthStatus  = exportMetrics.sprintHealth.status;
+  const completionPct = exportMetrics.points > 0
+    ? Math.round((exportMetrics.completedPoints / exportMetrics.points) * 100)
     : 0;
-  const featuresOnTrack = (sprintMetrics.featureOnTrackCount ?? 0) + (sprintMetrics.featureAheadCount ?? 0);
-  const totalFeatures   = sprintMetrics.totalFeatureIssues ?? 0;
+  const featuresOnTrack = (exportMetrics.featureOnTrackCount ?? 0) + (exportMetrics.featureAheadCount ?? 0);
+  const totalFeatures   = exportMetrics.totalFeatureIssues ?? 0;
 
   const generatedOn = new Date().toLocaleDateString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
@@ -274,7 +320,7 @@ function SummaryPage({ sprintConfig, exportFilters, exportIssues, issueStages, s
           <span className="export-overall-card-label">COMPLETION</span>
           <strong className="export-overall-card-value">{completionPct}%</strong>
           <span className="export-overall-card-detail">
-            {Math.round(sprintMetrics.completedPoints)} / {sprintMetrics.points} story points
+            {Math.round(exportMetrics.completedPoints)} / {exportMetrics.points} story points
           </span>
         </div>
         <div className="export-overall-card export-overall-card--projected">
