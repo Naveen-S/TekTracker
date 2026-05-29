@@ -18,7 +18,7 @@ export const WORKFLOWS = {
   },
   support: {
     name: 'Support Bugs',
-    priority: 2,
+    priority: 3,
     stages: [
       'Triaged',
       'In Progress',
@@ -29,7 +29,7 @@ export const WORKFLOWS = {
   },
   techdebt: {
     name: 'Tech Debt',
-    priority: 3,
+    priority: 2,
     stages: [
       'Triaged',
       'In Progress',

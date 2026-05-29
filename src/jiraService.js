@@ -2,7 +2,7 @@
 
 const normalizeBaseUrl = (url) => (url || '').replace(/\/+$/, '');
 
-export const JIRA_BASE_URL = normalizeBaseUrl(import.meta.env.VITE_JIRA_BASE_URL);
+const JIRA_BASE_URL = normalizeBaseUrl(import.meta.env.VITE_JIRA_BASE_URL);
 const USE_PROXY = import.meta.env.VITE_USE_JIRA_PROXY !== 'false';
 const PROXY_API_BASE = normalizeBaseUrl(import.meta.env.VITE_JIRA_API_BASE_URL);
 const STORY_POINTS_FIELD = 'customfield_10008';
@@ -18,7 +18,7 @@ export function getJiraIssueUrl(issueKey) {
 /**
  * Fetch filter details by filter ID
  */
-export async function fetchFilterDetails(filterId) {
+async function fetchFilterDetails(filterId) {
   try {
     const url = USE_PROXY
       ? `${API_BASE}/filter/${filterId}`
@@ -53,6 +53,7 @@ const FIELDS = [
   'duedate',
   'priority',
   'customfield_10020',
+  'fixVersions',
 ];
 
 const PAGE_SIZE = 100;
@@ -117,126 +118,6 @@ export async function fetchFilterIssues(filterId) {
 }
 
 /**
- * Fetch issues from a Jira dashboard gadget
- */
-export async function fetchDashboardGadgetIssues(dashboardId, gadgetId, maxResults = 50) {
-  try {
-    // Fetch the specific gadget directly using the gadget endpoint
-    const url = USE_PROXY
-      ? `${API_BASE}/dashboard/${dashboardId}/gadget/${gadgetId}`
-      : `${JIRA_BASE_URL}/rest/api/3/dashboard/${dashboardId}/gadget/${gadgetId}`;
-
-    console.log(`Fetching gadget from: ${url}`);
-
-    const gadgetResponse = await fetch(url, {
-      method: 'GET',
-      credentials: 'include',
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
-
-    if (!gadgetResponse.ok) {
-      const errorText = await gadgetResponse.text();
-      console.error('Gadget fetch failed:', errorText);
-
-      // Provide more helpful error message
-      let errorMessage = `Failed to fetch gadget (${gadgetResponse.status})`;
-
-      if (gadgetResponse.status === 404) {
-        errorMessage += `\n\nThe gadget ${gadgetId} in dashboard ${dashboardId} was not found.\n\n` +
-          `This could mean:\n` +
-          `1. The dashboard ID or gadget ID is incorrect\n` +
-          `2. You don't have permission to access this dashboard\n` +
-          `3. The gadget was removed from the dashboard\n\n` +
-          `Please verify by visiting:\n` +
-          `${JIRA_BASE_URL || 'https://your-domain.atlassian.net'}/jira/dashboards/${dashboardId}?maximized=${gadgetId}`;
-      } else if (gadgetResponse.status === 403) {
-        errorMessage += `\n\nYou don't have permission to access this dashboard/gadget.`;
-      }
-
-      throw new Error(errorMessage);
-    }
-
-    const gadget = await gadgetResponse.json();
-    console.log('Gadget fetched:', gadget);
-    console.log('Gadget full object:', JSON.stringify(gadget, null, 2));
-
-    // Check if this is a Forge app gadget (custom dashboard widget)
-    const isForgeGadget = gadget.moduleKey && gadget.moduleKey.includes('atlassian.forge');
-
-    if (isForgeGadget) {
-      console.error('This is a Forge app gadget, not a standard filter gadget');
-      console.error('Gadget moduleKey:', gadget.moduleKey);
-      console.error('Gadget title:', gadget.title);
-
-      throw new Error(
-        `This is a Forge app gadget (custom dashboard widget), not a standard Jira filter.\n\n` +
-        `Widget: "${gadget.title}"\n\n` +
-        `Forge widgets don't expose filter IDs through the API.\n\n` +
-        `📝 To track these issues:\n\n` +
-        `1. Look for a filter link in the widget (usually at the top or in settings)\n` +
-        `2. Click it to open the filter in Issue Navigator\n` +
-        `3. Get the filter ID from URL: /issues/?filter=XXXXX\n` +
-        `4. Use "Filter ID" mode with that number\n\n` +
-        `OR create a JQL query that matches the widget's data:\n\n` +
-        `Use "JQL Query" mode with:\n` +
-        `project = DR_GM AND resolution = Unresolved`
-      );
-    }
-
-    // Extract the filter ID from the gadget configuration
-    // Most filter gadgets store the filter ID in their properties
-    let filterId = null;
-
-    if (gadget.properties?.filterId) {
-      filterId = gadget.properties.filterId;
-    } else if (gadget.properties?.filterOrProjectId) {
-      // Handle format: "filter-12345" or just "12345"
-      const filterOrProjectId = gadget.properties.filterOrProjectId;
-      if (filterOrProjectId.startsWith('filter-')) {
-        filterId = filterOrProjectId.split('-')[1];
-      } else {
-        filterId = filterOrProjectId;
-      }
-    } else if (gadget.uri && gadget.uri.includes('filterId=')) {
-      const match = gadget.uri.match(/filterId=(\d+)/);
-      if (match) filterId = match[1];
-    }
-
-    if (!filterId) {
-      console.error('Gadget properties:', gadget.properties);
-      console.error('Full gadget object:', JSON.stringify(gadget, null, 2));
-      throw new Error(
-        `Could not extract filter ID from this gadget.\n\n` +
-        `Gadget type: ${gadget.moduleKey || 'unknown'}\n` +
-        `Gadget title: ${gadget.title || 'unknown'}\n\n` +
-        `This gadget may not contain a filter. Try using "Filter ID" or "JQL Query" mode instead.`
-      );
-    }
-
-    console.log(`Extracted filter ID: ${filterId}`);
-
-    // Now fetch issues using the extracted filter ID
-    const result = await fetchFilterIssues(filterId, maxResults);
-
-    // Return with dashboard context
-    return {
-      filter: {
-        ...result.filter,
-        name: `${gadget.title || result.filter.name} (Dashboard)`,
-        dashboardId,
-        gadgetId,
-      },
-      issues: result.issues,
-    };
-  } catch (error) {
-    console.error('Error fetching dashboard gadget issues:', error);
-    throw error;
-  }
-}
-
-/**
  * Fetch issues from a direct JQL query
  */
 export async function fetchJQLIssues(jql, filterName) {
@@ -257,7 +138,7 @@ export async function fetchJQLIssues(jql, filterName) {
 /**
  * Transform Jira issue to app format
  */
-export function transformJiraIssue(jiraIssue, index) {
+function transformJiraIssue(jiraIssue, index) {
   const fields = jiraIssue.fields;
 
   // Extract assignee name - get first name or full display name
@@ -311,126 +192,41 @@ export function transformJiraIssue(jiraIssue, index) {
   // Format due date
   const dueDate = fields.duedate ? new Date(fields.duedate).toLocaleDateString('en-US', { month: 'short', day: '2-digit' }) : 'No due date';
 
+  // Sprint: customfield_10020 can be an array of objects, a single object, or a legacy string
+  let sprint = null;
+  const rawSprint = fields.customfield_10020;
+  if (Array.isArray(rawSprint) && rawSprint.length > 0) {
+    const active = rawSprint.find(s => s.state === 'active' || s.state === 'ACTIVE');
+    const chosen = active ?? rawSprint[rawSprint.length - 1];
+    sprint = chosen.name ?? null;
+  } else if (rawSprint && typeof rawSprint === 'object' && rawSprint.name) {
+    sprint = rawSprint.name;
+  } else if (typeof rawSprint === 'string') {
+    // Legacy Jira string format: "...name=Sprint 1,startDate=..."
+    const match = rawSprint.match(/name=([^,\]]+)/);
+    if (match) sprint = match[1].trim();
+  }
+
+  // Fix versions: standard Jira array field
+  const fixVersions = Array.isArray(fields.fixVersions) && fields.fixVersions.length > 0
+    ? fields.fixVersions.map(v => v.name).join(', ')
+    : null;
+
   return {
     key: jiraIssue.key,
     title: fields.summary,
     owner,
     status,
-    jiraStatus, // Add the actual Jira status
+    jiraStatus,
     type: fields.issuetype?.name || 'Story',
     points,
     percent,
-    blocker: '', // Can be enhanced to extract from comments or custom fields
+    blocker: '',
     stage,
     due: dueDate,
+    sprint,
+    fixVersions,
   };
-}
-
-/**
- * Scrape dashboard widget and fetch issues
- */
-export async function scrapeDashboardWidget(dashboardId, gadgetId, maxResults = 100) {
-  try {
-    console.log('🔬 scrapeDashboardWidget called');
-    console.log('📍 API_BASE:', API_BASE);
-    console.log('📍 Dashboard ID:', dashboardId);
-    console.log('📍 Gadget ID:', gadgetId);
-
-    const url = `${API_BASE}/scrape-dashboard`;
-    console.log('📍 Calling URL:', url);
-
-    // Call the scraping endpoint
-    const scrapeResponse = await fetch(url, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ dashboardId, gadgetId }),
-    });
-
-    console.log('📡 Scrape response status:', scrapeResponse.status);
-
-    if (!scrapeResponse.ok) {
-      const errorText = await scrapeResponse.text();
-      console.error('Scraping failed:', errorText);
-      throw new Error(`Failed to scrape dashboard (${scrapeResponse.status}): ${errorText}`);
-    }
-
-    const { issueKeys, count, totalMatches, allKeys } = await scrapeResponse.json();
-    console.log(`📊 Scraping results:`);
-    console.log(`   Total regex matches: ${totalMatches}`);
-    console.log(`   Issue keys to fetch: ${count}`);
-    console.log(`   Keys:`, issueKeys);
-    if (allKeys && allKeys.length > 0) {
-      console.log(`   All keys found:`, allKeys);
-    }
-
-    if (!issueKeys || issueKeys.length === 0) {
-      throw new Error(
-        `No issues found in the dashboard widget HTML.\n\n` +
-        `Total issue key patterns found: ${totalMatches || 0}\n` +
-        `All keys: ${allKeys ? allKeys.join(', ') : 'none'}\n\n` +
-        `This likely means the dashboard uses JavaScript rendering.\n` +
-        `Modern Jira dashboards render content client-side, so the HTML\n` +
-        `returned from the server is just an empty shell.\n\n` +
-        `✅ SOLUTION: Use "JQL Query" mode instead:\n\n` +
-        `Query: project = DR_GM AND resolution = Unresolved`
-      );
-    }
-
-    // Build JQL to fetch all these issues
-    const jql = `key IN (${issueKeys.join(', ')})`;
-    console.log('Fetching issues with JQL:', jql);
-
-    // Fetch the issues using the keys
-    const fields = [
-      'summary',
-      'status',
-      'assignee',
-      'issuetype',
-      STORY_POINTS_FIELD, // Story points (Tekion)
-      LEGACY_STORY_POINTS_FIELD, // Legacy story points field fallback
-      'duedate',
-      'priority',
-      'customfield_10020', // Sprint
-    ];
-
-    const searchResponse = await fetch(`${API_BASE}/search`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        jql,
-        maxResults,
-        fields,
-      }),
-    });
-
-    if (!searchResponse.ok) {
-      const errorText = await searchResponse.text();
-      throw new Error(`Failed to fetch issues: ${searchResponse.status} ${errorText}`);
-    }
-
-    const data = await searchResponse.json();
-
-    // Create a pseudo-filter object
-    const filter = {
-      id: `dashboard-${dashboardId}-${gadgetId}`,
-      name: `Dashboard Widget (${count} issues)`,
-      jql: jql,
-    };
-
-    return {
-      filter,
-      issues: data.issues || [],
-    };
-  } catch (error) {
-    console.error('Error scraping dashboard widget:', error);
-    throw error;
-  }
 }
 
 /**
@@ -438,13 +234,14 @@ export async function scrapeDashboardWidget(dashboardId, gadgetId, maxResults = 
  */
 export function transformFilter(filterData, issues) {
   const colors = ['#7c3aed', '#0891b2', '#ea580c', '#16a34a', '#dc2626', '#f59e0b'];
-  const colorIndex = Math.floor(Math.random() * colors.length);
+  const filterColors = colors.filter(c => c !== '#dc2626');
+  const colorIndex = Math.floor(Math.random() * filterColors.length);
 
   return {
     id: filterData.id,
     name: filterData.name,
     jql: filterData.jql,
-    accent: colors[colorIndex],
+    accent: filterColors[colorIndex],
     issues: issues.map(transformJiraIssue),
   };
 }

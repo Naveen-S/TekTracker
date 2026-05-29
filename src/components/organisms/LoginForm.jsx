@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
-
-const PROXY_ROOT = (import.meta.env.VITE_JIRA_API_BASE_URL || 'http://localhost:3001/api/jira')
-  .replace(/\/api\/jira\/?$/, '');
+import { PROXY_ROOT } from '../../config.js';
 
 export default function LoginForm({ onLogin }) {
   const [email, setEmail] = useState('');
@@ -37,12 +35,12 @@ export default function LoginForm({ onLogin }) {
     <div className="login-page">
       <div className="login-card">
         <div className="login-header">
-          <img src="/tekion-logo.svg" alt="Tekion" className="topbar-logo" style={{ height: 28, marginBottom: 16 }} />
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: '0 0 6px', color: 'var(--fg-1)' }}>Sprint Tracker</h1>
-          <p style={{ color: 'var(--fg-3)', margin: 0, fontSize: '0.9rem' }}>Connect your Jira account to get started</p>
+          <img src="/tekion-logo.svg" alt="Tekion" className="topbar-logo login-logo" />
+          <h1 className="login-title">Sprint Tracker</h1>
+          <p className="login-subtitle">Connect your Jira account to get started</p>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ marginTop: 28 }}>
+        <form className="login-form" onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="login-email">Jira Email</label>
             <input
@@ -58,13 +56,13 @@ export default function LoginForm({ onLogin }) {
           </div>
 
           <div className="form-group">
-            <label htmlFor="login-token" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <label htmlFor="login-token" className="login-label-with-link">
               <span>API Token</span>
               <a
                 href="https://id.atlassian.com/manage-profile/security/api-tokens"
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ fontSize: '0.8rem', color: 'var(--brand-teal)', textDecoration: 'none' }}
+                className="login-token-link"
               >
                 Create token ↗
               </a>
@@ -83,19 +81,12 @@ export default function LoginForm({ onLogin }) {
 
           {error && <div className="error-message">{error}</div>}
 
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={loading}
-            style={{ width: '100%', marginTop: 8, justifyContent: 'center' }}
-          >
+          <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
             {loading ? 'Connecting…' : 'Connect to Jira'}
           </button>
         </form>
 
-        <p style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: '0.75rem', marginTop: 24, marginBottom: 0 }}>
-          Engineering · Internal Tool · Tekion Corp
-        </p>
+        <p className="login-footer">Engineering · Internal Tool · Tekion Corp</p>
       </div>
     </div>
   );
