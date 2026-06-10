@@ -98,5 +98,5 @@ ORDER BY issuetype ASC
 - Deploy backend server
 
 📚 **Learn More**
-- See `JIRA_INTEGRATION.md` for detailed documentation
+- See [`../features/JIRA_INTEGRATION.md`](../features/JIRA_INTEGRATION.md) for detailed documentation
 - Check `src/jiraService.js` for data transformation logic
