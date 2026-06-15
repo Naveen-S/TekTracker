@@ -1,0 +1,158 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Dark mode is opt-in via a `.dark` class on an ancestor (default is light). */
+@custom-variant dark (&:is(.dark *));
+
+/* ── Light (default) ───────────────────────────────────────────────
+   Seeded from the Tekion design tokens in the Vite app (src/styles.css):
+   teal brand + slate neutrals + semantic colors. Full re-skin is later. */
+:root {
+  --radius: 0.625rem;
+
+  --background: #ffffff;
+  --foreground: #0b1620;
+
+  --card: #ffffff;
+  --card-foreground: #0b1620;
+
+  --popover: #ffffff;
+  --popover-foreground: #0b1620;
+
+  /* Tekion teal-600; brand teal-500 is #00bfa5 */
+  --primary: #00a892;
+  --primary-foreground: #ffffff;
+
+  --secondary: #eef2f6;
+  --secondary-foreground: #1e293b;
+
+  --muted: #eef2f6;
+  --muted-foreground: #64748b;
+
+  --accent: #e6faf6;
+  --accent-foreground: #008c7a;
+
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+
+  --border: #dde4ec;
+  --input: #dde4ec;
+  --ring: #00a892;
+
+  --chart-1: #00bfa5;
+  --chart-2: #0ea5e9;
+  --chart-3: #10b981;
+  --chart-4: #f59e0b;
+  --chart-5: #dc2626;
+
+  --sidebar: #f7f9fb;
+  --sidebar-foreground: #0b1620;
+  --sidebar-primary: #00a892;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e6faf6;
+  --sidebar-accent-foreground: #008c7a;
+  --sidebar-border: #dde4ec;
+  --sidebar-ring: #00a892;
+}
+
+/* ── Dark (opt-in) ─────────────────────────────────────────────────
+   Defined now so a later theme toggle can flip it; not active by default. */
+.dark {
+  --background: #0b1620;
+  --foreground: #f7f9fb;
+
+  --card: #131c2a;
+  --card-foreground: #f7f9fb;
+
+  --popover: #131c2a;
+  --popover-foreground: #f7f9fb;
+
+  --primary: #00bfa5;
+  --primary-foreground: #06251f;
+
+  --secondary: #1e2a3a;
+  --secondary-foreground: #f7f9fb;
+
+  --muted: #1e2a3a;
+  --muted-foreground: #94a3b8;
+
+  --accent: #2a3849;
+  --accent-foreground: #f7f9fb;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  --border: #2a3849;
+  --input: #2a3849;
+  --ring: #00bfa5;
+
+  --chart-1: #00bfa5;
+  --chart-2: #38bdf8;
+  --chart-3: #34d399;
+  --chart-4: #fbbf24;
+  --chart-5: #f87171;
+
+  --sidebar: #131c2a;
+  --sidebar-foreground: #f7f9fb;
+  --sidebar-primary: #00bfa5;
+  --sidebar-primary-foreground: #06251f;
+  --sidebar-accent: #2a3849;
+  --sidebar-accent-foreground: #f7f9fb;
+  --sidebar-border: #2a3849;
+  --sidebar-ring: #00bfa5;
+}
+
+/* Map the design tokens to Tailwind utility colors (bg-primary, text-foreground, …). */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

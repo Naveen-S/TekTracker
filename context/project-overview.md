@@ -38,14 +38,16 @@ It is an **internal engineering tool at Tekion Corp.**
 
 | Persona | Scope | Primary need |
 |---|---|---|
-| **Lead / EM** | **1 scrum team** | Capture the full SDLC of a scrum team's Jira work (roadmap, support, tech debt, internal bugs). |
+| **Lead** | **1 scrum team** | Capture the full SDLC of a scrum team's Jira work (roadmap, support, tech debt, internal bugs). |
+| **EM / SEM** | **2–3 scrum teams** | Capture the full SDLC across their scrum teams; per-team and combined views. |
 | **ED / TPM** | **N scrum teams** | Aggregate view across multiple scrum teams. |
 | **VP** | Portfolio | High-level "is the sprint on track" health + trend. |
 | **Admin** | Org/team config | Manage sprint configuration, gates, team membership. |
 
 Key relationships:
-- **EM manages 1 scrum team; ED manages N scrum teams.** A user can belong to many teams with
-  different roles. ED-level views are **cross-team roll-ups**, not a separate data source.
+- **Lead manages 1 scrum team; EM/SEM manages 2–3 scrum teams; ED manages N scrum teams.** A user can
+  belong to many teams with different roles. EM/SEM and ED-level views are **cross-team roll-ups**, not
+  a separate data source.
 - Each scrum team has dedicated **filters/tracks**: Roadmap, Tech Debt, Support, Internal Bugs.
 
 > **[GAP]** The current build has **no team, role, or multi-team concept** — it is single-user and
@@ -197,20 +199,41 @@ Migration guidance:
 
 ---
 
-## 9. Data model **[PLANNED — sample to tweak]**
+## 9. Data model **[BUILT in `web/` — ported verbatim 2026-06-14]**
 
-This is **missing from the original spec**; below is a production-ready starting point designed for
-the multi-team personas. Copy to `prisma/schema.prisma` and adjust. Rationale follows the schema.
+This was **missing from the original spec**; below is the production data model designed for the
+multi-team personas. As of 2026-06-14 (Feature 3) it is **ported verbatim** to
+[`web/prisma/schema.prisma`](web/prisma/schema.prisma) and applied as the `init` migration. Keep
+this section and that file byte-consistent — change both in the same PR (doc-sync, §17).
+
+> **As-built Prisma 7 deviations** (the schema below is Prisma 7; §9 was first drafted against
+> Prisma 5/6 conventions):
+> 1. **`url` is no longer allowed in the `datasource` block.** Prisma 7 removed it; the connection
+>    string for Prisma Migrate/CLI lives in [`web/prisma.config.mjs`](web/prisma.config.mjs)
+>    (`datasource.url`, loaded from `DATABASE_URL` via `dotenv`), and the runtime client connects via
+>    the `@prisma/adapter-pg` driver adapter in [`web/src/lib/db.js`](web/src/lib/db.js). See
+>    https://pris.ly/d/prisma7-client-config.
+> 2. **Generator is the modern `prisma-client`** (Prisma 7's `prisma init` default; the legacy
+>    `prisma-client-js` is deprecated). It is ESM-first and requires an explicit `output`, and it
+>    **emits TypeScript** to `web/src/generated/prisma` (gitignored; recreated by `postinstall` /
+>    `db:generate`). The runtime client is imported from `@/generated/prisma/client` in
+>    [`web/src/lib/db.js`](web/src/lib/db.js). Using the latest Prisma generator was chosen
+>    deliberately (with Naveen, 2026-06-14) over keeping the app strictly `.ts`-free; authored app
+>    source stays `.js`/`.jsx` and Next 16 + Turbopack compiles the generated `.ts` without needing a
+>    `tsconfig.json` (the `@/*` alias stays in `jsconfig.json`). The generated dir is excluded from
+>    ESLint.
 
 ```prisma
 // datasource + generator
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // url moved to prisma.config.mjs in Prisma 7 (see deviation #1 above); the runtime client
+  // connects through the @prisma/adapter-pg driver adapter (web/src/lib/db.js).
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -488,6 +511,129 @@ model SprintSnapshot {
 }
 ```
 
+### Entity-relationship diagram
+
+Relationship view of the §9 schema (crow's-foot; `||` one, `o{` zero-or-many, `o|`/`|o`
+zero-or-one). Attributes are trimmed to identity, foreign keys, and a few domain-critical
+columns — the Prisma block above remains the source of truth.
+
+```mermaid
+erDiagram
+    USER ||--o| JIRA_CREDENTIAL : "has"
+    USER ||--o{ TEAM_MEMBERSHIP : "joins via"
+    USER |o--o{ SPRINT : "created"
+    USER |o--o{ ISSUE_PROGRESS : "last edited"
+    USER ||--o{ SHARED_VIEW : "created"
+
+    TEAM ||--o{ TEAM_MEMBERSHIP : "has"
+    TEAM ||--o{ FILTER_TEMPLATE : "owns"
+    TEAM ||--o{ FILTER : "owns"
+    TEAM ||--o{ ISSUE_PROGRESS : "owns"
+    TEAM |o--o{ STATUS_STAGE_MAPPING : "overrides"
+    TEAM ||--o{ SPRINT_SNAPSHOT : "rolled up in"
+
+    SPRINT ||--o{ FILTER : "scopes"
+    SPRINT ||--o{ ISSUE_PROGRESS : "scopes"
+    SPRINT ||--o{ SHARED_VIEW : "scopes"
+    SPRINT ||--o{ SPRINT_SNAPSHOT : "scopes"
+
+    FILTER ||--o{ ISSUE : "caches"
+
+    USER {
+        string id PK
+        string jiraAccountId UK
+        string email UK
+        string displayName
+    }
+    JIRA_CREDENTIAL {
+        string id PK
+        string userId FK,UK
+        string encryptedToken
+        string cloudId
+        string baseUrl
+    }
+    TEAM {
+        string id PK
+        string key UK
+        string name
+        string_arr jiraProjectKeys
+    }
+    TEAM_MEMBERSHIP {
+        string id PK
+        string userId FK
+        string teamId FK
+        Role role
+    }
+    SPRINT {
+        string id PK
+        string name UK
+        datetime developmentStart
+        datetime developmentEnd
+        SprintState state
+        string createdById FK
+    }
+    FILTER_TEMPLATE {
+        string id PK
+        string teamId FK
+        WorkflowType workflowType
+        FilterSourceType sourceType
+    }
+    FILTER {
+        string id PK
+        string teamId FK
+        string sprintId FK
+        WorkflowType workflowType
+        FilterSourceType sourceType
+        int sortOrder
+    }
+    ISSUE {
+        string id PK
+        string filterId FK
+        string jiraKey
+        string jiraStatus
+        float storyPoints
+    }
+    ISSUE_PROGRESS {
+        string id PK
+        string teamId FK
+        string sprintId FK
+        string jiraKey
+        WorkflowType workflowType
+        bool_arr stageCompletion
+        bool blocked
+        string updatedById FK
+    }
+    STATUS_STAGE_MAPPING {
+        string id PK
+        WorkflowType workflowType
+        string jiraStatus
+        int stageIndex
+        string teamId FK "null = global"
+    }
+    SHARED_VIEW {
+        string id PK
+        string token UK
+        string sprintId FK
+        string createdById FK
+        bool isLive
+    }
+    SPRINT_SNAPSHOT {
+        string id PK
+        string sprintId FK
+        string teamId FK
+        datetime capturedOn
+        float totalPoints
+        float completedPoints
+    }
+```
+
+> **Note — `Issue` ↔ `IssueProgress` are intentionally decoupled.** There is no FK between them; the
+> cache (`Issue`, keyed by `filterId + jiraKey`) and the product data (`IssueProgress`, keyed by
+> `teamId + sprintId + jiraKey`) are joined by `jiraKey` at read time. This is what lets manual stage
+> edits survive a re-sync that replaces the `Issue` row, and lets progress follow an issue across
+> filters within the same team+sprint (see §6, §9 rationale). Enum types (`Role`, `SprintState`,
+> `WorkflowType`, `FilterSourceType`) are omitted from the diagram.
+
 **Entity rationale & tweak points**
 - **User / TeamMembership** model "EM = 1 team, ED = N teams" naturally: ED roll-ups are *"all teams
   where my membership role ∈ {ED, TPM}"*. Single implicit org (decided 2026-06-10): no `Org` table;
@@ -649,6 +795,12 @@ All previously open decisions are now resolved:
 - **Hosting: app on Tekion internal infra; database on Neon.**
 - **Migration: fresh Next.js App Router app in a `web/` subfolder of this repo**; port hooks/components
   over; both apps runnable until parity, then promote `web/` to root and delete the Vite app.
+  - **Deferred follow-up (added 2026-06-14): bump the runtime to Node 22 (≥22.12) once the Vite app is
+    retired.** Today both apps share one Node and the legacy Vite 2 app pins us to Node 20.19.4; a
+    transitive Prisma dep wants Node ≥22, worked around by `ignore-engines true` in `web/.yarnrc`. At
+    promotion: move to Node 22.12+ (Prisma 7's floor), add `.nvmrc`/`engines`, and delete the
+    `web/.yarnrc` shim (the engine check then passes natively). Re-verify the Vite app on 22 *before*
+    switching if it hasn't been retired yet.
 - **Filter templates: keep** (team-level `FilterTemplate`).
 - **Roll-up grouping: single implicit org** — no `Org` table; sprints are global; ED views are
   membership-derived.
