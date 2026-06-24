@@ -246,6 +246,7 @@ model User {
   email          String           @unique
   displayName    String
   avatarUrl      String?
+  isAdmin        Boolean          @default(false)  // global app admin (team-independent); distinct from TeamMembership.role = ADMIN. RBAC checks this.
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
@@ -272,7 +273,7 @@ model JiraCredential {
 }
 
 enum Role {
-  ADMIN      // org/team configuration, sprint gates
+  ADMIN      // team-scoped admin role (a TeamMembership). Global app admin is User.isAdmin, not this.
   ED         // engineering director — many teams
   TPM        // technical program manager — many teams
   EM         // engineering manager — one team
@@ -544,6 +545,7 @@ erDiagram
         string jiraAccountId UK
         string email UK
         string displayName
+        bool isAdmin
     }
     JIRA_CREDENTIAL {
         string id PK
@@ -637,7 +639,9 @@ erDiagram
 **Entity rationale & tweak points**
 - **User / TeamMembership** model "EM = 1 team, ED = N teams" naturally: ED roll-ups are *"all teams
   where my membership role ∈ {ED, TPM}"*. Single implicit org (decided 2026-06-10): no `Org` table;
-  add one later only if a deployment must host multiple portfolios.
+  add one later only if a deployment must host multiple portfolios. **Global app admin is the
+  team-independent `User.isAdmin` flag** (added 2026-06-15), not a `TeamMembership` role — the first
+  admin must create teams before any membership exists, so admin can't be team-scoped.
 - **JiraCredential is separate** so tokens are isolated and encrypted; one place to swap to OAuth.
 - **Sprint is first-class and global** (stable id, one shared cadence for all teams — decided
   2026-05-29), replacing the brittle `startDate_endDate` key. Renaming a sprint no longer loses data.
@@ -826,3 +830,22 @@ All previously open decisions are now resolved:
 - **Metrics are pure functions** of (filters, progress, sprint) — keep `computeSprintMetrics` pure and
   unit-tested; never read storage inside it.
 - **Respect RBAC**: any mutation (sprint config, admin settings) checks role server-side, not just UI.
+
+---------
+
+
+
+------- Production Migration Plan ---------
+
+The plan — exact next steps, in order
+
+1. Scaffold web/ — Next.js (App Router, JS), Tailwind v4 + shadcn, Prisma 7 pointed at Neon, zod. Both apps runnable side-by-side.
+2. Schema + migrations — copy the §9 schema into prisma/schema.prisma, run the first migration, seed: you as ADMIN, the global default StatusStageMapping rows, and the three workflows' metadata.
+3. Auth layer — port server.js login/me/logout to route handlers; validate against Jira /myself, upsert User + JiraCredential with AES-GCM-encrypted token (key from env/secret store); cookie sessions (e.g. iron-session) replacing the file store.
+4. Domain APIs — zod-validated route handlers for teams/memberships (admin), sprints (admin), filter templates + filters, stage toggle/blocked writes to IssueProgress.
+5. Sync with hybrid seeding — port the Jira client (keep field IDs/pagination isolated in one module); on sync, upsert the Issue cache and create missing IssueProgress rows seeded via StatusStageMapping; never touch rows that already exist.
+6. UI port — pages for login, team dashboard (the existing Delivery Matrix, re-skinned), ED roll-up, admin; swap usePersistedSprintState for server data; localStorage keeps only density/collapse.
+7. Background job — a cron on your internal infra hitting an internal route: refresh issue caches + write the daily per-team SprintSnapshot for active sprints.
+8. Share view + export — SharedView token route (/share/[token], live or frozen, expiry) replacing the base64 URL; port PDF/PNG export.
+9. Importer — one-time script that takes the localStorage JSON (sprintTracker_sprintData + config) and writes Sprint/Filter/IssueProgress rows so your current sprints carry over.
+10. Cutover, then post-v1 — promote web/ to repo root, delete the Vite app; then burndown/trend UI from snapshots, then Gemini (risk call-outs + narrative first).

@@ -13,6 +13,10 @@ export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
+    // Prisma 7 reads the seed command from here (not package.json's `prisma.seed`). Run via tsx
+    // because the generated client is TypeScript-only and our Node can't strip types. `prisma db
+    // seed` and `prisma migrate reset` both invoke this.
+    seed: "tsx prisma/seed.mjs",
   },
   datasource: {
     // Pooled connection string for the app; for Neon you may add a separate direct URL for

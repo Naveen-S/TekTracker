@@ -1,98 +1,55 @@
 # Current Feature
 
-**Scaffold Prisma 7 + Postgres (Neon) data layer in `web/`** — full spec:
-@context/features/scaffload-prisma.md
+**Bootstrap seed (completes migration step 2)** — full spec:
+@context/features/bootstrap-seed.md
 
-Feature 3 of the production migration: add the **persistence foundation** to the `web/` Next.js
-app — Prisma 7 + the Postgres (Neon) data model from @context/project-overview.md §9, a Prisma
-Client singleton wired for the App Router, and the first migration. Infrastructure only — **no**
-data-access functions, Server Actions, route handlers, auth, localStorage importer, or background
-sync (those consume this layer later). The `web/` app must still build, lint, and coexist with the
-running Vite + Express app.
+The install/bootstrap seed for the `web/` Postgres DB — the third and only unbuilt clause of the
+Production Migration Plan **step 2** ("seed: ADMIN, global `StatusStageMapping` rows, the three
+workflows' metadata"). A repeatable Prisma seed (`prisma/seed.mjs`, wired so `migrate reset` and
+`yarn db:seed` both run it) that writes: (1) a bootstrap **ADMIN `User`** (`isAdmin: true`),
+(2) the **global default `StatusStageMapping`** rows (hybrid Jira-status → stage seeding,
+`teamId = null`), (3) a **workflow-constants module** (`web/src/lib/workflows.js`) ported from
+`src/workflows.js`. Prerequisite [add-user-isadmin.md](./features/add-user-isadmin.md) is **Done**.
+This unblocks @context/features/seed.md (the localStorage importer). Ordering:
+**bootstrap-seed → importer**.
 
 ## Status
 
-**Done 2026-06-15** — re-verified: `yarn prisma validate` valid, `yarn lint` and `yarn build` pass
-(health route `ƒ Dynamic`, `/` static), build is DB-free, and `prisma migrate status` reports the
-Neon dev DB up to date. Prisma 7.8.0 + Postgres data layer scaffolded in `web/`: §9 ported verbatim
-to `web/prisma/schema.prisma`, `init` migration created and applied to Neon, client singleton +
-driver adapter wired (modern `prisma-client` generator). See **As-built deviations** below and the
-History. Versions frozen + `web/.yarnrc` shim added; Node-22 bump deferred to Vite retirement (§16).
-
-### As-built deviations (Prisma 7 reality vs. the spec, which assumed Prisma 5/6)
-
-- **`url` removed from the schema `datasource` block.** Prisma 7 disallows it; the Migrate/CLI
-  connection string moved to `web/prisma.config.mjs` (`datasource.url`, loaded via `dotenv`). §9
-  updated to match. The spec's "datasource → `url = env(...)`" line is therefore superseded.
-- **Runtime connects via a driver adapter.** Prisma 7's query compiler needs `@prisma/adapter-pg`
-  (added dep; pulls `pg`) — `new PrismaClient()` alone no longer connects. The singleton in
-  `src/lib/db.js` passes `adapter: new PrismaPg({ connectionString: DATABASE_URL })`.
-- **Generator: modern `prisma-client`** (Prisma 7 `init` default; legacy `prisma-client-js` is
-  deprecated). Chosen with Naveen (2026-06-14) to use the latest Prisma — overriding the spec's "no
-  `.ts`/`.tsx`" criterion, which the generated client necessarily breaks. It emits TypeScript to
-  `src/generated/prisma` (gitignored; recreated by `postinstall`/`db:generate`); imported from
-  `@/generated/prisma/client`. Next 16 + Turbopack compiles the generated `.ts` with **no
-  `tsconfig.json` needed** (the `@/*` alias stays in `jsconfig.json`); the generated dir is
-  ESLint-ignored. Authored app source remains `.js`/`.jsx`.
-- **`dotenv` added (devDep)** so `prisma.config.mjs` can `import "dotenv/config"` (Prisma 7 stops
-  auto-loading `.env` once a config file exists).
-- **`ignore-engines` shim (`web/.yarnrc`).** `prisma`/`@prisma/client` 7.8.0 support Node 20.19 (we
-  run 20.19.4), but a transitive `@prisma/streams-local@0.1.2` (via `@prisma/dev`, the unused
-  `prisma dev` local server) declares Node >=22, and yarn 1 enforces engines for all packages. A
-  `web/.yarnrc` with `ignore-engines true` lets a plain `yarn install` succeed without the flag.
-  **Temporary** — remove when we move to Node 22 (≥22.12, Prisma 7's floor), a deferred follow-up
-  tied to retiring the root Vite app (see project-overview §16). On 22.12+ the check passes natively.
-- **`!.env.example` added to `web/.gitignore`** so the committed template isn't swept up by `.env*`.
-- **NextAuth models NOT added** (confirmed with Naveen 2026-06-14; the spec's Requirements bullet was
-  dropped). They conflicted with the authoritative instruction to port §9 **verbatim** (no such
-  models), with §16's ratified **Jira-token auth** (`JiraCredential`, not email/OAuth-link auth), and
-  with "auth wiring" being out of scope.
-
-> Migration was applied to the **Neon** dev DB (`migrate deploy`, since the endpoint is pooled and
-> `migrate dev` wants a shadow DB). Local-Postgres fallback was used first; both verified.
+**Done 2026-06-15.** Added `web/src/lib/workflows.mjs` (constants keyed by `WorkflowType`) and
+`web/prisma/seed.mjs` (zod-validated, idempotent); wired `migrations.seed` in `prisma.config.mjs` +
+a `db:seed` script; documented `SEED_ADMIN_EMAIL`. Seeded Neon: **1 ADMIN** (`isAdmin=true`) + **35
+global `StatusStageMapping` rows**; verified idempotent re-run, the out-of-range guard fails loudly,
+and `yarn lint`/`yarn build` green + DB-free. As-built deviations (all in
+@context/features/bootstrap-seed.md): module is `.mjs` not `.js` (ESM under tsx); seed runs via a new
+`tsx` devDep (TS-only generated client); seed command lives in `prisma.config.mjs` not `package.json`;
+global mappings use delete-then-create (Postgres NULL-unique gotcha). **Next:**
+@context/features/seed.md (localStorage importer).
 
 ## Goals
 
-- **Deps (in `web/` only):** add `prisma` (dev) + `@prisma/client`, pinned to **7.x**. Nothing
-  added to the root Vite app.
-- **`web/prisma/schema.prisma`:** port the full §9 data model **verbatim** — all 12 models
-  (`User`, `JiraCredential`, `Team`, `TeamMembership`, `Sprint`, `Filter`, `FilterTemplate`,
-  `Issue`, `IssueProgress`, `StatusStageMapping`, `SharedView`, `SprintSnapshot`) and 4 enums
-  (`Role`, `SprintState`, `WorkflowType`, `FilterSourceType`), keeping the `///` design-decision
-  doc comments. `provider = "postgresql"`, `url = env("DATABASE_URL")`. `yarn prisma validate` must
-  pass and stay byte-consistent with §9 (reconcile both in the same change).
-- **Generator decision:** default to whatever the installed Prisma 7 `prisma init` scaffolds —
-  legacy `prisma-client-js` (emits to `node_modules`, matches §9 as-written) vs. the new
-  ESM-first `prisma-client` (explicit `output` path, gitignore the generated dir). Record the
-  choice as an as-built deviation and reconcile §9 + the singleton import.
-- **Prisma Client singleton** at [src/lib/db.js](web/src/lib/db.js) using the global-cache pattern
-  (no connection storm on hot reload); the single `@/lib/db` module the app imports for DB access.
-- **Config & secrets:** committed `web/.env.example` documenting the Neon connection-string shape
-  (pooled `DATABASE_URL`; optional `DIRECT_URL`/`directUrl` for migrations); real `web/.env` stays
-  uncommitted. If Prisma 7 needs a config file, use `prisma.config.mjs` (JS-only, no `.ts`) and
-  ensure env loads for CLI commands.
-- **First migration + scripts:** `yarn prisma generate` succeeds; `yarn prisma migrate dev --name
-  init` produces `web/prisma/migrations/<ts>_init/` (never `db push`). Add `db:generate`,
-  `db:migrate`, `db:deploy`, `db:studio` scripts + `postinstall: prisma generate`.
-- **Acceptance:** `yarn prisma validate`/`generate`, `yarn build`, `yarn lint` all pass with **no
-  DB access at build time**; dev still on :3002; all three dev servers coexist; no `.ts`/`.tsx`,
-  no `tailwind.config.*`, root Vite app untouched; `.env` not committed, `.env.example` committed.
+- **(a) `web/src/lib/workflows.js`** — port `stages`/`weights`/`priority`/`name` from
+  `src/workflows.js`, keyed by `WorkflowType` (`FEATURE` 10-stage; `TECH_DEBT`/`SUPPORT`/
+  `INTERNAL_BUG` the shared 4-stage set; `CUSTOM` excluded). Single source for stage counts.
+- **(b) ADMIN `User`** — upsert by `email` (from `SEED_ADMIN_EMAIL`), `isAdmin: true`, placeholder
+  `jiraAccountId` (`seed-pending:<email>`) reconciled at first login.
+- **(c) Global `StatusStageMapping`** (`teamId = null`) — upsert by `(workflowType, jiraStatus,
+  teamId)`; map each status to the highest stage it implies (auto-checks `0..n`); "not started"
+  statuses get no row. Seed `FEATURE`/`TECH_DEBT`/`SUPPORT`/`INTERNAL_BUG`; skip `CUSTOM`.
+- **Mechanism** — `prisma/seed.mjs` (adapter + `dotenv`, relative generated-client import);
+  `"prisma": { "seed": ... }` + `db:seed` script; **zod**-assert every `stageIndex` is in range;
+  all writes idempotent `upsert`s.
+- **Acceptance:** `yarn db:seed` creates the admin + global mappings, re-runs with no duplicates,
+  `migrate reset` auto-seeds; fails loudly on an out-of-range `stageIndex`; `yarn lint` + `yarn
+  build` stay green and DB-free.
 
 ## Notes
 
-- Read the installed Prisma 7 docs/release notes in `web/node_modules/prisma/` (and the upgrade
-  guide) **before** writing schema or config — Prisma 7 has breaking changes vs. training-data
-  Prisma 5/6, same as the Next.js 16 / Tailwind v4 warning in CLAUDE.md.
-- **Prisma 7 `.env` gotcha:** when a `prisma.config.*` file exists, Prisma stops auto-loading
-  `.env`; CLI commands may not see `DATABASE_URL` unless env is loaded explicitly. Most likely
-  cause of a "missing DATABASE_URL" migration failure.
-- **Build must not touch the DB:** keep any DB read in a `force-dynamic` route or server action,
-  never in a statically-rendered page, so `yarn build` stays green without `DATABASE_URL`.
-- **Live-DB fallback (Neon likely unreachable in this sandbox):** point `DATABASE_URL` at a
-  throwaway local Postgres, or use `migrate dev --create-only` + offline `validate`/`generate` and
-  record applying to Neon as a deferred follow-up. **Never** substitute `db push`.
-- Only add files under `web/`; do not modify the root Vite app, `server.js`, or root
-  `package.json`.
+- Reuse the Feature 3 Prisma 7 + Neon pattern: `dotenv` for CLI env; the seed builds its own
+  `PrismaClient` via `@prisma/adapter-pg` (a plain Node script can't use the `@/` alias).
+- `SEED_ADMIN_EMAIL` is the seed's **input** (which user to flag); RBAC reads the `isAdmin` column,
+  not this var.
+- Proposed `StatusStageMapping` tables and any §6 status changes stay **doc-synced** (§17) — update
+  the seed and bootstrap-seed.md together if the mappings change after validation.
 
 ## History
 
@@ -137,5 +94,38 @@ History. Versions frozen + `web/.yarnrc` shim added; Node-22 bump deferred to Vi
   (≥22.12) and drop the `ignore-engines` shim **after** the root Vite app is retired / `web/` is
   promoted to root.
 - 2026-06-15 — Feature 3 (Prisma 7 + Postgres data layer) **Done**. Re-verified `yarn prisma
-  validate`/`lint`/`build` green, build DB-free, `migrate status` up to date on Neon. No next feature
-  picked yet.
+  validate`/`lint`/`build` green, build DB-free, `migrate status` up to date on Neon.
+- 2026-06-15 — Planning session (no code): reviewed the handwritten spec + current build and
+  confirmed migration **step 2 is only partially done** — schema + `init` migration yes, the
+  **seed** (ADMIN user + global `StatusStageMapping` + workflow metadata) no. Drafted three feature
+  plans: @context/features/seed.md (localStorage → Postgres **importer**, master-plan step 9),
+  @context/features/bootstrap-seed.md (completes step 2's seed), and
+  @context/features/add-user-isadmin.md. Ratified with Naveen: (1) represent global admin via a new
+  **`User.isAdmin`** column (not an env allowlist); (2) `FEATURE` status→stage map uses **Code
+  Review → E2E testing (5)** and **Testing/In QA → QA/PM demo (6)**; (3) workflow metadata stays a
+  code-port (`web/src/lib/workflows.js`), no `Workflow` table.
+- 2026-06-15 — Picked @context/features/add-user-isadmin.md as the current feature.
+- 2026-06-15 — **Implemented add-user-isadmin.** Added `isAdmin Boolean @default(false)` to `User`
+  in `web/prisma/schema.prisma` (with a note vs. `TeamMembership.role = ADMIN`); tightened the `Role`
+  enum `ADMIN` comment; doc-synced §9 (User model block, `Role` note, ER-diagram USER entity, the
+  User/TeamMembership rationale bullet). Created + applied migration
+  `20260615042100_add_user_isadmin` (single additive `ALTER TABLE "User" ADD COLUMN "isAdmin"
+  BOOLEAN NOT NULL DEFAULT false`) — `migrate dev` ran directly against the Neon pooled endpoint
+  (no shadow-DB workaround needed, unlike the `init` migration). Regenerated client. Verified:
+  `prisma validate` valid, `migrate status` up to date (2 migrations), `yarn lint` clean, `yarn
+  build` green + DB-free, `isAdmin` present in the generated client. **Done.**
+- 2026-06-15 — add-user-isadmin **Done**. Picked @context/features/bootstrap-seed.md as the current
+  feature (completes migration step 2 — bootstrap seed: ADMIN user + global `StatusStageMapping` +
+  workflow-constants port).
+- 2026-06-15 — **Implemented bootstrap-seed (completes migration step 2).** Added
+  `web/src/lib/workflows.mjs` (workflow stages/weights/priority keyed by `WorkflowType`) and
+  `web/prisma/seed.mjs` (zod-validated, idempotent): upserts the `SEED_ADMIN_EMAIL` user with
+  `isAdmin: true` (placeholder `jiraAccountId`), and replaces the global (`teamId=null`)
+  `StatusStageMapping` set via delete-then-`createMany`. Wired `migrations.seed = "tsx
+  prisma/seed.mjs"` in `prisma.config.mjs`, added `db:seed` script + `tsx` devDep (exact 4.22.4),
+  documented `SEED_ADMIN_EMAIL` in `.env.example`. Ran against Neon: 1 admin + 35 global mappings
+  (FEATURE 11; TECH_DEBT/SUPPORT/INTERNAL_BUG 8 each; CUSTOM skipped). Verified idempotent re-run (no
+  dupes), out-of-range `stageIndex` fails loudly before any write, `yarn lint` + `yarn build` green +
+  DB-free. As-built deviations (vs. spec): `.mjs` not `.js` (ESM under tsx), `tsx` runner (TS-only
+  generated client on Node 20), seed command in `prisma.config.mjs` not `package.json`, delete-then-
+  create for global rows (Postgres NULL-unique). **Done.**
