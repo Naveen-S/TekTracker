@@ -668,7 +668,7 @@ erDiagram
 | Database | **Neon (PostgreSQL)** | Serverless Postgres; app itself runs on Tekion internal infra (decided 2026-06-10). |
 | ORM | **Prisma 7** | Schema in §9. |
 | Caching | **Redis** (optional) | For ED multi-team reads + Jira rate-limit smoothing. |
-| Auth | **Jira email + API token, encrypted at rest** (decided 2026-06-10) | AES-GCM, key from a secret store; OAuth 3LO remains a later option (§13). |
+| Auth | **Jira email + API token, encrypted at rest** (decided 2026-06-10) | AES-GCM, key from a secret store; OAuth 3LO remains a later option (§13). **[BUILT in `web/` 2026-06-29]** iron-session cookie + AES-256-GCM `JiraCredential` (auth-layer.md). |
 | AI | **Gemini** (post-v1) | Candidates ranked: risk/blocker call-outs, leadership narrative, Q&A over sprint data, stage suggestions. |
 | Styling | **Tailwind CSS v4 + shadcn/ui** | Current build uses hand-written CSS (`src/styles.css`). |
 
@@ -725,15 +725,25 @@ Reference implementation: [`src/workflows.js`](src/workflows.js) and
 file store. Token is **plaintext on disk** in `.sessions/`. Acceptable for a local single-user tool;
 **not** acceptable for a shared deployment.
 
+> **[BUILT in `web/` — 2026-06-29, migration step 3]** Items 1 & 5 below are implemented in the Next
+> app (the legacy Vite/Express snapshot above is unchanged — both apps coexist until cutover). See
+> [auth-layer.md](features/auth-layer.md): route handlers `app/api/auth/{login,me,logout}`,
+> iron-session cookie (payload `{ userId }` only), `User` + `JiraCredential` upsert.
+
 **Target hardening:**
 1. **Encrypt tokens at rest** (AES-GCM, key from a secret manager / KMS) — model `JiraCredential`.
+   **[BUILT in `web/`]** AES-256-GCM in `web/src/lib/crypto.js` (`iv ‖ authTag ‖ ciphertext`, key
+   `TOKEN_ENCRYPTION_KEY`); written on login, raw token never persisted.
 2. **Evaluate Atlassian OAuth 2.0 (3LO)** instead of personal API tokens. Personal tokens mean each
    user sees only what their token can see (fine for per-user data scoping, but tokens are long-lived
    secrets and a support burden). OAuth gives revocable, scoped access and refresh tokens.
 3. **RBAC**: gate **Configure Sprint** and admin settings behind `Role.ADMIN` (+ ED) — the spec
    explicitly says sprint config is "for certain set of users (admin)".
 4. **Share links**: short token, optional expiry, optional auth requirement; never embed the dataset.
-5. Move `SESSION_SECRET` and all secrets to the platform's secret store; rotate.
+5. Move `SESSION_SECRET` and all secrets to the platform's secret store; rotate. **[PARTIAL in `web/`]**
+   the legacy `SESSION_SECRET` is **retired** — `web/` reads `SESSION_PASSWORD` (iron-session sealing)
+   and `TOKEN_ENCRYPTION_KEY` from env/secret store and **fails loudly** if absent (no `dev-secret`
+   fallback). Rotation still TODO.
 
 ---
 
@@ -841,7 +851,7 @@ The plan — exact next steps, in order
 
 1. Scaffold web/ — Next.js (App Router, JS), Tailwind v4 + shadcn, Prisma 7 pointed at Neon, zod. Both apps runnable side-by-side.
 2. Schema + migrations — copy the §9 schema into prisma/schema.prisma, run the first migration, seed: you as ADMIN, the global default StatusStageMapping rows, and the three workflows' metadata.
-3. Auth layer — port server.js login/me/logout to route handlers; validate against Jira /myself, upsert User + JiraCredential with AES-GCM-encrypted token (key from env/secret store); cookie sessions (e.g. iron-session) replacing the file store.
+3. Auth layer — port server.js login/me/logout to route handlers; validate against Jira /myself, upsert User + JiraCredential with AES-GCM-encrypted token (key from env/secret store); cookie sessions (e.g. iron-session) replacing the file store. **[DONE 2026-06-29]** — `app/api/auth/{login,me,logout}`, iron-session `{ userId }` cookie, AES-256-GCM `crypto.js`, isolated `lib/jira/client.js` (`fetchMyself`/`fetchCloudId`); `cloudId` discovered via `_edgeProxy/tenant_info`; secrets fail loudly. See context/features/auth-layer.md.
 4. Domain APIs — zod-validated route handlers for teams/memberships (admin), sprints (admin), filter templates + filters, stage toggle/blocked writes to IssueProgress.
 5. Sync with hybrid seeding — port the Jira client (keep field IDs/pagination isolated in one module); on sync, upsert the Issue cache and create missing IssueProgress rows seeded via StatusStageMapping; never touch rows that already exist.
 6. UI port — pages for login, team dashboard (the existing Delivery Matrix, re-skinned), ED roll-up, admin; swap usePersistedSprintState for server data; localStorage keeps only density/collapse.
