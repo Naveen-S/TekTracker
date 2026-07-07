@@ -89,15 +89,15 @@ Key relationships:
 | Update stages per work item | **[BUILT]** | Manual checklist; `toggleStage`. Not Jira-derived. |
 | Mark work item as blocked | **[BUILT]** | `toggleBlocked`. |
 | Remove Jira filter | **[BUILT]** | `handleRemoveFilter`. |
-| Sync Jira (pull live status) | **[BUILT]** | `handleSyncAll`; diffs added/removed issues. |
-| Configure sprint (dates, name) | **[PARTIAL]** | Modal exists; **no admin-only gating**, sprint is not a first-class entity (keyed by date range). |
+| Sync Jira (pull live status) | **[BUILT]** | Legacy: `handleSyncAll`; diffs added/removed issues. **`web/`: server-side sync engine + `POST …/sync` route with hybrid stage seeding** (step 5, 2026-07-07). |
+| Configure sprint (dates, name) | **[PARTIAL]** | Legacy modal has no gating and no first-class sprint. **`web/` sprint API is admin-gated with first-class `Sprint` rows** (step 4, 2026-07-07); UI pending step 6. |
 | Reorder filters | **[BUILT]** | Drag + priority default sort. |
 | Export PDF / PNG | **[BUILT]** | Client-side `html2canvas` + `jsPDF`; include/exclude filters. |
 | Share view | **[PARTIAL]** | Encodes **entire dataset** into a base64 URL — fragile, not live, not access-controlled. |
-| Multi-team / ED roll-up | **[GAP]** | No team model. |
+| Multi-team / ED roll-up | **[GAP]** | Team + membership model and admin APIs **built in `web/`** (step 4, 2026-07-07); the roll-up *views* remain unbuilt (step 6+). |
 | Trend / burndown / "projected by end of sprint" | **[GAP]** | No historical snapshots. |
 | AI summary (Gemini) | **[GAP]** | Post-v1; use cases ratified 2026-06-10 (see §16). |
-| Admin settings / RBAC | **[GAP]** | No roles. |
+| Admin settings / RBAC | **[PARTIAL]** | Server-side RBAC live in the `web/` domain APIs (step 4, 2026-07-07): `User.isAdmin` + `TeamMembership.role` guards (`lib/rbac.js`) on teams/sprints/filters/progress. No admin UI yet. |
 
 ---
 
@@ -129,21 +129,24 @@ weights: [20, 60, 15, 5]
 > reuse the `support`/`techdebt` 4-stage workflow. If Internal Bugs needs its own stages/weights, add
 > a `internalbug` workflow.
 
-### ⚠️ Critical design decision: stages are manual, not synced
+### ⚠️ Critical design decision: stages are manual, not synced — LEGACY ONLY (hybrid built in `web/`)
 
-Today, **stage completion is a manual overlay** stored per issue (`issueStages[key].stages` = array of
-booleans) and toggled by the user. Jira **Sync** refreshes the issue list and raw Jira status but
-**does not populate stage progress**. `transformJiraIssue` computes a `stage`/`percent` from Jira
-status, but those values are effectively unused — the real progress comes from manual checkboxes.
+In the **legacy Vite app**, stage completion is a manual overlay stored per issue
+(`issueStages[key].stages` = array of booleans) and toggled by the user. Jira **Sync** refreshes the
+issue list and raw Jira status but **does not populate stage progress**. `transformJiraIssue`
+computes a `stage`/`percent` from Jira status, but those values are effectively unused — the real
+progress comes from manual checkboxes.
 
-Consequences:
+Consequences (legacy):
 - All health/velocity/% metrics are only as accurate as the team's manual discipline.
 - The 10-stage feature lifecycle does not map 1:1 to Jira statuses, so full automation isn't trivial.
 
-**Recommended target model (hybrid):** on first sync, *seed* `stageCompletion` from a configurable
-Jira-status → stage mapping; thereafter manual edits win and are persisted. Store the last
-Jira-derived baseline so re-syncs can reconcile without clobbering manual edits. **This is the single
-most important product decision to ratify** (see §16).
+**The hybrid target model is IMPLEMENTED in `web/` (step 5, 2026-07-07):** on sync, missing
+`IssueProgress` rows are *seeded* from the `StatusStageMapping` table (team override beats global,
+case-insensitive; `seededFromStatus` records the baseline); **existing rows are never touched — manual
+edits win** (create-only, §16). Owning workflows are re-evaluated on sync (§9). A "re-seed forward
+when a row still equals its seeded baseline" reconciliation is deferred until real usage demands it.
+See context/features/sync-hybrid-seeding.md.
 
 ---
 
@@ -738,7 +741,11 @@ file store. Token is **plaintext on disk** in `.sessions/`. Acceptable for a loc
    user sees only what their token can see (fine for per-user data scoping, but tokens are long-lived
    secrets and a support burden). OAuth gives revocable, scoped access and refresh tokens.
 3. **RBAC**: gate **Configure Sprint** and admin settings behind `Role.ADMIN` (+ ED) — the spec
-   explicitly says sprint config is "for certain set of users (admin)".
+   explicitly says sprint config is "for certain set of users (admin)". **[BUILT in `web/`
+   2026-07-07, step 4]** — server-side guards (`requireAdmin`/`requireTeamRole`,
+   `web/src/lib/rbac.js`) on every domain route; sprint mutations are **global-admin only** (the
+   "+ ED" idea is deferred: `Sprint` is global while `ED` is a team-scoped role, so there is no
+   principled team to check it against). UI-level gating lands with step 6.
 4. **Share links**: short token, optional expiry, optional auth requirement; never embed the dataset.
 5. Move `SESSION_SECRET` and all secrets to the platform's secret store; rotate. **[PARTIAL in `web/`]**
    the legacy `SESSION_SECRET` is **retired** — `web/` reads `SESSION_PASSWORD` (iron-session sealing)
@@ -757,7 +764,8 @@ spec-internal ambiguities to resolve.
    localStorage cannot aggregate N teams. *Fix:* team model + Postgres (§9) + server-rendered roll-ups.
 2. **Stages are manual and Jira sync doesn't touch them.** Metrics are only as good as manual upkeep,
    and the 10-stage lifecycle doesn't map to Jira status. *Fix:* hybrid seed-from-status model (§6).
-   **Ratify this first** — it shapes the data model and every metric.
+   **[Fixed in `web/` 2026-07-07, step 5]** — sync seeds missing progress from `StatusStageMapping`,
+   manual edits win thereafter; legacy app unchanged until cutover.
 3. **Share view encodes the whole dataset in the URL.** Base64 of all filters + issues + stages will
    exceed URL limits for real sprints, leaks a snapshot into browser history, and is not live. *Fix:*
    `SharedView` token (§9).
@@ -765,11 +773,15 @@ spec-internal ambiguities to resolve.
 5. **Sprint identity is derived from mutable dates.** `getSprintKey = startDate_endDate` makes a
    sprint's identity its own dates — there's no stable handle to roll up or share by, and editing the
    dates orphans all data bucketed under the old key. *Fix:* first-class **org-level** `Sprint` rows
-   (§9) with a stable id and one shared cadence for all teams.
+   (§9) with a stable id and one shared cadence for all teams. **[Fixed in `web/` 2026-07-07,
+   step 4]** — `/api/sprints` CRUD over first-class rows; legacy app unchanged until cutover.
 6. **Sprint config has no admin gating.** Spec wants admin-only; today anyone can change dates, which
-   silently re-buckets all data. *Fix:* RBAC (§13).
+   silently re-buckets all data. *Fix:* RBAC (§13). **[Fixed in `web/` 2026-07-07, step 4]** —
+   sprint mutations require `User.isAdmin`; legacy app unchanged until cutover.
 7. **Hardcoded Jira custom-field IDs** (`customfield_10008`, `_10020`). Brittle if projects differ.
-   *Fix:* per-team field config; discover via Jira field metadata.
+   *Fix:* per-team field config; discover via Jira field metadata. **[Fixed in `web/` 2026-07-07,
+   step 5]** — sync reads `Team.storyPointsFieldId`/`sprintFieldId` (those ids remain the global
+   defaults; legacy `customfield_10016` still read as points fallback). Field discovery UI still TODO.
 8. **No history / burndown.** Can't answer "projected by end of sprint" or show a trend — exactly the
    leadership signal §2.2 demands. *Fix:* `SprintSnapshot` daily job (§9).
 9. **No caching; sequential Jira calls.** An ED viewing N teams triggers many paginated live calls and
@@ -852,8 +864,8 @@ The plan — exact next steps, in order
 1. Scaffold web/ — Next.js (App Router, JS), Tailwind v4 + shadcn, Prisma 7 pointed at Neon, zod. Both apps runnable side-by-side.
 2. Schema + migrations — copy the §9 schema into prisma/schema.prisma, run the first migration, seed: you as ADMIN, the global default StatusStageMapping rows, and the three workflows' metadata.
 3. Auth layer — port server.js login/me/logout to route handlers; validate against Jira /myself, upsert User + JiraCredential with AES-GCM-encrypted token (key from env/secret store); cookie sessions (e.g. iron-session) replacing the file store. **[DONE 2026-06-29]** — `app/api/auth/{login,me,logout}`, iron-session `{ userId }` cookie, AES-256-GCM `crypto.js`, isolated `lib/jira/client.js` (`fetchMyself`/`fetchCloudId`); `cloudId` discovered via `_edgeProxy/tenant_info`; secrets fail loudly. See context/features/auth-layer.md.
-4. Domain APIs — zod-validated route handlers for teams/memberships (admin), sprints (admin), filter templates + filters, stage toggle/blocked writes to IssueProgress.
-5. Sync with hybrid seeding — port the Jira client (keep field IDs/pagination isolated in one module); on sync, upsert the Issue cache and create missing IssueProgress rows seeded via StatusStageMapping; never touch rows that already exist.
+4. Domain APIs — zod-validated route handlers for teams/memberships (admin), sprints (admin), filter templates + filters, stage toggle/blocked writes to IssueProgress. **[DONE 2026-07-07]** — 14 route files under `web/src/app/api/` (`teams`+`members`, `sprints` (no DELETE — close via `state`), `filter-templates`, sprint-scoped `filters` incl. priority insertion + `order` reorder, `progress/[jiraKey]` idempotent PUT with the checklist cascade + owning-workflow derivation, admin `users`); `web/src/lib/rbac.js` (`requireAdmin`/`requireTeamRole`, global-admin bypass) + `web/src/lib/api/route-helpers.js` (`{ error }` + status mapping, P2002→409/P2025→404); per-resource zod schemas. No schema change. Verified by a 68-check curl matrix against Neon. See context/features/domain-apis.md.
+5. Sync with hybrid seeding — port the Jira client (keep field IDs/pagination isolated in one module); on sync, upsert the Issue cache and create missing IssueProgress rows seeded via StatusStageMapping; never touch rows that already exist. **[DONE 2026-07-07]** — `lib/jira/client.js` grown (`getJiraAuthForUser` decrypting the caller's credential, `fetchFilter`, paginated `searchIssues` via `/search/jql` + `nextPageToken`, 2000-issue safety cap), pure `lib/jira/transform.js` (per-team field ids, full assignee+accountId/priority/dueDate now kept), `lib/sync/engine.js` + pure `lib/sync/seeding.mjs`, `POST /api/teams/[teamId]/sprints/[sprintId]/sync` (writer roles). Verified: 15 standalone checks + full pipeline live over HTTP (pagination, jql refresh, seeding shapes, create-only re-sync, manual-edit survival, removed-issue progress survival, owning-workflow re-eval 10→4). ⚠️ Real-Tekion-issue sync blocked: the stored API token is **dead** (expired/revoked; Jira degrades bad Basic auth to *anonymous*, so searches return empty instead of 401 — which also hid the failure). Engine now **fail-fasts via `/myself`** before syncing (verified live: 401 + reconnect message). Naveen: mint a fresh long-expiry classic token, re-login, re-verify. See context/features/sync-hybrid-seeding.md.
 6. UI port — pages for login, team dashboard (the existing Delivery Matrix, re-skinned), ED roll-up, admin; swap usePersistedSprintState for server data; localStorage keeps only density/collapse.
 7. Background job — a cron on your internal infra hitting an internal route: refresh issue caches + write the daily per-team SprintSnapshot for active sprints.
 8. Share view + export — SharedView token route (/share/[token], live or frozen, expiry) replacing the base64 URL; port PDF/PNG export.

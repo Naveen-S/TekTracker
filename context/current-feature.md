@@ -1,73 +1,58 @@
 # Current Feature
 
-**Auth layer (migration step 3)** — full spec:
-@context/features/auth-layer.md
+**UI port — login + team dashboard + minimal admin (migration step 6a)** — full spec:
+@context/features/ui-port.md
 
-Port the prototype's Jira auth (`server.js` → `POST /api/auth/login`, `GET /api/auth/me`,
-`POST /api/auth/logout`) to **Next.js 16 Route Handlers** in `web/`, upgraded to the production model:
-validate `email + token` against Jira `/myself`, **upsert `User` + `JiraCredential`** with the Jira
-token **AES-256-GCM-encrypted at rest** (key from env/secret store), and replace the
-`express-session` file store with an **iron-session** cookie whose payload is **`{ userId }` only**
-(the token never enters the cookie). First login **reconciles the bootstrap-seeded admin** —
-fills the real `jiraAccountId`/`displayName`/`avatarUrl` over the `seed-pending:<email>` placeholder
-while preserving `isAdmin`. This is **Production Migration Plan step 3**, resuming the master plan
-**in order** ahead of the pulled-forward importer (@context/features/seed.md, step 9), which wants a
-real `updatedBy` user + a Team (login + admin provisioning) first.
+Make everything built in steps 1–5 visible: port the prototype's UI to `web/` on **server data**
+(retiring `usePersistedSprintState`; localStorage keeps only density/collapse). `/login` (ported
+LoginForm), `/` dashboard as a **server component** (Prisma reads + pure `metrics.mjs` port of
+`computeSprintMetrics`; team/sprint via `?team=&sprint=` searchParams) with client leaves calling
+the step-4/5 routes (`PUT` progress w/ server-owned cascade, filter CRUD + reorder, `POST …/sync`),
+re-skinned with Tailwind v4 + hand-written shadcn-style components; and a thin **`/admin`** page
+(teams/members/sprints over the existing APIs) so a fresh DB is usable end-to-end. RBAC-aware
+chrome (VIEWER read-only, admin-only Configure Sprint), server-enforced always. **Split decision:**
+this is 6a — the EM/Lead daily loop; the ED multi-team roll-up is 6b, its own feature.
+Acceptance includes the deferred **real-Jira re-verification** (fresh token → login UI → Sync →
+real issues), per Naveen 2026-07-07.
 
 ## Status
 
-**Done 2026-06-29.** Implemented `crypto.js` (AES-256-GCM), `auth.js` (iron-session 8.0.4 +
-`getCurrentUser`/`requireUser`), `jira/client.js` (`fetchMyself`/`fetchCloudId`), `schemas/auth.js`,
-and `app/api/auth/{login,me,logout}/route.js`; added `iron-session@8.0.4` (exact) +
-`JIRA_BASE_URL`/`SESSION_PASSWORD`/`TOKEN_ENCRYPTION_KEY` to `.env.example`. `yarn lint` clean;
-`yarn build` green + **DB/env-free** (routes are `ƒ Dynamic`); crypto round-trip/tamper/bad-key tests
-pass; dev-server curl confirms the **Next 16 async `cookies()` + iron-session** wiring (login `400`,
-me-no-cookie `401`, logout `200` + clearing cookie). Decisions 3–4 resolved, 7–9 implemented as
-proposed. Doc-synced project-overview §10/§13/migration-step-3 (§7 kept as legacy). **Login success
-path verified end-to-end (2026-06-29, real creds + Neon):** login → `200 {isAdmin:true}` + sealed
-30-day cookie; me round-trips; logout → 401; DB shows seed-admin reconciled (real `jiraAccountId`,
-`isAdmin` kept) and the token **encrypted at rest** (ciphertext, decrypts back). `cloudId` fell back
-to `baseUrl` (tenant_info gave none — fine under token auth). **Next:** @context/features/seed.md
-(importer, step 9) or step 4 (Domain APIs). See @context/features/auth-layer.md "As-built notes".
+**Planned 2026-07-07.** Spec drafted with 9 PROPOSED decisions (server-component reads via Prisma +
+client `fetch` writes to existing routes, no Server Actions in 6a; `?team=&sprint=` searchParams
+routing; per-page auth gate, no middleware; pure `metrics.mjs` port; hand-written shadcn-style
+components, no new deps; add-filter = CRUD POST + immediate sync; RBAC-aware chrome with server
+enforcement unchanged; exactly two localStorage prefs, `?share=` restore not ported; legacy app
+untouched). Not started. ⚠️ Real-data acceptance still needs Naveen's fresh Jira token (stored one
+is dead — sync-hybrid-seeding.md).
 
 ## Goals
 
-- **(a) Crypto — `web/src/lib/crypto.js`** — `encryptToken`/`decryptToken` (AES-256-GCM, random 12-byte
-  IV, stored as base64 `iv ‖ authTag ‖ ciphertext`); key from `TOKEN_ENCRYPTION_KEY` (base64 32 bytes);
-  **fail loudly** if absent/wrong-length. Pure (no DB/Jira), round-trippable.
-- **(b) Session — `web/src/lib/auth.js`** — iron-session config (httpOnly, `sameSite:'lax'`, secure in
-  prod, 30-day) + `getSession()`/`getCurrentUser()`/`requireUser()`. Cookie holds **`{ userId }`**;
-  identity/`isAdmin` are read **fresh from the DB** each request (RBAC-freshness, decision 8).
-- **(c) Minimal Jira client — `web/src/lib/jira/client.js`** — `fetchMyself()` (Basic auth →
-  `{baseUrl}/rest/api/3/myself`) + `fetchCloudId()` (`/_edgeProxy/tenant_info`); **all** Jira specifics
-  isolated here (§17). Step 5 grows this into the full sync client.
-- **(d) Route handlers** — `app/api/auth/{login,me,logout}/route.js`. `login`: zod-validate
-  `{ email, token }`, validate via Jira (401 on bad creds), **upsert `User`** (by `email`, don't touch
-  `isAdmin`) + **`JiraCredential`** (by `userId`, `encryptedToken` only — never raw), set `{ userId }`
-  cookie, return `{ email, displayName, isAdmin, avatarUrl }`. `me`/`logout` keep the prototype's
-  contract (`{ error }` bodies, same HTTP statuses).
-- **(e) Env + dep** — add to `web/.env.example`: `JIRA_BASE_URL`, `SESSION_PASSWORD` (≥32 chars),
-  `TOKEN_ENCRYPTION_KEY` (base64 32 bytes); add `iron-session` (exact-pinned). No `JIRA_CLOUD_ID`.
-- **Acceptance:** valid login → `200` + cookie + a `User` (admin reconciled) and a `JiraCredential`
-  whose `encryptedToken` is **ciphertext, not the token**; bad creds → `401`, no writes; `me`/`logout`
-  behave; `decryptToken(encryptToken(x)) === x`; missing secrets fail loudly; `yarn lint` + `yarn
-  build` green + **DB-free**. Verified end-to-end with `curl` (no UI yet — that's step 6).
+- **(a) Metrics — `web/src/lib/metrics.mjs`** — pure port of `computeSprintMetrics`/health/velocity
+  (§12) onto new shapes (Issue cache + IssueProgress joined by jiraKey; Prisma enums); plain-Node
+  testable; fixture-checked against the prototype's outputs.
+- **(b) Data assembly — `web/src/lib/dashboard-data.js`** — server-only: (userId, team?, sprint?) →
+  my teams+roles, selected team/sprint defaults, ordered filters+issues, progress, metrics.
+- **(c) Pages** — `/login` (ported LoginForm, §11 copy); `/` dashboard server component (TopBar w/
+  team+sprint selectors + search + Add filter + Sync; Hero w/ days-left, density, admin-only
+  Configure Sprint; MetricGrid; FilterPanel sidebar + PlannerPanel Delivery Matrix w/ stage
+  checkboxes, health chip, blocked); `/admin` (admin-gated thin forms: teams, members-by-email,
+  sprints + state). Client leaves fetch existing routes then `router.refresh()`.
+- **(d) Modals** — AddFilter (POST + sync, decision 6), SprintConfig (admin), Alert. No Export/Share
+  (step 8).
+- **Acceptance:** full UI flow on dev+Neon (provision → filter → sync → matrix → stage cascade →
+  blocked → reorder → density/collapse reload; VIEWER read-only; non-admin no `/admin`); metrics
+  fixture parity; lint/build green + DB/env-free; **Naveen: fresh token → UI login → real sync**.
 
 ## Notes
 
-- **Next 16 `cookies()` is async** and its iron-session integration is the piece most likely to differ
-  from training data — read the installed `next`/`iron-session` docs (`web/AGENTS.md`) **before**
-  writing `auth.js`. Don't assume the call shape.
-- `web/.env` is **distinct** from the repo-root `.env` (legacy Vite/Express app); the root file stays
-  untouched until cutover. `SESSION_PASSWORD` (cookie sealing) ≠ `TOKEN_ENCRYPTION_KEY` (token-at-rest)
-  — two secrets; the old `SESSION_SECRET` is not carried over.
-- **Doc-sync (§17):** keep §7 as the **legacy** snapshot (both apps coexist); on landing, mark §13
-  item 1 (encrypt-at-rest) implemented in `web/`, item 5 (secrets store) partial, append to the §10
-  Auth row, and record migration **step 3** done. "Admin settings / RBAC" stays **[GAP]** — this
-  surfaces `isAdmin` + adds `requireUser()` but enforces no gating yet (that's step 4).
-- Route Handlers (not Server Actions) per coding-standards (third-party integration + future CLI
-  clients) and §8 (keep contracts); `{ success, data, error }` is the **Server Action** shape, used
-  later for in-app mutations (step 4), not here.
+- **Next 16: `searchParams`/`cookies()` are async** — re-read the installed docs before the page
+  shells (same discipline as steps 3–5).
+- Stage toggles send target state; the server owns the cascade (step 4) — optimistic update, then
+  `router.refresh()` reconciles.
+- Density/collapse: read localStorage after mount (SSR-safe defaults) — no hydration mismatch.
+- Empty states: no membership → "ask an admin" panel; no filters → welcome hero (prototype parity).
+- **Doc-sync (§17):** §5 UI-row notes, §11 re-skin note, §13.3 UI gating, master-plan step 6 →
+  partial (6a done, ED roll-up = 6b outstanding).
 
 ## History
 
@@ -189,3 +174,88 @@ to `baseUrl` (tenant_info gave none — fine under token auth). **Next:** @conte
   plaintext, decrypts back; `lastValidatedAt` set). `cloudId` fell back to `baseUrl`
   (`_edgeProxy/tenant_info` returned none — harmless under token auth; revisit at OAuth). auth-layer.md
   Status + as-built notes updated.
+- 2026-07-07 — Planning session (no code): with step 3 done, confirmed **step 4 (Domain APIs)** as the
+  next in-order step (over the pulled-forward importer, seed.md — now unblocked by step 4's team
+  provisioning, sequenced right after). Drafted @context/features/domain-apis.md against the auth-layer
+  patterns and the prototype's mutation semantics: 14 route files (teams/memberships, sprints,
+  filter-templates, filters incl. reorder, IssueProgress writes, admin users list), `lib/rbac.js` +
+  `lib/api/route-helpers.js`, 4 schema modules. 9 PROPOSED decisions incl. Route Handlers over Server
+  Actions (refines the auth-layer decision-7 aside — step 4 predates any UI, so Actions would be
+  untestable), the RBAC matrix (global-admin bypass; sprints admin-only, §13.3's "+ED" deferred),
+  idempotent progress PUT with the server-owned checklist cascade, owning-workflow derivation from the
+  Issue cache (unknown key → 404), no Sprint DELETE, and progress surviving filter delete (designed
+  §9 deviation from the prototype's stage-wipe). No schema change/migration in this step.
+- 2026-07-07 — Picked @context/features/domain-apis.md as the current feature (migration **step 4** —
+  Domain APIs: RBAC-gated CRUD for teams/memberships/sprints/filter-templates/filters + IssueProgress
+  stage/blocked writes). auth-layer remains **Done**.
+- 2026-07-07 — **Implemented domain-apis (migration step 4).** Confirmed Next 16 async `params`
+  against the installed docs first. Added `web/src/lib/rbac.js` (`ForbiddenError`/`NotFoundError`,
+  `requireAdmin`, `requireTeamRole` w/ global-admin bypass, MANAGER/WRITER/ALL role groups),
+  `web/src/lib/api/route-helpers.js` (`ValidationError`, `parseJsonBody` w/ zod folded in,
+  `handleRouteError` mapping 400/401/403/404/409/500), zod-4 schemas
+  `schemas/{team,sprint,filter,progress}.js`, and 14 `force-dynamic` route files (teams+members,
+  sprints incl. merged-date PATCH check + no DELETE, filter-templates, sprint-scoped filters w/
+  transactional priority insertion + `order` reorder, progress GET + idempotent PUT w/ checklist
+  cascade + owning-workflow derivation + `updatedById`, admin users list). No schema change/migration.
+  Verified: lint clean; build green + DB/env-free (14 routes `ƒ Dynamic`); **68/68 curl acceptance
+  checks** against Neon w/ fabricated non-admin users (minted iron-session cookies via `sealData`)
+  and Issue cache rows — all cleaned up after, tmp harness deleted. As-built deviations recorded in
+  domain-apis.md (NotFoundError in rbac.js; parseJsonBody+zod; 200-not-201; renumber-all sortOrder;
+  zod-4 enum/date idioms). Doc-synced project-overview (§5 rows, §13.3 BUILT-in-web, §14.5–6 fixed
+  in web, step 4 DONE). **Done.**
+- 2026-07-07 — Planning session (no code): with step 4 done and proper end-to-end testing only
+  possible after step 6 (UI), confirmed **step 5 (Sync with hybrid seeding)** as next in order — it
+  is also what gives step 6 real data to render. Drafted
+  @context/features/sync-hybrid-seeding.md from the port sources (jiraService.js `searchAllIssues`/
+  `transformJiraIssue`, server.js `/api/jira/{filter,search}` incl. the new `/search/jql` +
+  `nextPageToken` shape, `handleSyncAll` diffing) and the seeded `StatusStageMapping` table. 10
+  PROPOSED decisions, notably: sync-all route + engine reusable by the step-7 cron; caller's
+  decrypted credential; writer-roles RBAC; replace-by-diff Issue cache; **create-only seeding**
+  (§9 — manual edits win; re-seed-forward deferred); owning-workflow re-eval with pad/truncate;
+  per-team field ids (fixes §14.7); transform upgrades (full assignee name + accountId, priority,
+  real dueDate — the prototype's lossy fields); no derived status/stage/percent port.
+- 2026-07-07 — Picked @context/features/sync-hybrid-seeding.md as the current feature (migration
+  **step 5** — Jira sync client + engine + `POST …/sync` with hybrid StatusStageMapping seeding).
+  domain-apis remains **Done**.
+- 2026-07-07 — **Implemented sync-hybrid-seeding (migration step 5).** Verified the `/search/jql`
+  POST shape against the legacy proxy first. Grew `lib/jira/client.js` (`getJiraAuthForUser`
+  decrypting the caller's credential, `fetchFilter`, paginated `searchIssues` w/ `nextPageToken` +
+  2000-issue cap, `JiraCredentialMissingError`/`JiraApiError`); added pure `lib/jira/transform.js`
+  (per-team field ids, legacy points fallback, full assignee+accountId/priority/dueDate; no derived
+  status/stage/percent), `lib/schemas/jira.js` (zod-4 `looseObject`), `lib/sync/engine.js` (per-filter
+  atomic delete-all+createMany cache replace w/ key-diff, create-only StatusStageMapping seeding
+  team-over-global, owning-workflow re-eval w/ reshape), pure `lib/sync/seeding.mjs` (split out —
+  engine's import chain needs Next), and the writer-gated sync route (Jira errors mapped in-route:
+  401/502). Moved `owningWorkflowType` into `workflows.mjs`, shared with the step-4 progress route.
+  Verified: lint/build green + DB/env-free; 15 standalone checks; full pipeline over real HTTP via a
+  contract-faithful mock Jira + fabricated MEMBER credential (pagination, jql refresh, seeded shapes,
+  create-only, manual-edit survival, removal survival, FEATURE→SUPPORT reshape, 403/401); real-Jira
+  round-trip live (200s, 400→502 mapping). **Found: the stored Tekion token sees zero projects** —
+  real-data sync blocked on Jira access, flagged in the spec Status. Cleanup done; docs synced. **Done.**
+- 2026-07-07 — **Corrected the zero-projects finding + hardened sync.** Naveen asked whether his EM
+  account can search all projects; probed the permission endpoints with the stored credential
+  (`/myself` plain + expanded, `project/search` browse/view, `mypermissions`, and the same calls with
+  NO auth). Result: authenticated and anonymous behave **identically** → the stored token is **dead**
+  (expired/revoked; it passed `/myself` at login 2026-06-29), and Jira degrades invalid Basic auth to
+  anonymous (200 + empty) on search/project endpoints — so account project-visibility is **still
+  unknown**, and the earlier "sees zero projects" read was a misdiagnosis. This exposed a sync gap
+  (dead token → plausible empty sync): added a **fail-fast `fetchMyself` validation** at
+  `syncTeamSprint` start → `401 "Stored Jira token is invalid or expired — log in again to
+  reconnect"`; verified live against the dead credential; lint/build re-verified green + env-free.
+  Doc-synced the corrected finding (spec Status + as-built, project-overview step-5, this file).
+  Atlassian claude.ai connector is not authorized (can't check via Rovo either). **Naveen's action:**
+  fresh long-expiry classic API token → `POST /api/auth/login` → re-run a real sync (that answers the
+  permissions question too).
+- 2026-07-07 — Planning session (no code): per Naveen, the real-Jira re-verify waits for the UI —
+  **step 6 is next**. Drafted @context/features/ui-port.md, scoping it to **6a** (login + team
+  dashboard + minimal admin — the EM/Lead daily loop); the ED multi-team roll-up split off as **6b**
+  (needs its own read-model/metric-aggregation decisions). 9 PROPOSED decisions, notably:
+  server-component reads via Prisma + pure metrics (no new read-model APIs) with client `fetch`
+  writes to the existing step-4/5 routes + `router.refresh()` (no Server Actions in 6a);
+  `?team=&sprint=` searchParams routing; per-page auth gates; hand-written shadcn-style components
+  (no new deps); add-filter = CRUD + immediate sync (prototype parity across the step-5 split);
+  exactly two localStorage prefs and no `?share=` port (step 8 owns sharing). Acceptance includes
+  the deferred fresh-token real-Jira sync test through the login UI.
+- 2026-07-07 — Picked @context/features/ui-port.md as the current feature (migration **step 6a** —
+  UI port: login + server-data Delivery Matrix dashboard + minimal admin). sync-hybrid-seeding
+  remains **Done**.

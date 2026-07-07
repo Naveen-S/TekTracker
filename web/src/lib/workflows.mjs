@@ -75,3 +75,16 @@ export function stageCountFor(workflowType) {
   if (!workflow) throw new Error(`Unknown workflow type: ${workflowType}`);
   return workflow.stages.length;
 }
+
+/**
+ * The OWNING workflow among the filters containing an issue — the highest-priority (lowest
+ * number) one (§9: `workflowType` and the `stageCompletion` shape follow it). Shared by the
+ * progress write route (step 4) and the sync engine (step 5) so the two always agree.
+ * @param {Array<keyof typeof WORKFLOWS>} workflowTypes non-empty
+ * @returns {keyof typeof WORKFLOWS}
+ */
+export function owningWorkflowType(workflowTypes) {
+  return workflowTypes.reduce((best, type) =>
+    WORKFLOWS[type].priority < WORKFLOWS[best].priority ? type : best,
+  );
+}

@@ -11,7 +11,7 @@ roll-ups that leadership can actually read.
 Read the following to get the full context of the project:
 - @context/project-overview.md
 - @context/coding-standards.md
-- @context/ai-interactions.md
+- @context/ai-interaction.md
 - @context/current-feature.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
