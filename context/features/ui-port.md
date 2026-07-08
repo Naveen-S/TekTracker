@@ -23,9 +23,27 @@ PlannerPanel, IssueRow, LoginForm, modals), [src/hooks/usePersistedSprintState.j
 
 ## Status
 
-**Planned 2026-07-07.** Decisions 1–9 PROPOSED. Everything it consumes exists: auth (step 3),
-domain APIs (step 4), sync (step 5), Tailwind/shadcn theme (Feature 2). ⚠️ Real-data acceptance
-needs Naveen's **fresh Jira API token** (the stored one is dead — see sync-hybrid-seeding.md).
+**Done 2026-07-08** (one acceptance item outstanding — the ⚠️ real-Jira run below). Implemented all
+of (a)–(d), decisions 1–9 as proposed: pure **`lib/metrics.mjs`** (+`lib/use-local-pref.js`),
+server-only **`lib/dashboard-data.js`**, client **`lib/api-client.js`**, UI kit
+(`components/ui/{input,textarea,label,select,badge,dialog}.jsx`), **`/login`**
+(`components/auth/login-form.jsx`), **`/`** dashboard (server `page.jsx` + 10
+`components/dashboard/*` client leaves incl. the three dialogs), **`/admin`**
+(`components/admin/admin-panel.jsx`); layout metadata fixed; `tekion-logo.svg` copied, scaffold
+placeholder page/svgs removed. **Verified:** metrics fixture parity vs the prototype's real bytes —
+**16/16** (per-issue percents, all aggregates, sprint health, `getWeeklyVelocity` deep-equal);
+`yarn lint` clean; `prisma migrate status` up to date; `yarn build` green + **DB/env-free** (`.env`
+moved aside — `/`, `/login`, `/admin` and all 19 API routes `ƒ Dynamic`); **~30-check SSR smoke**
+on dev+Neon with minted cookies + a fabricated VIEWER + hand-inserted Issue rows (the stored Jira
+token is still dead): unauthenticated `/`+`/admin` → 307 `/login`; login page renders the §11 copy;
+matrix SSRs issue rows, FEATURE stage headers, metric cards, hero; **stage-4 PUT → SSR shows the
+80% badge** (weighted cascade round-trip); blocked chip renders; **VIEWER sees a disabled matrix
+with no Sync/Add-filter/Configure-Sprint chrome and 404s on `/admin`**; no-membership and
+no-filters empty states render; admin page lists teams+sprints. Test data cleaned from Neon,
+harness deleted. ⚠️ **Naveen's acceptance step:** fresh classic API token → log in at
+`/login` → add a real filter → Sync — closes the loop from sync-hybrid-seeding.md and answers the
+project-visibility question. **Next:** step 6b (ED roll-up) or step 7 (background job) / step 9
+(importer).
 
 ## Decisions (PROPOSED 2026-07-07)
 
@@ -147,7 +165,34 @@ needs Naveen's **fresh Jira API token** (the stored one is dead — see sync-hyb
 
 ## As-built deviations from the spec
 
-_(fill in during implementation)_
+- **Prefs hook instead of read-after-mount:** the installed `react-hooks` ESLint rules
+  (`set-state-in-effect`) reject the spec'd "read localStorage in `useEffect`" pattern — added
+  `lib/use-local-pref.js` (`useSyncExternalStore`: server snapshot = default, client snapshot =
+  localStorage, same-tab emitter) — cleaner and hydration-safe.
+- **Add-filter dialog requires a display name for BOTH source types** (the step-4 create API
+  requires `name`; the prototype derived it from the fetched Jira filter, which now only refreshes
+  `jql` at sync).
+- **No optimistic stage updates in 6a**: click → `PUT` → `router.refresh()` (spec said "optimistic
+  update, then refresh"); cells disable while a write is in flight. Latency is acceptable on
+  dev+Neon; an optimistic overlay is a noted follow-up if it feels laggy in real use.
+- **Search stays in the FilterPanel** (prototype placement) rather than the §11 header; the
+  prototype's dead TopBar nav links were not ported — an admin-only **Admin** link took their spot.
+- **VelocityMetric simplified** into a standard metric card (pts/wk + weeks-needed pace detail).
+- **Semantic tones, two data-driven inline styles:** metrics.mjs emits `tone` keys mapped to
+  Tailwind classes (no hex in components); inline `style` survives only where values are data
+  (filter `accentColor` from the DB, `gridTemplateColumns` from the stage count).
+- **metrics.mjs is stricter than the prototype on cross-workflow keys**: percent/health always use
+  the OWNING workflow's weights (the prototype silently fell back to count-based percent on a
+  length mismatch). Single-workflow keys are identical — the 16-check parity fixture proves it.
+  Cross-filter duplicate counting (an issue in two filters counts twice in aggregates) is kept
+  as prototype parity.
+- **Verification had no browser automation**: flows were exercised as SSR HTML assertions + the
+  same API calls the client leaves make (minted `sealData` cookies, fabricated VIEWER, Issue cache
+  rows inserted directly — sync is blocked on the dead token). Density/collapse persistence and
+  client-side dialog behavior are code-reviewed, not machine-verified; they get eyeballed in
+  Naveen's real-token acceptance run.
+- **SSR text-interpolation gotcha** (for future smoke greps): JSX `{percent}%` renders as
+  `80<!-- -->%` in the HTML stream — grep accordingly.
 
 ## References
 

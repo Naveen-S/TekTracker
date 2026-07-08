@@ -17,13 +17,20 @@ real issues), per Naveen 2026-07-07.
 
 ## Status
 
-**Planned 2026-07-07.** Spec drafted with 9 PROPOSED decisions (server-component reads via Prisma +
-client `fetch` writes to existing routes, no Server Actions in 6a; `?team=&sprint=` searchParams
-routing; per-page auth gate, no middleware; pure `metrics.mjs` port; hand-written shadcn-style
-components, no new deps; add-filter = CRUD POST + immediate sync; RBAC-aware chrome with server
-enforcement unchanged; exactly two localStorage prefs, `?share=` restore not ported; legacy app
-untouched). Not started. ⚠️ Real-data acceptance still needs Naveen's fresh Jira token (stored one
-is dead — sync-hybrid-seeding.md).
+**Done 2026-07-08** — all 9 decisions implemented as proposed. Pure `lib/metrics.mjs` (**16/16
+fixture parity** against the prototype's real bytes) + `lib/dashboard-data.js` +
+`lib/api-client.js` + `lib/use-local-pref.js`; UI kit (input/textarea/label/select/badge/dialog);
+`/login`, `/` dashboard (server component + 10 client leaves incl. AddFilter/SprintConfig/Alert
+dialogs), `/admin`. Lint clean; migrations up to date; build green + **DB/env-free** (all pages +
+19 API routes `ƒ Dynamic`). **~30-check SSR smoke** on dev+Neon (minted cookies, fabricated
+VIEWER, hand-inserted Issue rows): auth gates 307→/login, §11 login copy, matrix/metrics/hero/
+sidebar render, **stage-4 PUT → 80% badge in SSR** (cascade round-trip), blocked chip, **VIEWER
+read-only (disabled cells, no Sync/Add/Configure chrome, /admin 404)**, no-membership + welcome
+empty states, admin page SSR. Test data cleaned; harnesses deleted. Doc-synced §5 rows/§11/§13.3/
+step-6 (PARTIAL — 6a done). ⚠️ **Naveen's acceptance run still open:** fresh classic token →
+`/login` → add real filter → Sync (also answers the project-visibility question). See
+@context/features/ui-port.md "As-built deviations". **Next:** 6b (ED roll-up), step 7 (background
+job), or step 9 (importer).
 
 ## Goals
 
@@ -259,3 +266,23 @@ is dead — sync-hybrid-seeding.md).
 - 2026-07-07 — Picked @context/features/ui-port.md as the current feature (migration **step 6a** —
   UI port: login + server-data Delivery Matrix dashboard + minimal admin). sync-hybrid-seeding
   remains **Done**.
+- 2026-07-08 — **Implemented ui-port (migration step 6a).** Confirmed Next 16 async `searchParams`
+  against the installed docs first. Added pure `lib/metrics.mjs` (ported
+  `computeSprintMetrics`/health/velocity onto Issue-cache+IssueProgress shapes, semantic `tone`
+  keys instead of hex; **16/16 fixture-parity** vs the prototype's byte-copied modules),
+  `lib/dashboard-data.js` (server-only Prisma assembly + `can` flags), `lib/api-client.js`,
+  `lib/use-local-pref.js` (`useSyncExternalStore` — the installed `react-hooks/set-state-in-effect`
+  rule rejects the prototype's effect pattern), UI kit
+  (`ui/{input,textarea,label,select,badge,dialog}.jsx`), `/login` + `components/auth/login-form.jsx`,
+  `/` server page + `components/dashboard/{dashboard,top-bar,hero,metric-grid,empty-state,
+  filter-panel,planner-panel,issue-row,add-filter-dialog,sprint-config-dialog,alert-dialog}.jsx`,
+  and admin-gated `/admin` + `components/admin/admin-panel.jsx`; `tekion-logo.svg` copied, scaffold
+  placeholders removed. Verified: lint clean, migrate status up to date, build green + DB/env-free
+  (23 `ƒ Dynamic` entries); ~30-check SSR smoke over dev+Neon w/ minted cookies (auth gates, matrix
+  SSR, stage-4 PUT → `80<!-- -->%` badge, blocked chip, VIEWER read-only + `/admin` 404,
+  no-membership/welcome empty states, admin page). As-built deviations in ui-port.md (useLocalPref;
+  name required for both source types; no optimistic updates; search in sidebar; simplified
+  velocity card; owning-workflow weights stricter than prototype; two data-driven inline styles;
+  no browser automation — SSR-assertion verification). Cleanup done; docs synced (§5/§11/§13.3/
+  step-6 PARTIAL 6a). **Done** — ⚠️ real-token UI acceptance run left for Naveen. **Next:** 6b
+  (ED roll-up), step 7 (background job), or step 9 (importer).

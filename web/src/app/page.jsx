@@ -1,30 +1,27 @@
-import { Button } from "@/components/ui/button";
-import { validate } from "@/lib/validation";
-import { exampleInputSchema } from "@/lib/schemas/example";
+/**
+ * Dashboard (ui-port.md (c)) — server component: auth gate, Prisma reads + pure metrics via
+ * getDashboardData, then hands serializable props to the client shell. Team/sprint selection
+ * travels in `?team=&sprint=` (decision 2); mutations happen in the client leaves against the
+ * step-4/5 routes, followed by router.refresh() re-running this fetch.
+ */
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
+import { getDashboardData } from "@/lib/dashboard-data";
+import { Dashboard } from "@/components/dashboard/dashboard";
 
-export default function Home() {
-  // Smoke test: proves the zod boundary-validation helper resolves and runs.
-  const check = validate(exampleInputSchema, { name: "Sprint Tracker" });
+export const dynamic = "force-dynamic";
 
-  return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-8 p-24 text-center">
-      <div className="flex flex-col items-center gap-3">
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-          Sprint Tracker
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Tailwind v4 + shadcn/ui + zod scaffold —{" "}
-          {check.success ? "validation OK" : check.error}
-        </p>
-      </div>
+export default async function DashboardPage({ searchParams }) {
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect("/login");
+  }
 
-      <div className="flex flex-wrap items-center justify-center gap-3">
-        <Button>Primary</Button>
-        <Button variant="secondary">Secondary</Button>
-        <Button variant="outline">Outline</Button>
-        <Button variant="ghost">Ghost</Button>
-        <Button variant="destructive">Destructive</Button>
-      </div>
-    </main>
-  );
+  const { team, sprint } = await searchParams;
+  const data = await getDashboardData(user, {
+    teamId: typeof team === "string" ? team : undefined,
+    sprintId: typeof sprint === "string" ? sprint : undefined,
+  });
+
+  return <Dashboard {...data} />;
 }

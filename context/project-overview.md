@@ -6,7 +6,7 @@
 > **[BUILT]**, **[PARTIAL]**, **[PLANNED]**, or **[GAP]** so the as-built state is never confused
 > with the target state.
 >
-> Last reviewed: 2026-06-10 · Owner: Naveen · Audience: engineers + Claude Code.
+> Last reviewed: 2026-07-08 · Owner: Naveen · Audience: engineers + Claude Code.
 
 ---
 
@@ -85,13 +85,13 @@ Key relationships:
 
 | Feature | State | Notes |
 |---|---|---|
-| Add Jira filters (by filter ID or JQL) | **[BUILT]** | `useSprintData.handleAddFilter`. |
-| Update stages per work item | **[BUILT]** | Manual checklist; `toggleStage`. Not Jira-derived. |
-| Mark work item as blocked | **[BUILT]** | `toggleBlocked`. |
-| Remove Jira filter | **[BUILT]** | `handleRemoveFilter`. |
+| Add Jira filters (by filter ID or JQL) | **[BUILT]** | `useSprintData.handleAddFilter`. **`web/` UI: AddFilter dialog → CRUD POST + immediate sync** (step 6a, 2026-07-08). |
+| Update stages per work item | **[BUILT]** | Manual checklist; `toggleStage`. Not Jira-derived. **`web/` UI: matrix cells → idempotent PUT w/ server-owned cascade** (step 6a, 2026-07-08; hybrid-seeded since step 5). |
+| Mark work item as blocked | **[BUILT]** | `toggleBlocked`. **`web/` UI: health chip → PUT blocked** (step 6a, 2026-07-08). |
+| Remove Jira filter | **[BUILT]** | `handleRemoveFilter` (wipes stages). **`web/` UI: DELETE — progress survives by design (§9)** (step 6a, 2026-07-08). |
 | Sync Jira (pull live status) | **[BUILT]** | Legacy: `handleSyncAll`; diffs added/removed issues. **`web/`: server-side sync engine + `POST …/sync` route with hybrid stage seeding** (step 5, 2026-07-07). |
-| Configure sprint (dates, name) | **[PARTIAL]** | Legacy modal has no gating and no first-class sprint. **`web/` sprint API is admin-gated with first-class `Sprint` rows** (step 4, 2026-07-07); UI pending step 6. |
-| Reorder filters | **[BUILT]** | Drag + priority default sort. |
+| Configure sprint (dates, name) | **[PARTIAL]** | Legacy modal has no gating and no first-class sprint. **`web/`: admin-gated API (step 4) + admin-only UI (SprintConfig dialog + `/admin`, step 6a, 2026-07-08)**; legacy app ungated until cutover. |
+| Reorder filters | **[BUILT]** | Drag + priority default sort. **`web/` UI: drag → PUT `…/filters/order`** (step 6a, 2026-07-08). |
 | Export PDF / PNG | **[BUILT]** | Client-side `html2canvas` + `jsPDF`; include/exclude filters. |
 | Share view | **[PARTIAL]** | Encodes **entire dataset** into a base64 URL — fragile, not live, not access-controlled. |
 | Multi-team / ED roll-up | **[GAP]** | Team + membership model and admin APIs **built in `web/`** (step 4, 2026-07-07); the roll-up *views* remain unbuilt (step 6+). |
@@ -699,6 +699,14 @@ Jira** button. Footer: "Engineering Internal Tool @ Tekion Corp."
 > Current components live under `src/components/{atoms,molecules,organisms,modals}` and are wired in
 > `src/App.jsx`. Re-skin with Tailwind + shadcn during the Next.js migration rather than rewriting the
 > logic in the hooks.
+>
+> **[BUILT in `web/` 2026-07-08, step 6a]** — login + team dashboard + minimal `/admin` re-skinned
+> with Tailwind v4 + hand-written shadcn-style components on **server data**
+> (`usePersistedSprintState` retired; localStorage keeps only density/collapse): `/login`, `/`
+> (server component + client leaves: TopBar w/ team+sprint selectors, Hero, MetricGrid, FilterPanel,
+> PlannerPanel matrix, AddFilter/SprintConfig/Alert dialogs), `/admin`. Export/Share buttons wait
+> for step 8; ED roll-up views are step 6b; dark-mode toggle, toasts (modal alerts for now), and
+> loading skeletons are post-6a polish. See context/features/ui-port.md.
 
 ---
 
@@ -745,7 +753,9 @@ file store. Token is **plaintext on disk** in `.sessions/`. Acceptable for a loc
    2026-07-07, step 4]** — server-side guards (`requireAdmin`/`requireTeamRole`,
    `web/src/lib/rbac.js`) on every domain route; sprint mutations are **global-admin only** (the
    "+ ED" idea is deferred: `Sprint` is global while `ED` is a team-scoped role, so there is no
-   principled team to check it against). UI-level gating lands with step 6.
+   principled team to check it against). **UI-level gating landed with step 6a (2026-07-08)**:
+   Configure Sprint is admin-only chrome, `/admin` 404s for non-admins, VIEWERs get a read-only
+   matrix — all still re-checked server-side per request.
 4. **Share links**: short token, optional expiry, optional auth requirement; never embed the dataset.
 5. Move `SESSION_SECRET` and all secrets to the platform's secret store; rotate. **[PARTIAL in `web/`]**
    the legacy `SESSION_SECRET` is **retired** — `web/` reads `SESSION_PASSWORD` (iron-session sealing)
@@ -866,7 +876,7 @@ The plan — exact next steps, in order
 3. Auth layer — port server.js login/me/logout to route handlers; validate against Jira /myself, upsert User + JiraCredential with AES-GCM-encrypted token (key from env/secret store); cookie sessions (e.g. iron-session) replacing the file store. **[DONE 2026-06-29]** — `app/api/auth/{login,me,logout}`, iron-session `{ userId }` cookie, AES-256-GCM `crypto.js`, isolated `lib/jira/client.js` (`fetchMyself`/`fetchCloudId`); `cloudId` discovered via `_edgeProxy/tenant_info`; secrets fail loudly. See context/features/auth-layer.md.
 4. Domain APIs — zod-validated route handlers for teams/memberships (admin), sprints (admin), filter templates + filters, stage toggle/blocked writes to IssueProgress. **[DONE 2026-07-07]** — 14 route files under `web/src/app/api/` (`teams`+`members`, `sprints` (no DELETE — close via `state`), `filter-templates`, sprint-scoped `filters` incl. priority insertion + `order` reorder, `progress/[jiraKey]` idempotent PUT with the checklist cascade + owning-workflow derivation, admin `users`); `web/src/lib/rbac.js` (`requireAdmin`/`requireTeamRole`, global-admin bypass) + `web/src/lib/api/route-helpers.js` (`{ error }` + status mapping, P2002→409/P2025→404); per-resource zod schemas. No schema change. Verified by a 68-check curl matrix against Neon. See context/features/domain-apis.md.
 5. Sync with hybrid seeding — port the Jira client (keep field IDs/pagination isolated in one module); on sync, upsert the Issue cache and create missing IssueProgress rows seeded via StatusStageMapping; never touch rows that already exist. **[DONE 2026-07-07]** — `lib/jira/client.js` grown (`getJiraAuthForUser` decrypting the caller's credential, `fetchFilter`, paginated `searchIssues` via `/search/jql` + `nextPageToken`, 2000-issue safety cap), pure `lib/jira/transform.js` (per-team field ids, full assignee+accountId/priority/dueDate now kept), `lib/sync/engine.js` + pure `lib/sync/seeding.mjs`, `POST /api/teams/[teamId]/sprints/[sprintId]/sync` (writer roles). Verified: 15 standalone checks + full pipeline live over HTTP (pagination, jql refresh, seeding shapes, create-only re-sync, manual-edit survival, removed-issue progress survival, owning-workflow re-eval 10→4). ⚠️ Real-Tekion-issue sync blocked: the stored API token is **dead** (expired/revoked; Jira degrades bad Basic auth to *anonymous*, so searches return empty instead of 401 — which also hid the failure). Engine now **fail-fasts via `/myself`** before syncing (verified live: 401 + reconnect message). Naveen: mint a fresh long-expiry classic token, re-login, re-verify. See context/features/sync-hybrid-seeding.md.
-6. UI port — pages for login, team dashboard (the existing Delivery Matrix, re-skinned), ED roll-up, admin; swap usePersistedSprintState for server data; localStorage keeps only density/collapse.
+6. UI port — pages for login, team dashboard (the existing Delivery Matrix, re-skinned), ED roll-up, admin; swap usePersistedSprintState for server data; localStorage keeps only density/collapse. **[PARTIAL — 6a DONE 2026-07-08; 6b (ED roll-up) outstanding]** — `/login` + `/` dashboard (server component + Prisma reads via `lib/dashboard-data.js`, pure `lib/metrics.mjs` fixture-parity-checked against the prototype, client leaves fetching the step-4/5 routes + `router.refresh()`) + minimal `/admin`; RBAC-aware chrome (VIEWER read-only, admin-only sprint config), two localStorage prefs via `useSyncExternalStore`. Verified: lint/DB-free build green, ~30-check SSR smoke (auth gates, matrix render, 80% cascade round-trip, viewer chrome, empty states). ⚠️ Real-Jira acceptance (fresh token → UI login → sync) still pending. See context/features/ui-port.md.
 7. Background job — a cron on your internal infra hitting an internal route: refresh issue caches + write the daily per-team SprintSnapshot for active sprints.
 8. Share view + export — SharedView token route (/share/[token], live or frozen, expiry) replacing the base64 URL; port PDF/PNG export.
 9. Importer — one-time script that takes the localStorage JSON (sprintTracker_sprintData + config) and writes Sprint/Filter/IssueProgress rows so your current sprints carry over.
