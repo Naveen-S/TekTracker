@@ -1,65 +1,74 @@
 # Current Feature
 
-**UI port — login + team dashboard + minimal admin (migration step 6a)** — full spec:
-@context/features/ui-port.md
+**ED / multi-team roll-up (migration step 6b)** — full spec: @context/features/ed-rollup.md
 
-Make everything built in steps 1–5 visible: port the prototype's UI to `web/` on **server data**
-(retiring `usePersistedSprintState`; localStorage keeps only density/collapse). `/login` (ported
-LoginForm), `/` dashboard as a **server component** (Prisma reads + pure `metrics.mjs` port of
-`computeSprintMetrics`; team/sprint via `?team=&sprint=` searchParams) with client leaves calling
-the step-4/5 routes (`PUT` progress w/ server-owned cascade, filter CRUD + reorder, `POST …/sync`),
-re-skinned with Tailwind v4 + hand-written shadcn-style components; and a thin **`/admin`** page
-(teams/members/sprints over the existing APIs) so a fresh DB is usable end-to-end. RBAC-aware
-chrome (VIEWER read-only, admin-only Configure Sprint), server-enforced always. **Split decision:**
-this is 6a — the EM/Lead daily loop; the ED multi-team roll-up is 6b, its own feature.
-Acceptance includes the deferred **real-Jira re-verification** (fresh token → login UI → Sync →
-real issues), per Naveen 2026-07-07.
+Completes master-plan step 6 and closes the product's №1 gap (§14.1, §2.2 leadership visibility):
+a read-only, **membership-derived** cross-team roll-up at **`/rollup`** for ED/TPM (N teams) and
+EM/SEM (2–3 teams) — combined metric cards + a per-team summary table for one selected global
+sprint, with an "Open board →" link into each team's `/` dashboard. No new write path and **no new
+API route**: a server component reading Prisma via a new `getRollupData`, reusing the
+fixture-proven per-team `computeSprintMetrics` plus one new **pure `aggregateRollup`** (per-team
+rows, org totals = sum over teams — the shape step 7's `SprintSnapshot` job will mirror). It's
+next because 6a (Done 2026-07-08) delivered the EM/Lead loop and steps 7/9 stay sensible after it.
+Trend/burndown stays out (needs `SprintSnapshot`, step 7); no Sync on the roll-up (rate-limit
+storm, §14.9) — staleness from `Filter.lastSyncedAt` instead.
 
 ## Status
 
-**Done 2026-07-08** — all 9 decisions implemented as proposed. Pure `lib/metrics.mjs` (**16/16
-fixture parity** against the prototype's real bytes) + `lib/dashboard-data.js` +
-`lib/api-client.js` + `lib/use-local-pref.js`; UI kit (input/textarea/label/select/badge/dialog);
-`/login`, `/` dashboard (server component + 10 client leaves incl. AddFilter/SprintConfig/Alert
-dialogs), `/admin`. Lint clean; migrations up to date; build green + **DB/env-free** (all pages +
-19 API routes `ƒ Dynamic`). **~30-check SSR smoke** on dev+Neon (minted cookies, fabricated
-VIEWER, hand-inserted Issue rows): auth gates 307→/login, §11 login copy, matrix/metrics/hero/
-sidebar render, **stage-4 PUT → 80% badge in SSR** (cascade round-trip), blocked chip, **VIEWER
-read-only (disabled cells, no Sync/Add/Configure chrome, /admin 404)**, no-membership + welcome
-empty states, admin page SSR. Test data cleaned; harnesses deleted. Doc-synced §5 rows/§11/§13.3/
-step-6 (PARTIAL — 6a done). ⚠️ **Naveen's acceptance run still open:** fresh classic token →
-`/login` → add real filter → Sync (also answers the project-visibility question). See
-@context/features/ui-port.md "As-built deviations". **Next:** 6b (ED roll-up), step 7 (background
-job), or step 9 (importer).
+**Done 2026-07-08** — all 8 decisions implemented as proposed; **master-plan step 6 is now fully
+DONE (6a + 6b)**. Pure `aggregateRollup` + shared `bandSprintHealth` in `lib/metrics.mjs` (plus
+additive `totalIssues`/`healthCounts`/`featureHealthCounts` on `computeSprintMetrics` — the §9
+`SprintSnapshot.healthCounts` shape); `getRollupData` in `lib/dashboard-data.js` (extracted shared
+`getMembershipContext`/`getSprintSelection`, two batched queries, no N+1); `/rollup` server page +
+`components/rollup/{rollup-top-bar,team-summary-table}.jsx` (one client leaf; SSR table sorted
+worst-health-first w/ request-time staleness); TopBar "Roll-up" link (≥2 teams or admin);
+`MetricGrid` reused via `totalIssues`. Verified: **34/34 plain-Node fixtures** (sums, weighted
+avg, per-team key independence, blocked→Critical, No-Data, additive velocity); lint clean;
+migrations up to date; **DB/env-free build green (23 routes/pages `ƒ Dynamic` incl. the new
+`/rollup`)**; **32/32 SSR smoke** on dev+Neon (unauth 307, 2-of-3-teams scoping + summed combined, admin all-teams +
+Critical + danger-first order, zeroed no-filters row, link visibility). Fixture torn down,
+harnesses deleted, docs synced (§3/§5/§11/§14.1/step-6). ⚠️ Naveen's real-Jira acceptance run
+(fresh token → UI login → sync) still open from 6a. See @context/features/ed-rollup.md "As-built
+notes". **Next:** step 7 (background job: cron sync + daily `SprintSnapshot`) or step 9
+(localStorage importer); step 8 (share/export) after.
 
 ## Goals
 
-- **(a) Metrics — `web/src/lib/metrics.mjs`** — pure port of `computeSprintMetrics`/health/velocity
-  (§12) onto new shapes (Issue cache + IssueProgress joined by jiraKey; Prisma enums); plain-Node
-  testable; fixture-checked against the prototype's outputs.
-- **(b) Data assembly — `web/src/lib/dashboard-data.js`** — server-only: (userId, team?, sprint?) →
-  my teams+roles, selected team/sprint defaults, ordered filters+issues, progress, metrics.
-- **(c) Pages** — `/login` (ported LoginForm, §11 copy); `/` dashboard server component (TopBar w/
-  team+sprint selectors + search + Add filter + Sync; Hero w/ days-left, density, admin-only
-  Configure Sprint; MetricGrid; FilterPanel sidebar + PlannerPanel Delivery Matrix w/ stage
-  checkboxes, health chip, blocked); `/admin` (admin-gated thin forms: teams, members-by-email,
-  sprints + state). Client leaves fetch existing routes then `router.refresh()`.
-- **(d) Modals** — AddFilter (POST + sync, decision 6), SprintConfig (admin), Alert. No Export/Share
-  (step 8).
-- **Acceptance:** full UI flow on dev+Neon (provision → filter → sync → matrix → stage cascade →
-  blocked → reorder → density/collapse reload; VIEWER read-only; non-admin no `/admin`); metrics
-  fixture parity; lint/build green + DB/env-free; **Naveen: fresh token → UI login → real sync**.
+- **(a) Aggregation — `web/src/lib/metrics.mjs`**: pure `aggregateRollup(perTeamMetrics)` — sums
+  (counts, points, velocity), issue-weighted `avgProgress`, portfolio health = §12 bands re-applied
+  to summed feature health counts; extract the §12 sprint-health banding into a shared internal
+  helper so `/` and `/rollup` can never drift. Plain-Node testable.
+- **(b) Data assembly — `web/src/lib/dashboard-data.js`**: `getRollupData(user, { sprintId })` —
+  membership-derived teams (admin sees all), shared sprint-defaulting (ACTIVE else latest),
+  **no N+1** (one batched `filter.findMany` + one `issueProgress.findMany`, grouped in JS), →
+  `{ user, teams, sprints, selectedSprint, perTeam: [{ team, myRole, filters, metrics, lastSyncedAt }], combined }`.
+- **(c) Page — `web/src/app/rollup/page.jsx`**: server component; `getCurrentUser()` gate →
+  redirect `/login`; `?sprint=` via async `searchParams`.
+- **(d) Components — `web/src/components/rollup/`**: client `rollup-top-bar.jsx` (sprint Select →
+  `router.push`, "My board" link, logout) + server-rendered combined `MetricGrid` + team-summary
+  table (key/name, role, issues, pts, avg %, health chip, band counts, blocked, staleness,
+  "Open board →" `/?team=&sprint=`), sorted worst-health-first.
+- **(e) Entry — `web/src/components/dashboard/top-bar.jsx`**: "Roll-up" link when
+  `teams.length >= 2 || user.isAdmin`.
+- **Acceptance:** pure fixtures for `aggregateRollup` (sums, weighted avg, blocked-anywhere →
+  Critical, No-Data handling, velocity projection); lint + DB/env-free build green (`/rollup`
+  `ƒ Dynamic`); SSR smoke on dev+Neon (2-of-3-teams user sees exactly 2 rows + summed combined,
+  admin sees all, zeroed no-filters row, link visibility, 307 gate). No schema change, no
+  migration, no new dependency.
 
 ## Notes
 
-- **Next 16: `searchParams`/`cookies()` are async** — re-read the installed docs before the page
-  shells (same discipline as steps 3–5).
-- Stage toggles send target state; the server owns the cascade (step 4) — optimistic update, then
-  `router.refresh()` reconciles.
-- Density/collapse: read localStorage after mount (SSR-safe defaults) — no hydration mismatch.
-- Empty states: no membership → "ask an admin" panel; no filters → welcome hero (prototype parity).
-- **Doc-sync (§17):** §5 UI-row notes, §11 re-skin note, §13.3 UI gating, master-plan step 6 →
-  partial (6a done, ED roll-up = 6b outstanding).
+- **Next 16 async `searchParams`/`cookies()`** — await them; verified pattern in
+  `web/src/app/page.jsx`.
+- **Never merge progress maps across teams** (§9: same jiraKey can hold different progress in two
+  teams) — run `computeSprintMetrics` per team, aggregate the results.
+- Keep `metrics.mjs` dependency-free (`.mjs`, no `@/` imports) so plain-Node checks keep working.
+- Staleness = max `Filter.lastSyncedAt` per team, rendered server-side from request time (no
+  client `Date.now()` — the row is server-only, hydration-safe for free).
+- Velocity roll-up = **sum of per-team weekly velocities**; `weeksNeeded` recomputed from summed
+  remaining / summed velocity.
+- **Doc-sync (§17):** §5 roll-up row → BUILT-in-web (trend row stays GAP), §3 GAP note narrowed to
+  legacy, §14.1 fixed-in-web, §11 dated `/rollup` note, master-plan step 6 → DONE (6a+6b).
 
 ## History
 
@@ -286,3 +295,61 @@ job), or step 9 (importer).
   no browser automation — SSR-assertion verification). Cleanup done; docs synced (§5/§11/§13.3/
   step-6 PARTIAL 6a). **Done** — ⚠️ real-token UI acceptance run left for Naveen. **Next:** 6b
   (ED roll-up), step 7 (background job), or step 9 (importer).
+- 2026-07-08 — **Post-6a UI polish** (rides on the uncommitted 6a diff): (1) labeled the admin
+  Sprint Gates create form (Name / Development start / Development end / Release date (optional) —
+  hover-only `title` tooltips replaced with the SprintConfig dialog's Label-column pattern, submit
+  button `self-end`); (2) **in-flight loaders** — root cause: `router.refresh()` returns before
+  the server re-render lands, so `busy` cleared while data was still stale. All dashboard + admin
+  mutations now run in **React 19 transitions** (post-await updates re-wrapped per the installed
+  Next 16 docs), so `busy = isPending` spans the API call *and* the refresh render. New
+  `ui/spinner.jsx` (`Spinner` + floating `ActivityPill`: "Updating…" / "Syncing Jira…" /
+  "Working…"); success alerts and the admin "— done" status now commit *together with* the
+  refreshed data; SprintConfig stays open ("Saving…") until the change is visible; TopBar Add
+  filter/Sync disabled while anything is in flight; add-filter now refreshes even when the
+  follow-up sync fails (created filter no longer invisible until next nav). Lint + build green.
+  Not yet feel-tested in a browser — transition timing is client-side, beyond SSR checks.
+- 2026-07-08 — Planning session (no code): with 6a done, confirmed **step 6b (ED/TPM multi-team
+  roll-up)** as next — it completes master-plan step 6 and the №1 gap (§14.1 leadership
+  visibility); step 7 (cron/snapshots) and step 9 (importer) stay sensible after it. Drafted
+  @context/features/ed-rollup.md: 8 PROPOSED decisions, notably a dedicated **`/rollup` server
+  page** (no `?team=all` mode; TopBar link when ≥2 teams or admin), **membership-derived access,
+  any role** (§3 EM/SEM combined views; admin sees all), **no new API routes** (extend
+  `dashboard-data.js` with `getRollupData`, batched non-N+1 reads), **per-team
+  `computeSprintMetrics` + new pure `aggregateRollup`** in `metrics.mjs` (per-team progress keys
+  can collide across teams, §9 — never merge; portfolio health = §12 bands over summed feature
+  counts; velocity sums), **no Sync on the roll-up** (rate-limit storm — staleness from
+  `lastSyncedAt` instead; freshness is step 7's cron), server-first UI with one thin client top
+  bar. Out of scope: trend/burndown (step 7), share/export (step 8). Acceptance: pure aggregation
+  fixtures + SSR smoke w/ a fabricated 2-of-3-teams user + membership scoping + link-visibility
+  checks.
+- 2026-07-08 — Picked @context/features/ed-rollup.md as the current feature (migration **step 6b**
+  — ED/TPM multi-team roll-up: `/rollup` server page + `getRollupData` + pure `aggregateRollup`).
+  ui-port (6a) remains **Done**.
+- 2026-07-08 — **Implemented ed-rollup (migration step 6b — completes step 6).** Re-confirmed the
+  Next 16 async `searchParams` shape against the installed docs first. Extracted the §12
+  sprint-health banding into shared `bandSprintHealth` and added pure `aggregateRollup` to
+  `lib/metrics.mjs` (sums; issue-weighted `avgProgress`; portfolio health over summed feature
+  counts; velocity additive via summed inputs), growing `computeSprintMetrics` with **additive**
+  `totalIssues`/`healthCounts`/`featureHealthCounts` (the §9 `SprintSnapshot.healthCounts` shape —
+  step 7 alignment); refactored `lib/dashboard-data.js` into shared
+  `getMembershipContext`/`getSprintSelection`/`serializeUser` + new `getRollupData` (two batched
+  `{ teamId: { in } }` queries grouped in JS — no N+1; per-team progress maps never merged, §9);
+  added `/rollup` server page (auth gate, `?sprint=`, request-time `asOf`),
+  `components/rollup/{rollup-top-bar,team-summary-table}.jsx` (single client leaf; SSR table:
+  role, issues, pts, avg %, health chip, 5-band counts + blocked column, staleness, "Open board →"
+  links; worst-health-first), the TopBar "Roll-up" link (`teams.length >= 2 || isAdmin`),
+  `MetricGrid` switched to `totalIssues`, and `initials()` extracted to `lib/utils.js`. No schema
+  change, no new deps, no new API routes. Verified: **34/34 plain-Node fixtures** (incl.
+  blocked-anywhere→Critical, No-Data teams ignored, all-No-Data, combined velocity = sum of
+  per-team velocities); lint clean; migrate status up to date; **DB/env-free build green — 23
+  routes/pages `ƒ Dynamic` incl. the new `/rollup`**; **32/32 SSR smoke** on dev+Neon (minted cookies, fabricated
+  3-teams/3-users fixture: unauth 307→/login; 2-of-3 user sees exactly 2 rows, combined =
+  2 issues/8 pts/75%/Fair with **no Critical leak** from the 3rd team's blocked issue; admin sees
+  all 3, Critical, danger-first ordering; zeroed "no filters yet"+"never" row; `2h ago` staleness;
+  `?team=&sprint=` links; Roll-up link shown/hidden correctly). Fixture torn down (0 leftovers),
+  harnesses deleted. As-built deviations in ed-rollup.md (additive metrics fields; MetricGrid
+  `totalIssues`; velocity from summed inputs not double-rounded per-team sums; internal
+  `bandSprintHealth`; bands/blocked column split; no Admin link on the roll-up top bar;
+  PLANNING-state smoke sprint). Docs synced (§3 GAP narrowed to legacy, §5 roll-up row BUILT,
+  §11 6b note, §14.1 fixed-in-web, master-plan step 6 **DONE 6a+6b**; trend row stays GAP).
+  **Done.** **Next:** step 7 (background job) or step 9 (importer).

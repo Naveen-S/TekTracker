@@ -50,8 +50,11 @@ Key relationships:
   a separate data source.
 - Each scrum team has dedicated **filters/tracks**: Roadmap, Tech Debt, Support, Internal Bugs.
 
-> **[GAP]** The current build has **no team, role, or multi-team concept** — it is single-user and
-> localStorage-scoped. Multi-team roll-up (the core ED/VP value) is unbuilt. See §9, §10, §15.
+> **[GAP — legacy app only]** The **legacy Vite build** has no team, role, or multi-team concept —
+> it is single-user and localStorage-scoped. In `web/` the team/membership model + RBAC landed in
+> step 4 (2026-07-07) and the **multi-team roll-up view (`/rollup`) is BUILT (step 6b,
+> 2026-07-08)** — membership-derived per §9. VP *trend* still needs `SprintSnapshot` (step 7).
+> See §9, §10, §15.
 
 ---
 
@@ -94,7 +97,7 @@ Key relationships:
 | Reorder filters | **[BUILT]** | Drag + priority default sort. **`web/` UI: drag → PUT `…/filters/order`** (step 6a, 2026-07-08). |
 | Export PDF / PNG | **[BUILT]** | Client-side `html2canvas` + `jsPDF`; include/exclude filters. |
 | Share view | **[PARTIAL]** | Encodes **entire dataset** into a base64 URL — fragile, not live, not access-controlled. |
-| Multi-team / ED roll-up | **[GAP]** | Team + membership model and admin APIs **built in `web/`** (step 4, 2026-07-07); the roll-up *views* remain unbuilt (step 6+). |
+| Multi-team / ED roll-up | **[BUILT in `web/` — 2026-07-08]** | Team + membership model and admin APIs came in step 4 (2026-07-07); the roll-up *view* is step 6b: read-only `/rollup` server page (combined `MetricGrid` + per-team table via pure `aggregateRollup`), membership-derived, no Sync — staleness from `lastSyncedAt`. |
 | Trend / burndown / "projected by end of sprint" | **[GAP]** | No historical snapshots. |
 | AI summary (Gemini) | **[GAP]** | Post-v1; use cases ratified 2026-06-10 (see §16). |
 | Admin settings / RBAC | **[PARTIAL]** | Server-side RBAC live in the `web/` domain APIs (step 4, 2026-07-07): `User.isAdmin` + `TeamMembership.role` guards (`lib/rbac.js`) on teams/sprints/filters/progress. No admin UI yet. |
@@ -707,6 +710,15 @@ Jira** button. Footer: "Engineering Internal Tool @ Tekion Corp."
 > PlannerPanel matrix, AddFilter/SprintConfig/Alert dialogs), `/admin`. Export/Share buttons wait
 > for step 8; ED roll-up views are step 6b; dark-mode toggle, toasts (modal alerts for now), and
 > loading skeletons are post-6a polish. See context/features/ui-port.md.
+>
+> **[BUILT in `web/` 2026-07-08, step 6b]** — **`/rollup`**, the ED/TPM/EM multi-team roll-up:
+> a read-only server page (one client leaf: sprint selector + "My board" + logout) rendering the
+> **combined `MetricGrid`** (via pure `aggregateRollup`) over an SSR **per-team summary table**
+> (key/name, my role, issues, pts done/total, avg %, health chip, 5-band counts, blocked,
+> `lastSyncedAt` staleness, "Open board →" into `/?team=&sprint=`), sorted worst health first.
+> Entry: a TopBar "Roll-up" link on `/` when the user has ≥2 teams or is admin (the URL renders a
+> harmless 1-team roll-up otherwise). Deliberately **no Sync** here (§14.9 rate-limit storm) —
+> freshness is step 7's cron. See context/features/ed-rollup.md.
 
 ---
 
@@ -772,6 +784,10 @@ spec-internal ambiguities to resolve.
 1. **No multi-team / ED roll-up (core value gap).** The ED/TPM/VP personas — arguably the main reason
    the product exists ("VPs & EDs have no idea of sprint progress") — are unbuilt. Single-user
    localStorage cannot aggregate N teams. *Fix:* team model + Postgres (§9) + server-rendered roll-ups.
+   **[Fixed in `web/` 2026-07-08, step 6b]** — membership-derived `/rollup` server page: per-team
+   `computeSprintMetrics` + pure `aggregateRollup` (never merges per-team progress maps, §9);
+   see context/features/ed-rollup.md. VP *trend* remains open until `SprintSnapshot` (step 7, §14.8);
+   legacy app unchanged until cutover.
 2. **Stages are manual and Jira sync doesn't touch them.** Metrics are only as good as manual upkeep,
    and the 10-stage lifecycle doesn't map to Jira status. *Fix:* hybrid seed-from-status model (§6).
    **[Fixed in `web/` 2026-07-07, step 5]** — sync seeds missing progress from `StatusStageMapping`,
@@ -876,7 +892,7 @@ The plan — exact next steps, in order
 3. Auth layer — port server.js login/me/logout to route handlers; validate against Jira /myself, upsert User + JiraCredential with AES-GCM-encrypted token (key from env/secret store); cookie sessions (e.g. iron-session) replacing the file store. **[DONE 2026-06-29]** — `app/api/auth/{login,me,logout}`, iron-session `{ userId }` cookie, AES-256-GCM `crypto.js`, isolated `lib/jira/client.js` (`fetchMyself`/`fetchCloudId`); `cloudId` discovered via `_edgeProxy/tenant_info`; secrets fail loudly. See context/features/auth-layer.md.
 4. Domain APIs — zod-validated route handlers for teams/memberships (admin), sprints (admin), filter templates + filters, stage toggle/blocked writes to IssueProgress. **[DONE 2026-07-07]** — 14 route files under `web/src/app/api/` (`teams`+`members`, `sprints` (no DELETE — close via `state`), `filter-templates`, sprint-scoped `filters` incl. priority insertion + `order` reorder, `progress/[jiraKey]` idempotent PUT with the checklist cascade + owning-workflow derivation, admin `users`); `web/src/lib/rbac.js` (`requireAdmin`/`requireTeamRole`, global-admin bypass) + `web/src/lib/api/route-helpers.js` (`{ error }` + status mapping, P2002→409/P2025→404); per-resource zod schemas. No schema change. Verified by a 68-check curl matrix against Neon. See context/features/domain-apis.md.
 5. Sync with hybrid seeding — port the Jira client (keep field IDs/pagination isolated in one module); on sync, upsert the Issue cache and create missing IssueProgress rows seeded via StatusStageMapping; never touch rows that already exist. **[DONE 2026-07-07]** — `lib/jira/client.js` grown (`getJiraAuthForUser` decrypting the caller's credential, `fetchFilter`, paginated `searchIssues` via `/search/jql` + `nextPageToken`, 2000-issue safety cap), pure `lib/jira/transform.js` (per-team field ids, full assignee+accountId/priority/dueDate now kept), `lib/sync/engine.js` + pure `lib/sync/seeding.mjs`, `POST /api/teams/[teamId]/sprints/[sprintId]/sync` (writer roles). Verified: 15 standalone checks + full pipeline live over HTTP (pagination, jql refresh, seeding shapes, create-only re-sync, manual-edit survival, removed-issue progress survival, owning-workflow re-eval 10→4). ⚠️ Real-Tekion-issue sync blocked: the stored API token is **dead** (expired/revoked; Jira degrades bad Basic auth to *anonymous*, so searches return empty instead of 401 — which also hid the failure). Engine now **fail-fasts via `/myself`** before syncing (verified live: 401 + reconnect message). Naveen: mint a fresh long-expiry classic token, re-login, re-verify. See context/features/sync-hybrid-seeding.md.
-6. UI port — pages for login, team dashboard (the existing Delivery Matrix, re-skinned), ED roll-up, admin; swap usePersistedSprintState for server data; localStorage keeps only density/collapse. **[PARTIAL — 6a DONE 2026-07-08; 6b (ED roll-up) outstanding]** — `/login` + `/` dashboard (server component + Prisma reads via `lib/dashboard-data.js`, pure `lib/metrics.mjs` fixture-parity-checked against the prototype, client leaves fetching the step-4/5 routes + `router.refresh()`) + minimal `/admin`; RBAC-aware chrome (VIEWER read-only, admin-only sprint config), two localStorage prefs via `useSyncExternalStore`. Verified: lint/DB-free build green, ~30-check SSR smoke (auth gates, matrix render, 80% cascade round-trip, viewer chrome, empty states). ⚠️ Real-Jira acceptance (fresh token → UI login → sync) still pending. See context/features/ui-port.md.
+6. UI port — pages for login, team dashboard (the existing Delivery Matrix, re-skinned), ED roll-up, admin; swap usePersistedSprintState for server data; localStorage keeps only density/collapse. **[DONE 2026-07-08 — 6a + 6b]** — 6a: `/login` + `/` dashboard (server component + Prisma reads via `lib/dashboard-data.js`, pure `lib/metrics.mjs` fixture-parity-checked against the prototype, client leaves fetching the step-4/5 routes + `router.refresh()`) + minimal `/admin`; RBAC-aware chrome (VIEWER read-only, admin-only sprint config), two localStorage prefs via `useSyncExternalStore`; verified by lint/DB-free build + ~30-check SSR smoke (see context/features/ui-port.md). 6b: membership-derived **`/rollup`** (server page + `getRollupData` batched reads + pure `aggregateRollup`/shared `bandSprintHealth`, per-team summary table, TopBar link at ≥2 teams or admin, no Sync — staleness from `lastSyncedAt`); verified by 34/34 pure fixtures + 32/32 SSR smoke (see context/features/ed-rollup.md). ⚠️ Real-Jira acceptance (fresh token → UI login → sync) still pending.
 7. Background job — a cron on your internal infra hitting an internal route: refresh issue caches + write the daily per-team SprintSnapshot for active sprints.
 8. Share view + export — SharedView token route (/share/[token], live or frozen, expiry) replacing the base64 URL; port PDF/PNG export.
 9. Importer — one-time script that takes the localStorage JSON (sprintTracker_sprintData + config) and writes Sprint/Filter/IssueProgress rows so your current sprints carry over.

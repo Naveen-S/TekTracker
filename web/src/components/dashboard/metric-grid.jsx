@@ -42,7 +42,7 @@ export function MetricGrid({ metrics, sprint }) {
       </article>
       <Metric
         label="Issues in scope"
-        value={metrics.issues.length}
+        value={metrics.totalIssues}
         detail={`${metrics.points} total story points`}
       />
       <Metric

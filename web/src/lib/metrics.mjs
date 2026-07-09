@@ -125,42 +125,87 @@ export function computeSprintMetrics(filters, progressByKey, sprint) {
   const featureHealthCounts = countStatuses(featureIssues);
   const totalFeatureIssues = featureIssues.length;
 
-  let sprintHealth;
-  if (totalFeatureIssues === 0) {
-    sprintHealth = { status: "No Data", tone: "neutral", icon: "○" };
-  } else if (
-    featureHealthCounts.blocked > 0 ||
-    featureHealthCounts.behind > totalFeatureIssues * 0.3
-  ) {
-    sprintHealth = { status: "Critical", tone: "danger", icon: "⚠" };
-  } else if (featureHealthCounts.atRisk + featureHealthCounts.behind > totalFeatureIssues * 0.2) {
-    sprintHealth = { status: "At Risk", tone: "warn", icon: "⚠" };
-  } else if (featureHealthCounts.done === totalFeatureIssues) {
-    sprintHealth = { status: "Complete", tone: "success", icon: "✓" };
-  } else if (avgProgress >= 90) {
-    sprintHealth = { status: "Excellent", tone: "success", icon: "🎯" };
-  } else if (
-    featureHealthCounts.ahead + featureHealthCounts.onTrack >
-    totalFeatureIssues * 0.7
-  ) {
-    sprintHealth = { status: "Healthy", tone: "info", icon: "✓" };
-  } else {
-    sprintHealth = { status: "Fair", tone: "info", icon: "→" };
-  }
-
   return {
     issues,
+    totalIssues: issues.length,
     points,
     avgProgress,
     completedPoints,
     velocityPoints,
     velocityCompletedPoints,
-    sprintHealth,
+    sprintHealth: bandSprintHealth(featureHealthCounts, totalFeatureIssues, avgProgress),
     totalFeatureIssues,
+    healthCounts: allHealthCounts,
+    featureHealthCounts,
     blockedCount: allHealthCounts.blocked,
     behindCount: allHealthCounts.behind,
     atRiskCount: allHealthCounts.atRisk,
     riskCount: allHealthCounts.blocked + allHealthCounts.behind + allHealthCounts.atRisk,
+    featureBlockedCount: featureHealthCounts.blocked,
+    featureOnTrackCount: featureHealthCounts.onTrack,
+    featureAheadCount: featureHealthCounts.ahead,
+  };
+}
+
+/**
+ * §12 sprint-health banding over FEATURE health counts — shared by `computeSprintMetrics` (one
+ * team) and `aggregateRollup` (portfolio, 6b) so `/` and `/rollup` can never drift.
+ */
+function bandSprintHealth(featureHealthCounts, totalFeatureIssues, avgProgress) {
+  if (totalFeatureIssues === 0) return { status: "No Data", tone: "neutral", icon: "○" };
+  if (featureHealthCounts.blocked > 0 || featureHealthCounts.behind > totalFeatureIssues * 0.3)
+    return { status: "Critical", tone: "danger", icon: "⚠" };
+  if (featureHealthCounts.atRisk + featureHealthCounts.behind > totalFeatureIssues * 0.2)
+    return { status: "At Risk", tone: "warn", icon: "⚠" };
+  if (featureHealthCounts.done === totalFeatureIssues)
+    return { status: "Complete", tone: "success", icon: "✓" };
+  if (avgProgress >= 90) return { status: "Excellent", tone: "success", icon: "🎯" };
+  if (featureHealthCounts.ahead + featureHealthCounts.onTrack > totalFeatureIssues * 0.7)
+    return { status: "Healthy", tone: "info", icon: "✓" };
+  return { status: "Fair", tone: "info", icon: "→" };
+}
+
+const HEALTH_COUNT_KEYS = ["blocked", "behind", "atRisk", "onTrack", "ahead", "done"];
+
+/**
+ * Portfolio roll-up over per-team `computeSprintMetrics` results (ed-rollup.md decisions 4–5).
+ * Progress rows are keyed PER TEAM (§9) so per-team metrics are computed first and summed here —
+ * never recomputed over merged progress maps. Sums for counts/points/velocity inputs,
+ * issue-weighted `avgProgress`, and portfolio health = the same §12 bands re-applied to the
+ * summed feature health counts (one blocked feature anywhere → Critical; teams with no feature
+ * issues contribute nothing; all-empty → No Data). Velocity stays additive: feed the summed
+ * `velocityCompletedPoints`/`velocityPoints` to `getWeeklyVelocity` — with the org-wide sprint
+ * cadence that equals the sum of per-team weekly velocities. Mirrors the per-team →
+ * org-totals shape the step-7 `SprintSnapshot` job will write.
+ */
+export function aggregateRollup(perTeamMetrics) {
+  const sumOf = (pick) => perTeamMetrics.reduce((sum, metrics) => sum + pick(metrics), 0);
+  const sumCounts = (pick) =>
+    Object.fromEntries(HEALTH_COUNT_KEYS.map((key) => [key, sumOf((m) => pick(m)[key])]));
+
+  const totalIssues = sumOf((m) => m.totalIssues);
+  const totalFeatureIssues = sumOf((m) => m.totalFeatureIssues);
+  const healthCounts = sumCounts((m) => m.healthCounts);
+  const featureHealthCounts = sumCounts((m) => m.featureHealthCounts);
+  const avgProgress =
+    totalIssues > 0 ? Math.round(sumOf((m) => m.avgProgress * m.totalIssues) / totalIssues) : 0;
+
+  return {
+    teamCount: perTeamMetrics.length,
+    totalIssues,
+    points: sumOf((m) => m.points),
+    avgProgress,
+    completedPoints: sumOf((m) => m.completedPoints),
+    velocityPoints: sumOf((m) => m.velocityPoints),
+    velocityCompletedPoints: sumOf((m) => m.velocityCompletedPoints),
+    sprintHealth: bandSprintHealth(featureHealthCounts, totalFeatureIssues, avgProgress),
+    totalFeatureIssues,
+    healthCounts,
+    featureHealthCounts,
+    blockedCount: healthCounts.blocked,
+    behindCount: healthCounts.behind,
+    atRiskCount: healthCounts.atRisk,
+    riskCount: healthCounts.blocked + healthCounts.behind + healthCounts.atRisk,
     featureBlockedCount: featureHealthCounts.blocked,
     featureOnTrackCount: featureHealthCounts.onTrack,
     featureAheadCount: featureHealthCounts.ahead,

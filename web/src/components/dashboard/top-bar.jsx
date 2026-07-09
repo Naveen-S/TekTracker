@@ -4,14 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
-
-function initials(name) {
-  if (!name) return "?";
-  const parts = name.trim().split(/\s+/);
-  return parts.length >= 2
-    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-    : name.slice(0, 2).toUpperCase();
-}
+import { initials } from "@/lib/utils";
 
 export function TopBar({
   user,
@@ -80,6 +73,11 @@ export function TopBar({
               ⟳
             </span>
             {syncing ? "Syncing…" : "Sync Jira"}
+          </Button>
+        )}
+        {(teams.length >= 2 || user.isAdmin) && (
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/rollup">Roll-up</Link>
           </Button>
         )}
         {user.isAdmin && (
