@@ -212,6 +212,23 @@ export function aggregateRollup(perTeamMetrics) {
   };
 }
 
+/**
+ * §9 `SprintSnapshot` column values off one team's `computeSprintMetrics` result
+ * (background-sync-snapshots.md (a), step 7). Trivial by design — it pins the metrics→row
+ * contract so the cron job never re-derives it: `totalPoints ← points`; `healthCounts` passes
+ * through (already the §9 JSON comment shape since 6b). Summed over team rows these equal
+ * `aggregateRollup`'s org totals (§9 "org totals = sum over teams").
+ */
+export function snapshotValues(metrics) {
+  return {
+    totalPoints: metrics.points,
+    completedPoints: metrics.completedPoints,
+    avgProgress: metrics.avgProgress,
+    totalIssues: metrics.totalIssues,
+    healthCounts: metrics.healthCounts,
+  };
+}
+
 /** Naive linear velocity + projection (§12) — replace with SprintSnapshot actuals in step 7. */
 export function getWeeklyVelocity(sprint, completedPoints, points) {
   const start = new Date(sprint.developmentStart);

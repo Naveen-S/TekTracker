@@ -1,74 +1,84 @@
 # Current Feature
 
-**ED / multi-team roll-up (migration step 6b)** — full spec: @context/features/ed-rollup.md
+**Background sync + daily SprintSnapshot (migration step 7)** — full spec:
+@context/features/background-sync-snapshots.md
 
-Completes master-plan step 6 and closes the product's №1 gap (§14.1, §2.2 leadership visibility):
-a read-only, **membership-derived** cross-team roll-up at **`/rollup`** for ED/TPM (N teams) and
-EM/SEM (2–3 teams) — combined metric cards + a per-team summary table for one selected global
-sprint, with an "Open board →" link into each team's `/` dashboard. No new write path and **no new
-API route**: a server component reading Prisma via a new `getRollupData`, reusing the
-fixture-proven per-team `computeSprintMetrics` plus one new **pure `aggregateRollup`** (per-team
-rows, org totals = sum over teams — the shape step 7's `SprintSnapshot` job will mirror). It's
-next because 6a (Done 2026-07-08) delivered the EM/Lead loop and steps 7/9 stay sensible after it.
-Trend/burndown stays out (needs `SprintSnapshot`, step 7); no Sync on the roll-up (rate-limit
-storm, §14.9) — staleness from `Filter.lastSyncedAt` instead.
+The next in-order master-plan step (step 6 fully DONE 2026-07-08, merged `e58afe2`): an external
+cron on Tekion internal infra hits a **secret-gated `POST /api/cron/daily`** that, for every
+`ACTIVE` sprint, refreshes each filter-bearing team's Issue cache through the step-5 sync engine
+and then upserts the **daily per-team `SprintSnapshot`** row (§9) — the data plumbing for the last
+unserved leadership signal (VP trend/burndown, §2.2/§14.8) and the freshness `/rollup`
+deliberately deferred (§14.9). Almost entirely assembly of verified parts (`syncTeamSprint` was
+built for cron reuse; `computeSprintMetrics.healthCounts` is already the §9 snapshot shape;
+`getRollupData`'s batched no-N+1 reads); genuinely new: the **`CRON_SECRET` bearer auth model**
+(first session-less route) and the **`CRON_SYNC_USER_EMAIL` service Jira credential**.
+Trend/burndown UI stays out (step 10 post-v1) — this step only writes the rows.
 
 ## Status
 
-**Done 2026-07-08** — all 8 decisions implemented as proposed; **master-plan step 6 is now fully
-DONE (6a + 6b)**. Pure `aggregateRollup` + shared `bandSprintHealth` in `lib/metrics.mjs` (plus
-additive `totalIssues`/`healthCounts`/`featureHealthCounts` on `computeSprintMetrics` — the §9
-`SprintSnapshot.healthCounts` shape); `getRollupData` in `lib/dashboard-data.js` (extracted shared
-`getMembershipContext`/`getSprintSelection`, two batched queries, no N+1); `/rollup` server page +
-`components/rollup/{rollup-top-bar,team-summary-table}.jsx` (one client leaf; SSR table sorted
-worst-health-first w/ request-time staleness); TopBar "Roll-up" link (≥2 teams or admin);
-`MetricGrid` reused via `totalIssues`. Verified: **34/34 plain-Node fixtures** (sums, weighted
-avg, per-team key independence, blocked→Critical, No-Data, additive velocity); lint clean;
-migrations up to date; **DB/env-free build green (23 routes/pages `ƒ Dynamic` incl. the new
-`/rollup`)**; **32/32 SSR smoke** on dev+Neon (unauth 307, 2-of-3-teams scoping + summed combined, admin all-teams +
-Critical + danger-first order, zeroed no-filters row, link visibility). Fixture torn down,
-harnesses deleted, docs synced (§3/§5/§11/§14.1/step-6). ⚠️ Naveen's real-Jira acceptance run
-(fresh token → UI login → sync) still open from 6a. See @context/features/ed-rollup.md "As-built
-notes". **Next:** step 7 (background job: cron sync + daily `SprintSnapshot`) or step 9
-(localStorage importer); step 8 (share/export) after.
+**Done 2026-07-09** — all 8 decisions implemented as proposed; **master-plan step 7 is DONE**.
+Pure `snapshotValues` in `lib/metrics.mjs`; `runDailyJob` in `lib/cron/daily.js` (up-front
+service-credential validation → degrade-to-snapshot-only; ACTIVE sprints × filter-bearing teams,
+sequential refresh w/ per-team error isolation, batched two-query snapshot reads, UTC-midnight
+upsert on `sprintId_teamId_capturedOn`); secret-gated `POST /api/cron/daily` (timingSafeEqual
+over sha256 digests, loud-fail unset/short secret); `CRON_SECRET`/`CRON_SYNC_USER_EMAIL` +
+crontab example in `web/.env.example`. Verified: **23/23 plain-Node fixtures**; lint clean;
+migrations up to date; **DB/env-free build green (`/api/cron/daily` `ƒ Dynamic`)**; **30/30 live
+checks on dev+Neon** (401 gates, hand-computed rows for exactly the filter-bearing teams,
+PLANNING + filterless skips, credential-degrade w/ snapshots still landing, idempotent same-day
+re-run, unset-secret 500) — fixture torn down (0 leftovers), harnesses deleted. **Finding: the
+stored Jira token is ALIVE again** — the first run exercised the real refresh path end-to-end
+(§9 progress survival re-verified live); only the UI-driven real-filter sync remains open from
+6a. Docs synced (§5 trend PARTIAL-data, §8 cron note, §12, §14.8/§14.9, §15.5, step 7 DONE).
+Scheduling on Tekion infra is Naveen's deploy-time task. See
+@context/features/background-sync-snapshots.md "As-built notes". **Next:** step 8 (share view +
+export) or step 9 (localStorage importer).
 
 ## Goals
 
-- **(a) Aggregation — `web/src/lib/metrics.mjs`**: pure `aggregateRollup(perTeamMetrics)` — sums
-  (counts, points, velocity), issue-weighted `avgProgress`, portfolio health = §12 bands re-applied
-  to summed feature health counts; extract the §12 sprint-health banding into a shared internal
-  helper so `/` and `/rollup` can never drift. Plain-Node testable.
-- **(b) Data assembly — `web/src/lib/dashboard-data.js`**: `getRollupData(user, { sprintId })` —
-  membership-derived teams (admin sees all), shared sprint-defaulting (ACTIVE else latest),
-  **no N+1** (one batched `filter.findMany` + one `issueProgress.findMany`, grouped in JS), →
-  `{ user, teams, sprints, selectedSprint, perTeam: [{ team, myRole, filters, metrics, lastSyncedAt }], combined }`.
-- **(c) Page — `web/src/app/rollup/page.jsx`**: server component; `getCurrentUser()` gate →
-  redirect `/login`; `?sprint=` via async `searchParams`.
-- **(d) Components — `web/src/components/rollup/`**: client `rollup-top-bar.jsx` (sprint Select →
-  `router.push`, "My board" link, logout) + server-rendered combined `MetricGrid` + team-summary
-  table (key/name, role, issues, pts, avg %, health chip, band counts, blocked, staleness,
-  "Open board →" `/?team=&sprint=`), sorted worst-health-first.
-- **(e) Entry — `web/src/components/dashboard/top-bar.jsx`**: "Roll-up" link when
-  `teams.length >= 2 || user.isAdmin`.
-- **Acceptance:** pure fixtures for `aggregateRollup` (sums, weighted avg, blocked-anywhere →
-  Critical, No-Data handling, velocity projection); lint + DB/env-free build green (`/rollup`
-  `ƒ Dynamic`); SSR smoke on dev+Neon (2-of-3-teams user sees exactly 2 rows + summed combined,
-  admin sees all, zeroed no-filters row, link visibility, 307 gate). No schema change, no
-  migration, no new dependency.
+- **(a) Pure mapping — `web/src/lib/metrics.mjs`**: `snapshotValues(metrics)` → `{ totalPoints,
+  completedPoints, avgProgress, totalIssues, healthCounts }` (§9 column names) — trivial by
+  design; pins the metrics→row contract with a plain-Node fixture.
+- **(b) Job engine — `web/src/lib/cron/daily.js`**: `runDailyJob({ capturedOn })` — resolve the
+  `CRON_SYNC_USER_EMAIL` service credential (absent/dead → refresh skipped, snapshots still
+  written); `ACTIVE` sprints × teams with ≥1 filter, teams **sequentially**; per team
+  `syncTeamSprint` (errors caught + isolated) then `sprintSnapshot.upsert`; returns
+  `{ capturedOn, refresh, sprints: [{ sprint, teams: [{ team, refresh, snapshot }] }] }`.
+- **(c) Route — `web/src/app/api/cron/daily/route.js`**: POST, `force-dynamic`; `CRON_SECRET`
+  bearer gate (timingSafeEqual over sha256 digests; loud-fail if unset; 401 on missing/bad);
+  ignores any body; calls `runDailyJob` with UTC-midnight `capturedOn`; 200 + summary JSON.
+- **(d) Env — `web/.env.example`**: document `CRON_SECRET` (≥32 chars, secret store) and
+  `CRON_SYNC_USER_EMAIL` (logged-in user whose Jira token sees all teams' projects, §13.2) + the
+  crontab curl example.
+- **(e) Ops note**: crontab one-liner recorded in the spec References; actual scheduling on
+  Tekion infra is Naveen's deploy-time task, out of repo scope.
+- **Acceptance:** plain-Node fixtures (field pick, `healthCounts` passthrough, summed-over-teams
+  totals = `aggregateRollup`'s); lint + DB/env-free build green (`/api/cron/daily` `ƒ Dynamic`);
+  live dev+Neon checks (401/200 gate, rows for exactly the filter-bearing teams of ACTIVE sprints,
+  idempotent same-day re-run with refreshed values, dead-credential degrade with snapshots still
+  landing, unset-secret loud failure, teardown after). No schema change, no migration, no new
+  dependency.
 
 ## Notes
 
-- **Next 16 async `searchParams`/`cookies()`** — await them; verified pattern in
-  `web/src/app/page.jsx`.
-- **Never merge progress maps across teams** (§9: same jiraKey can hold different progress in two
-  teams) — run `computeSprintMetrics` per team, aggregate the results.
-- Keep `metrics.mjs` dependency-free (`.mjs`, no `@/` imports) so plain-Node checks keep working.
-- Staleness = max `Filter.lastSyncedAt` per team, rendered server-side from request time (no
-  client `Date.now()` — the row is server-only, hydration-safe for free).
-- Velocity roll-up = **sum of per-team weekly velocities**; `weeksNeeded` recomputed from summed
-  remaining / summed velocity.
-- **Doc-sync (§17):** §5 roll-up row → BUILT-in-web (trend row stays GAP), §3 GAP note narrowed to
-  legacy, §14.1 fixed-in-web, §11 dated `/rollup` note, master-plan step 6 → DONE (6a+6b).
+- **`crypto.timingSafeEqual` throws on length mismatch** — compare `sha256(provided)` vs
+  `sha256(expected)` digests (always equal length), never raw strings.
+- **Prisma compound-unique upsert idiom**: `where: { sprintId_teamId_capturedOn: { … } }` —
+  confirm the generated composite-key name against the generated client types.
+- `capturedOn` = `new Date(Date.UTC(y, m, d))` from the run instant — one canonical UTC midnight,
+  or same-day upserts silently become distinct rows.
+- Per-team error isolation: engine throws (`NotFoundError`/`JiraAuthError`/`JiraApiError`) are
+  caught **per team** and recorded in that team's summary slot; only `CRON_SECRET` problems and
+  truly unexpected throws surface as route-level errors.
+- Snapshot reads happen **after** that team's refresh attempt — refresh all of a sprint's teams
+  first (sequential), then the sprint's batched snapshot reads once.
+- Per-team metrics computed exactly like `/rollup` (batched two-query reads, grouped in JS);
+  **progress maps never merged across teams** (§9); org totals are NOT stored — sum over team rows.
+- Read the installed Next 16 route-handler docs before writing the route
+  (`node_modules/next/dist/docs/`, `web/AGENTS.md` discipline).
+- **Doc-sync (§17):** §5 trend row → PARTIAL (data side), §8 cron line BUILT-in-web, §12 velocity
+  note, §14.8 fixed-in-web (data) / §14.9 partially addressed, §15.5 BUILT-in-web, master-plan
+  step 7 → DONE. Don't over-claim: trend UI still GAP; real-Jira acceptance still flagged.
 
 ## History
 
@@ -353,3 +363,52 @@ notes". **Next:** step 7 (background job: cron sync + daily `SprintSnapshot`) or
   PLANNING-state smoke sprint). Docs synced (§3 GAP narrowed to legacy, §5 roll-up row BUILT,
   §11 6b note, §14.1 fixed-in-web, master-plan step 6 **DONE 6a+6b**; trend row stays GAP).
   **Done.** **Next:** step 7 (background job) or step 9 (importer).
+- 2026-07-09 — ed-rollup **merged to main** (`e58afe2`, fast-forward; Naveen). Branch
+  `feature/ed-rollup` pending deletion.
+- 2026-07-09 — Planning session (no code): with step 6 fully done, confirmed **step 7 (background
+  job)** as the next in-order step — over step 9 (importer, spec exists but predates steps 3–6)
+  and step 8 (share/export, sequenced after) — because it unlocks the last leadership gap (VP
+  trend data, §14.8), supplies `/rollup`'s deferred freshness (§14.9), and 6b shaped
+  `computeSprintMetrics.healthCounts`/`aggregateRollup` for exactly this. Drafted
+  @context/features/background-sync-snapshots.md: 8 PROPOSED decisions, notably **external cron →
+  `POST /api/cron/daily`** (master-plan shape; no node-cron dep), **`CRON_SECRET` bearer gate**
+  (first session-less route; timingSafeEqual over sha256 digests), **`CRON_SYNC_USER_EMAIL`
+  service credential** for the Jira refresh (per-user token visibility flagged, §13.2),
+  **refresh-failure degrades to snapshot-only** (per-team error isolation — a stale-cache data
+  point beats a trend hole; today's dead token makes this path live-testable), **ACTIVE sprints ×
+  filter-bearing teams, sequential** (§14.9), **UTC-midnight upsert** on
+  `(sprintId, teamId, capturedOn)` (idempotent re-runs), per-team metrics never merged (§9), and
+  a pure `snapshotValues` in `metrics.mjs` (seeding.mjs split precedent). No schema change (model
+  shipped in `init`), no migration, no new dependency, one new route. Out of scope: trend UI +
+  snapshot-based velocity (step 10), Redis, OAuth, retention.
+- 2026-07-09 — Picked @context/features/background-sync-snapshots.md as the current feature
+  (migration **step 7** — background job: secret-gated `POST /api/cron/daily` refreshing Issue
+  caches via the step-5 engine + writing the daily per-team `SprintSnapshot`). ed-rollup (6b)
+  remains **Done**.
+- 2026-07-09 — **Implemented background-sync-snapshots (migration step 7).** Read the installed
+  Next 16 route-handler doc + confirmed the generated `sprintId_teamId_capturedOn` composite key
+  first. Added pure `snapshotValues` to `lib/metrics.mjs` (§9 column pick off
+  `computeSprintMetrics`), `lib/cron/daily.js` (`runDailyJob`: `resolveRefreshUser` validates the
+  `CRON_SYNC_USER_EMAIL` credential once up front via `/myself` — any failure degrades the whole
+  run to snapshot-only; per ACTIVE sprint, sequential per-team `syncTeamSprint` w/ isolated
+  errors, then batched two-query reads → per-team metrics → UTC-midnight `sprintSnapshot.upsert`;
+  progress maps never merged, §9), and `app/api/cron/daily/route.js` (POST, `force-dynamic`,
+  `CRON_SECRET` bearer gate via `timingSafeEqual` over sha256 digests, <32-chars fails as loudly
+  as unset, body ignored, `handleRouteError` mapping); `CRON_*` env + crontab example documented
+  in `.env.example`. No schema change, no migration, no new dependency. Verified: 23/23
+  plain-Node fixtures (field pick, §9 healthCounts shape, per-team keying, Σ-over-teams =
+  `aggregateRollup`); lint clean; migrate status up to date; DB/env-free build green (24 `ƒ
+  Dynamic` incl. `/api/cron/daily`); 30/30 live dev+Neon checks (401/401/200 gates, hand-computed
+  rows for exactly the 2 filter-bearing fixture teams, PLANNING sprint + filterless team skipped,
+  degrade path w/ snapshots still landing, same-day re-run idempotent — same row id, 75→90
+  refresh — and unset-secret loud 500 w/ nothing written); teardown 0 leftovers, harness deleted.
+  **Finding:** the stored Jira token is **alive again** (Naveen re-logged in) — the first live
+  run took the real refresh path (engine end-to-end vs real Jira; fabricated-JQL search returned
+  200+empty, cache correctly replaced, §9 progress survival re-verified), so the degrade path was
+  forced via a nonexistent `CRON_SYNC_USER_EMAIL`; step-5/6 dead-token flags corrected in the
+  docs. As-built deviations in background-sync-snapshots.md (engine-side `capturedOn`
+  normalization; once-per-run credential validation; condensed per-team refresh counts; dev
+  `.env` now carries real `CRON_*` values; Next 16 dev hot-reloads `.env`). Docs synced (§5 trend
+  → PARTIAL-data, §8 cron note, §12 velocity note, §14.8 fixed-data-side / §14.9 partially
+  addressed, §15.5 BUILT, master-plan step 7 DONE). **Done.** **Next:** step 8 (share view +
+  export) or step 9 (localStorage importer).

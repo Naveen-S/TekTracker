@@ -52,7 +52,11 @@ verified live against the dead credential. ⚠️ **Action for Naveen:** create 
 (id.atlassian.com → Security → API tokens; pick a long expiry, classic/unscoped), `POST
 /api/auth/login` with it, then re-run a real sync — that will also finally answer the
 project-visibility question. All test data cleaned from Neon; tmp harnesses deleted. **Next:** UI
-port (step 6) or importer (step 9).
+port (step 6) or importer (step 9). *Update 2026-07-09 (step 7):* the stored token is **alive
+again** — Naveen re-logged in, and the step-7 cron drove this engine end-to-end against real Jira
+(`/myself` passed; `/search/jql` answered 200 — notably 200 + empty for a fabricated
+`project = S7A` JQL rather than a 400). Remaining re-verify: a UI-driven sync of real filters
+(see background-sync-snapshots.md As-built notes).
 
 ## Decisions (PROPOSED 2026-07-07)
 
