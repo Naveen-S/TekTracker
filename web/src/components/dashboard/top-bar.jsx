@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { initials } from "@/lib/utils";
@@ -22,17 +23,17 @@ export function TopBar({
   onLogout,
 }) {
   return (
-    <header className="sticky top-0 z-40 flex items-center gap-4 border-b bg-card px-5 py-2.5">
+    <header className="sticky top-0 z-40 flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b bg-card px-4 py-2 shadow-xs md:flex-nowrap md:gap-4 md:px-6 md:py-0">
       <div className="flex items-center gap-3">
         <Image src="/tekion-logo.svg" alt="Tekion" width={92} height={22} priority />
-        <span className="h-6 w-px bg-border" aria-hidden="true" />
-        <div className="leading-tight">
-          <p className="text-sm font-semibold">Sprint Tracker</p>
+        <span className="hidden h-5.5 w-px bg-border sm:block" aria-hidden="true" />
+        <div className="hidden leading-tight sm:block">
+          <p className="font-display text-sm font-bold">Sprint Tracker</p>
           <p className="text-[11px] text-muted-foreground">Engineering · Internal</p>
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex max-w-full flex-wrap items-center gap-2">
         {teams.length > 0 && (
           <Select
             aria-label="Scrum team"
@@ -64,14 +65,12 @@ export function TopBar({
       <div className="ml-auto flex items-center gap-2">
         {canManage && onAddFilter && (
           <Button variant="secondary" size="sm" onClick={onAddFilter} disabled={busy}>
-            + Add filter
+            <Plus /> Add filter
           </Button>
         )}
         {canWrite && (
           <Button size="sm" onClick={onSync} disabled={syncing || busy}>
-            <span className={syncing ? "animate-spin" : ""} aria-hidden="true">
-              ⟳
-            </span>
+            <RefreshCw className={syncing ? "animate-spin" : ""} />
             {syncing ? "Syncing…" : "Sync Jira"}
           </Button>
         )}
@@ -86,7 +85,7 @@ export function TopBar({
           </Button>
         )}
         <div
-          className="flex size-8 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground"
+          className="flex size-8 items-center justify-center rounded-full bg-ink text-xs font-bold text-white"
           title={`${user.displayName} · ${user.email}`}
         >
           {initials(user.displayName || user.email)}

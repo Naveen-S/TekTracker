@@ -8,11 +8,11 @@ import { cn } from "@/lib/utils";
 export function AlertDialog({ alert, onClose }) {
   if (!alert) return null;
   return (
-    <Dialog open title={alert.title} onClose={onClose}>
+    <Dialog open title={alert.title} tone={alert.tone === "error" ? "error" : "success"} onClose={onClose}>
       <p
         className={cn(
           "whitespace-pre-wrap text-sm",
-          alert.tone === "error" ? "text-red-700" : "text-foreground",
+          alert.tone === "error" ? "text-danger-strong" : "text-foreground",
         )}
       >
         {alert.body}

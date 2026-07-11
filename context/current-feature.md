@@ -1,84 +1,90 @@
 # Current Feature
 
-**Background sync + daily SprintSnapshot (migration step 7)** — full spec:
-@context/features/background-sync-snapshots.md
+**UI polish — visual parity with the legacy app (step-6 addendum)** — full spec:
+@context/features/ui-polish.md
 
-The next in-order master-plan step (step 6 fully DONE 2026-07-08, merged `e58afe2`): an external
-cron on Tekion internal infra hits a **secret-gated `POST /api/cron/daily`** that, for every
-`ACTIVE` sprint, refreshes each filter-bearing team's Issue cache through the step-5 sync engine
-and then upserts the **daily per-team `SprintSnapshot`** row (§9) — the data plumbing for the last
-unserved leadership signal (VP trend/burndown, §2.2/§14.8) and the freshness `/rollup`
-deliberately deferred (§14.9). Almost entirely assembly of verified parts (`syncTeamSprint` was
-built for cron reuse; `computeSprintMetrics.healthCounts` is already the §9 snapshot shape;
-`getRollupData`'s batched no-N+1 reads); genuinely new: the **`CRON_SECRET` bearer auth model**
-(first session-less route) and the **`CRON_SYNC_USER_EMAIL` service Jira credential**.
-Trend/burndown UI stays out (step 10 post-v1) — this step only writes the rows.
+Not a numbered master-plan step: step 6 is Done, but per Naveen (2026-07-09) the `web/` UI looks
+amateurish next to the legacy Vite app. This re-skins `web/` to the **legacy design system**
+([src/styles.css](../src/styles.css) is the reference spec — teal `#00BFA5` on ink `#0B1620`,
+`#F4F7FA` canvas, Manrope/Inter/JetBrains Mono, layered ink shadows, hover lifts) — which *is*
+§11 realized. Pulled ahead of step 8 because share/export will render these same components.
+**Zero logic/API/schema changes** except one dialog payload field (accent assignment). Dark-mode
+toggle and skeletons stay post-v1.
 
 ## Status
 
-**Done 2026-07-09** — all 8 decisions implemented as proposed; **master-plan step 7 is DONE**.
-Pure `snapshotValues` in `lib/metrics.mjs`; `runDailyJob` in `lib/cron/daily.js` (up-front
-service-credential validation → degrade-to-snapshot-only; ACTIVE sprints × filter-bearing teams,
-sequential refresh w/ per-team error isolation, batched two-query snapshot reads, UTC-midnight
-upsert on `sprintId_teamId_capturedOn`); secret-gated `POST /api/cron/daily` (timingSafeEqual
-over sha256 digests, loud-fail unset/short secret); `CRON_SECRET`/`CRON_SYNC_USER_EMAIL` +
-crontab example in `web/.env.example`. Verified: **23/23 plain-Node fixtures**; lint clean;
-migrations up to date; **DB/env-free build green (`/api/cron/daily` `ƒ Dynamic`)**; **30/30 live
-checks on dev+Neon** (401 gates, hand-computed rows for exactly the filter-bearing teams,
-PLANNING + filterless skips, credential-degrade w/ snapshots still landing, idempotent same-day
-re-run, unset-secret 500) — fixture torn down (0 leftovers), harnesses deleted. **Finding: the
-stored Jira token is ALIVE again** — the first run exercised the real refresh path end-to-end
-(§9 progress survival re-verified live); only the UI-driven real-filter sync remains open from
-6a. Docs synced (§5 trend PARTIAL-data, §8 cron note, §12, §14.8/§14.9, §15.5, step 7 DONE).
-Scheduling on Tekion infra is Naveen's deploy-time task. See
-@context/features/background-sync-snapshots.md "As-built notes". **Next:** step 8 (share view +
+**Done 2026-07-10** — all 9 decisions implemented as proposed; the step-6 deferred polish is
+landed. Token layer (legacy fonts via `next/font/google`, `#F4F7FA` canvas, ink shadow scale +
+`--shadow-brand`, motion tokens, health triplets, `hero-panel` `@utility`); UI kit (button lift +
+brand glow + `onDark` glass variant, dialog blur/rise/tone-strips, tokenized Badge, **new
+`ui/toast.jsx`** + ink ActivityPill, **new server-safe `ui/hero-shell.jsx`**, lucide icons);
+chrome/metric/matrix/sidebar/login/admin/rollup restyled to the legacy system (accent spines,
+`color-mix` tints, 3-state bordered stage badges w/ glow rings, bordered health pills, frozen
+first column, tone-striped metric cards, styled confirm replacing `window.confirm`); AddFilter
+sends deterministic palette `accentColor`. **Verified:** lint clean; `prisma validate` +
+`migrate status` up to date (no schema change, no migration, **no new deps**); **DB/env-free
+build green** (24 `ƒ Dynamic`); token audits pass (no Geist, no hero hex in components, no raw
+palette tone maps, no `tailwind.config.*`, no `window.confirm`); **29/29 SSR smoke on dev+Neon**
+against **Naveen's real synced data** (1 team / 2 filters / 73 issues — render-only, no writes)
++ compiled-CSS checks (hero gradients, `shadow-brand`, `animate-toast`, fonts in the prod
+bundle). Harness deleted, dev server stopped, `.env` restored. ⚠️ Naveen's side-by-side browser
+eyeball (`:3000` vs `:3002`) is the remaining acceptance; the still-open 6a real-Jira UI run can
+piggyback. See @context/features/ui-polish.md "As-built notes". **Next:** step 8 (share view +
 export) or step 9 (localStorage importer).
 
 ## Goals
 
-- **(a) Pure mapping — `web/src/lib/metrics.mjs`**: `snapshotValues(metrics)` → `{ totalPoints,
-  completedPoints, avgProgress, totalIssues, healthCounts }` (§9 column names) — trivial by
-  design; pins the metrics→row contract with a plain-Node fixture.
-- **(b) Job engine — `web/src/lib/cron/daily.js`**: `runDailyJob({ capturedOn })` — resolve the
-  `CRON_SYNC_USER_EMAIL` service credential (absent/dead → refresh skipped, snapshots still
-  written); `ACTIVE` sprints × teams with ≥1 filter, teams **sequentially**; per team
-  `syncTeamSprint` (errors caught + isolated) then `sprintSnapshot.upsert`; returns
-  `{ capturedOn, refresh, sprints: [{ sprint, teams: [{ team, refresh, snapshot }] }] }`.
-- **(c) Route — `web/src/app/api/cron/daily/route.js`**: POST, `force-dynamic`; `CRON_SECRET`
-  bearer gate (timingSafeEqual over sha256 digests; loud-fail if unset; 401 on missing/bad);
-  ignores any body; calls `runDailyJob` with UTC-midnight `capturedOn`; 200 + summary JSON.
-- **(d) Env — `web/.env.example`**: document `CRON_SECRET` (≥32 chars, secret store) and
-  `CRON_SYNC_USER_EMAIL` (logged-in user whose Jira token sees all teams' projects, §13.2) + the
-  crontab curl example.
-- **(e) Ops note**: crontab one-liner recorded in the spec References; actual scheduling on
-  Tekion infra is Naveen's deploy-time task, out of repo scope.
-- **Acceptance:** plain-Node fixtures (field pick, `healthCounts` passthrough, summed-over-teams
-  totals = `aggregateRollup`'s); lint + DB/env-free build green (`/api/cron/daily` `ƒ Dynamic`);
-  live dev+Neon checks (401/200 gate, rows for exactly the filter-bearing teams of ACTIVE sprints,
-  idempotent same-day re-run with refreshed values, dead-credential degrade with snapshots still
-  landing, unset-secret loud failure, teardown after). No schema change, no migration, no new
-  dependency.
+- **(a) Token layer — `web/src/app/globals.css` + `layout.jsx`**: legacy font stack via
+  `next/font/google` (Manrope display / Inter sans / JetBrains Mono) replacing Geist; shadow
+  tokens (`--shadow-xs…xl`, `--shadow-brand` teal glow); motion tokens (ease-out/in-out,
+  120/180/280ms) + `rise`/`fade-out`; `#F4F7FA` page canvas; selection/link base treatments.
+- **(b) UI kit — `web/src/components/ui/`**: button hover-lift + brand glow + **on-dark variant**;
+  dialog overlay blur + rise entrance; badge tint alignment; **new `toast.jsx`** (ink bg,
+  bottom-right, rise/fade ~3s); ActivityPill restyle; lucide icons replacing text glyphs.
+- **(c) Chrome**: TopBar (56px, product block, ink avatar pill, icon buttons, RefreshCw sync);
+  **one shared Hero** (ink + dual teal radial glows, eyebrow, days-remaining pill w/ urgent
+  variant, glass welcome state) reused by `/` and `/rollup` (kills 3 copy-pastes).
+- **(d) Metric cards — `metric-grid.jsx`**: 3px tone top-stripe, 28px icon tile, display-font
+  26/800 value, hover lift; drop raw color maps for tokens.
+- **(e) Matrix + sidebar — `planner-panel,issue-row,filter-panel.jsx`**: real border-subtle
+  gridlines (kill `gap-px`), sticky first column w/ scroll shadow, `color-mix` 6% accent section
+  tints + dots, 3px accent issue spine, teal jira-key chip, tri-state completion badge, 3-state
+  bordered stage badges w/ hover glow rings + done wash + blocked state, bordered health pills,
+  restyled sidebar cards (drag states, search, JQL chip, accent bars), collapsed rail.
+- **(f) Login — `login-form.jsx`**: 420px radius-16 p-40 card on canvas, spinner while connecting,
+  legacy header/footer.
+- **(g) Feedback/admin/rollup**: success paths → toast (errors keep AlertDialog); admin
+  `window.confirm` → styled confirm; rollup table raw colors → tokens, hero → shared component
+  (stays a server component).
+- **(h)** AddFilter sends deterministic palette `accentColor` (count % palette, red excluded) —
+  the only non-presentation change; existing null accents keep teal default.
+- **Acceptance:** lint + DB/env-free build green; no `tailwind.config.*`, no new deps, no
+  migration; token-audit greps (no Geist, no hardcoded hero hex, no raw `text-blue-700`-class
+  maps, lucide imported); 6a/6b behavioral SSR smoke still passes; toast + `accentColor` +
+  `color-mix` render; **Naveen side-by-side browser eyeball `:3000` vs `:3002`** (definition of
+  done) + the still-open 6a real-Jira UI run piggybacks.
 
 ## Notes
 
-- **`crypto.timingSafeEqual` throws on length mismatch** — compare `sha256(provided)` vs
-  `sha256(expected)` digests (always equal length), never raw strings.
-- **Prisma compound-unique upsert idiom**: `where: { sprintId_teamId_capturedOn: { … } }` —
-  confirm the generated composite-key name against the generated client types.
-- `capturedOn` = `new Date(Date.UTC(y, m, d))` from the run instant — one canonical UTC midnight,
-  or same-day upserts silently become distinct rows.
-- Per-team error isolation: engine throws (`NotFoundError`/`JiraAuthError`/`JiraApiError`) are
-  caught **per team** and recorded in that team's summary slot; only `CRON_SECRET` problems and
-  truly unexpected throws surface as route-level errors.
-- Snapshot reads happen **after** that team's refresh attempt — refresh all of a sprint's teams
-  first (sequential), then the sprint's batched snapshot reads once.
-- Per-team metrics computed exactly like `/rollup` (batched two-query reads, grouped in JS);
-  **progress maps never merged across teams** (§9); org totals are NOT stored — sum over team rows.
-- Read the installed Next 16 route-handler docs before writing the route
-  (`node_modules/next/dist/docs/`, `web/AGENTS.md` discipline).
-- **Doc-sync (§17):** §5 trend row → PARTIAL (data side), §8 cron line BUILT-in-web, §12 velocity
-  note, §14.8 fixed-in-web (data) / §14.9 partially addressed, §15.5 BUILT-in-web, master-plan
-  step 7 → DONE. Don't over-claim: trend UI still GAP; real-Jira acceptance still flagged.
+- **Read installed docs first** (`node_modules/next/dist/docs/`, `web/AGENTS.md`): `next/font/
+  google` multi-family setup; how Tailwind v4 `@theme` registers `--shadow-*`/`--font-*`
+  namespaces so utilities emit them. No `tailwind.config.*` may appear.
+- **Inline styles stay data-driven-only** (6a precedent): accent `color-mix` tint, accent
+  spine/dot/bar colors, `gridTemplateColumns`. Everything else = tokens/utilities; no hex in
+  components.
+- **Sticky header/column inside `overflow-x-auto`**: sticky-vs-page-scroll doesn't work from
+  inside a scroll container — replicate legacy nesting (container owns x only), verify with real
+  overflow.
+- `next/font/google` fetches at build — confirm `yarn build` stays green offline/DB-free
+  (`next/font/local` is the escape hatch).
+- `rollup/team-summary-table.jsx` must stay a server component (its header comment).
+- Legacy `--bg-base`/`--bg-surface` (login CSS) are **undeclared** — read as `#F4F7FA`/`#FFFFFF`.
+- Health triplets: [src/workflows.js:107-175](../src/workflows.js#L107-L175); accent palette:
+  [src/jiraService.js:236-244](../src/jiraService.js#L236-L244) (drop red, pick by index not
+  random); stage-badge state values in the spec Scope (e).
+- **Doc-sync (§17):** §11 6a note → polish landed (toasts/motion/elevation/legacy type); flip any
+  "modal alerts for now" wording. Don't over-claim: dark mode still absent, step 8 untouched, no
+  new master-plan number.
 
 ## History
 
@@ -412,3 +418,90 @@ export) or step 9 (localStorage importer).
   → PARTIAL-data, §8 cron note, §12 velocity note, §14.8 fixed-data-side / §14.9 partially
   addressed, §15.5 BUILT, master-plan step 7 DONE). **Done.** **Next:** step 8 (share view +
   export) or step 9 (localStorage importer).
+- 2026-07-09 — Planning session (no code): per Naveen, the `web/` UI looks amateurish next to the
+  legacy Vite app — drafted @context/features/ui-polish.md (**step-6 addendum**, pulled ahead of
+  step 8 since share/export will render these same components). Two design-system catalogs
+  (legacy `src/styles.css` vs `web/` Tailwind theme) pinned the gap: scaffold Geist fonts instead
+  of Manrope/Inter/JetBrains Mono, no shadow/motion tokens, white-on-white (no `#F4F7FA` canvas),
+  text-glyph icons (lucide-react installed but never imported), no hero radial glows / glass
+  buttons, flat metric cards (no tone stripe / icon tile / display numerals), `gap-px` faux
+  gridlines + bare stage cells instead of the legacy 3-state bordered badges, accent color
+  reduced to a dot + 4px rule (all `accentColor` null — legacy assigned a palette), blocking
+  alert modals instead of toasts. 9 PROPOSED decisions, notably: faithful token-layer translation
+  into `@theme` (no `styles.css` import, no `tailwind.config.*`), legacy font stack via
+  `next/font/google`, toasts for successes + AlertDialog kept for errors, one shared ink Hero
+  (kills 3 copy-pastes), deterministic accent-palette assignment in AddFilter (the only
+  non-presentation change), dark-mode toggle + skeletons stay post-v1, zero logic/API/schema
+  changes. Acceptance: hygiene + token-audit greps + the 6a/6b behavioral SSR smoke still passing
+  + Naveen's side-by-side browser eyeball (`:3000` vs `:3002`), onto which the still-open 6a
+  real-Jira UI run piggybacks.
+- 2026-07-09 — Picked @context/features/ui-polish.md as the current feature (step-6 addendum —
+  re-skin `web/` to the legacy design system: tokens/fonts/shadows/motion, kit + chrome + matrix
+  restyle, toasts, shared Hero, accent palette assignment).
+- 2026-07-10 — **Implemented ui-polish (step-6 addendum — visual parity with the legacy app).**
+  Read the installed Next 16 font doc + Tailwind v4 theme namespaces first. Token layer:
+  `layout.jsx` swapped Geist for **Manrope/Inter/JetBrains Mono** (`next/font/google`);
+  `globals.css` grew the `#F4F7FA` canvas, ink-tinted `--shadow-xs…xl` + `--shadow-brand`/
+  `--shadow-col`, legacy easings, `rise`/`toast-out` keyframes + `--animate-toast`, health-triplet
+  tokens (`success/info/warn/danger` ×3), `--color-ink`/on-ink accents, the `hero-panel`
+  `@utility` (dual teal radial glows), teal `::selection`. Kit: button hover-lift + brand glow +
+  **`onDark` glass variant**; dialog ink-blur overlay + rise entrance + tone strips + lucide `X`;
+  Badge tones tokenized; **new `ui/toast.jsx`** (`useToast`, ink pill, ~3s rise/fade) + ink
+  ActivityPill; **new server-safe `ui/hero-shell.jsx`** (HeroShell/Eyebrow/Title/Copy +
+  DaysRemainingPill w/ urgent variant) shared by `/` and `/rollup` (3 copy-pasted gradients
+  killed). Surfaces: TopBar h-14 + display product block + ink avatar + `RefreshCw`/`Plus`;
+  welcome hero w/ glass feature grid; metric cards (3px tone stripe, 28px icon tile, display
+  26/800 numerals, hover lift); matrix (real `border-subtle` gridlines replacing `gap-px`,
+  frozen first column w/ `shadow-col`, `color-mix` 6% accent section tints + dots, 3px accent
+  spines, teal key chips, tri-state completion pills, 3-state `border-[1.5px]` stage badges w/
+  hover glow rings + done wash + blocked rings, bordered health pills from the legacy triplets);
+  sidebar (sticky, teal eyebrow, icon buttons, search box, hover-lift cards, drag states, accent
+  bars, collapsed rail); login (max-w-105 rounded-2xl p-10 card, spinner while connecting); admin
+  (`window.confirm` → styled destructive confirm dialog, tokenized status, lucide X); rollup
+  table tokenized. Sync/add-filter/sprint-save successes → toasts (`condenseSync` one-liner;
+  errors keep AlertDialog; SprintConfigDialog gained `onSaved`); AddFilter sends deterministic
+  palette `accentColor` (count % 5, red excluded) — the only non-presentation change (schema
+  already accepted it). No schema change, no migration, **no new deps**. Verified: lint clean;
+  `prisma validate`/`migrate status` up to date; **DB/env-free build green** (24 `ƒ Dynamic`);
+  token audits (no Geist, no hero hex in components, no raw palette tone maps, lucide in 6
+  files, no `tailwind.config.*`); **29/29 SSR smoke on dev+Neon** with a minted admin cookie —
+  against **Naveen's real synced data** (1 team / 2 filters / 73 issues; render-only, no writes)
+  — plus compiled-CSS checks (hero gradients, `shadow-brand`, `animate-toast`, all three font
+  families in the prod bundle). Harness deleted, dev server stopped, `.env` restored. As-built
+  deviations in ui-polish.md (canonical spacing classes per the installed lint; sticky matrix
+  header skipped — inert in legacy too; no blocked cell caption; condensed toast copy;
+  HEALTH_PILL tone classes instead of inline hex; server-safe hero shell; welcome-grid copy new;
+  density stays the 6a pad swap; render-only smoke). Docs synced (§11 ui-polish note; dark-mode
+  toggle + skeletons stay post-v1). **Done** — ⚠️ Naveen's side-by-side eyeball (`:3000` vs
+  `:3002`) + the 6a real-Jira UI run remain the human acceptance. **Next:** step 8 (share view +
+  export) or step 9 (localStorage importer).
+- 2026-07-10 — **Iterated ui-polish: full-bleed + responsive pass** (per Naveen — "not filling
+  the entire screen on large screen; make it as responsive as possible"). Removed the port-only
+  `max-w-400` cap on `/` and `/rollup` mains (legacy `.app-shell` is full-bleed; admin keeps its
+  centered `max-w-4xl` form width); workspace sidebar+matrix now **stack below `xl`** (~legacy
+  1180px breakpoint) with sidebar sticky/max-h only at `xl` and the collapsed rail lying flat
+  horizontally when stacked; metric grid steps `1 → sm:2 → lg:3 → xl:5` (~legacy 760/1180/1400);
+  both top bars wrap (`min-h-14 flex-wrap`, product text block hidden below `sm`); hero/login/
+  admin gained mobile paddings. Very-large screens are absorbed by the matrix's `fr`-based
+  `minmax` columns. Verified: lint clean; DB/env-free build green; **11/11 SSR smoke** on
+  dev+Neon (full-width mains, stack/step/wrap classes on `/` + `/rollup`) — first run 307'd on an
+  expired minted cookie (1h TTL), re-minted and green; server stopped, harness deleted. As-built
+  note appended to ui-polish.md. ui-polish remains **Done**, still uncommitted on
+  `feature/ui-polish` awaiting Naveen's side-by-side eyeball + commit approval.
+- 2026-07-11 — Planning session (no code): drafted @context/features/share-view-export.md
+  (migration **step 8** — the next in-order step: `SharedView` token route `/share/[token]`
+  replacing the base64 share URL, + PDF/PNG export port). Research pinned: the `SharedView`
+  model already shipped in the `init` migration → **no schema change, no migration**; legacy
+  export captures dedicated offscreen A4 pages via html2canvas+jsPDF. 10 decisions (2–10
+  PROPOSED), notably: public no-session `/share/[token]` (token = bearer capability; generic
+  invalid/expired page; noindex); create gated to `TEAM_WRITER_ROLES`, one team's board per
+  share, server-validated `filterIds`; app-generated 192-bit token over the schema's guessable
+  cuid default; **both live and frozen shares** — frozen snapshots store inputs (incl. sprint
+  dates) and an **optional `asOf` threads through the time-dependent metrics** so frozen numbers
+  don't drift; routes follow the existing team/sprint tree + flat DELETE (creator/admin);
+  **`html2canvas-pro` over stock html2canvas** (the Tailwind v4 oklch/`color-mix` theme breaks
+  1.4.1 — capture spike required before the full port) + `jspdf@2.5.2` exact, dynamically
+  imported; share page reuses the dashboard components read-only via a new `getShareData`; Hero
+  gains the §11 Share/Export buttons (clipboard + toast, AlertDialog fallback). Out of scope:
+  roll-up/cross-team shares, `requiresAuth`, retention/rate-limiting, export of `/rollup`,
+  steps 9–10.

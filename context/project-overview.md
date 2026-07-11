@@ -717,6 +717,20 @@ Jira** button. Footer: "Engineering Internal Tool @ Tekion Corp."
 > for step 8; ED roll-up views are step 6b; dark-mode toggle, toasts (modal alerts for now), and
 > loading skeletons are post-6a polish. See context/features/ui-port.md.
 >
+> **[BUILT in `web/` 2026-07-10 — ui-polish, step-6 addendum]** — the deferred polish landed as a
+> full re-skin to the **legacy design system** (`src/styles.css` is the reference): legacy type
+> stack (Manrope display / Inter body / JetBrains Mono via `next/font/google`), `#F4F7FA` canvas +
+> ink-tinted shadow scale + motion tokens + health-triplet tokens in `globals.css` `@theme`, one
+> shared ink Hero (`ui/hero-shell.jsx` + `hero-panel` utility: dual teal radial glows, glass
+> `onDark` buttons, days-remaining pill) reused by `/` and `/rollup`, legacy matrix treatment
+> (accent spines + `color-mix` section tints, teal key chips, 3-state bordered stage badges w/
+> hover glow rings, bordered health pills, frozen first column), metric cards w/ tone stripes +
+> icon tiles + display numerals, lucide icons replacing text glyphs, **success toasts**
+> (`ui/toast.jsx`; errors keep the alert modal; admin `window.confirm` → styled confirm), and
+> deterministic accent-palette assignment on filter creation (`accentColor`, the only
+> non-presentation change). **Dark-mode toggle and loading skeletons remain post-v1** (the `.dark`
+> token set stays dormant). See context/features/ui-polish.md.
+>
 > **[BUILT in `web/` 2026-07-08, step 6b]** — **`/rollup`**, the ED/TPM/EM multi-team roll-up:
 > a read-only server page (one client leaf: sprint selector + "My board" + logout) rendering the
 > **combined `MetricGrid`** (via pure `aggregateRollup`) over an SSR **per-team summary table**

@@ -9,7 +9,13 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { getRollupData } from "@/lib/dashboard-data";
 import { formatDate, getDaysRemaining } from "@/lib/metrics.mjs";
-import { Badge } from "@/components/ui/badge";
+import {
+  DaysRemainingPill,
+  HeroCopy,
+  HeroEyebrow,
+  HeroShell,
+  HeroTitle,
+} from "@/components/ui/hero-shell";
 import { MetricGrid } from "@/components/dashboard/metric-grid";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { RollupTopBar } from "@/components/rollup/rollup-top-bar";
@@ -33,10 +39,10 @@ export default async function RollupPage({ searchParams }) {
   const daysRemaining = selectedSprint ? getDaysRemaining(selectedSprint) : null;
 
   return (
-    <div className="flex min-h-screen flex-col bg-muted/30">
+    <div className="flex min-h-screen flex-col">
       <RollupTopBar user={data.user} sprints={sprints} selectedSprint={selectedSprint} />
 
-      <main className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-5 p-5">
+      <main className="flex w-full flex-1 flex-col gap-5 p-4 md:p-6">
         {teams.length === 0 ? (
           <EmptyState
             title="You're not on a team yet"
@@ -55,28 +61,22 @@ export default async function RollupPage({ searchParams }) {
           />
         ) : (
           <>
-            <section className="rounded-xl border bg-gradient-to-br from-[#0b1620] to-[#15303f] px-6 py-5 text-white">
-              <p className="text-xs uppercase tracking-wide text-white/60">
+            <HeroShell className="px-5 py-6 md:px-8 md:py-7">
+              <HeroEyebrow>
                 {selectedSprint.name} · {formatDate(selectedSprint.developmentStart)} –{" "}
                 {formatDate(selectedSprint.developmentEnd)}
                 {selectedSprint.releaseDate
                   ? ` · release ${formatDate(selectedSprint.releaseDate)}`
                   : ""}
-              </p>
-              <h1 className="mt-1 text-xl font-semibold">
+              </HeroEyebrow>
+              <HeroTitle>
                 Multi-team roll-up — {perTeam.length} {perTeam.length === 1 ? "team" : "teams"}
-              </h1>
-              <div className="mt-2 flex items-center gap-2 text-sm text-white/75">
-                <span>Read-only portfolio view across every team you belong to.</span>
-                <Badge tone={daysRemaining < 3 ? "danger" : "info"}>
-                  {daysRemaining > 0
-                    ? `${daysRemaining} days remaining`
-                    : daysRemaining === 0
-                      ? "Last day!"
-                      : "Sprint ended"}
-                </Badge>
+              </HeroTitle>
+              <div className="mt-2 flex flex-wrap items-center gap-2.5">
+                <HeroCopy>Read-only portfolio view across every team you belong to.</HeroCopy>
+                <DaysRemainingPill days={daysRemaining} />
               </div>
-            </section>
+            </HeroShell>
 
             <MetricGrid metrics={combined} sprint={selectedSprint} />
             <TeamSummaryTable

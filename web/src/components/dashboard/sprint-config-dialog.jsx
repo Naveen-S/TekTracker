@@ -15,7 +15,7 @@ import { apiFetch } from "@/lib/api-client";
 
 const toDateInput = (value) => (value ? new Date(value).toISOString().slice(0, 10) : "");
 
-export function SprintConfigDialog({ mode, sprint, selectedTeamId, onClose, onSelect }) {
+export function SprintConfigDialog({ mode, sprint, selectedTeamId, onClose, onSelect, onSaved }) {
   const router = useRouter();
   const [name, setName] = useState(sprint?.name ?? "");
   const [start, setStart] = useState(toDateInput(sprint?.developmentStart));
@@ -45,12 +45,14 @@ export function SprintConfigDialog({ mode, sprint, selectedTeamId, onClose, onSe
             onClose();
             onSelect(selectedTeamId, created.id);
             router.refresh();
+            onSaved?.();
           });
         } else {
           await apiFetch(`/api/sprints/${sprint.id}`, { method: "PATCH", body });
           startSaving(() => {
             onClose();
             router.refresh();
+            onSaved?.();
           });
         }
       } catch (err) {
@@ -132,7 +134,7 @@ export function SprintConfigDialog({ mode, sprint, selectedTeamId, onClose, onSe
           every team. Closing a sprint is the supported alternative to deleting it.
         </p>
         {error && (
-          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm font-medium text-danger-strong">
             {error}
           </p>
         )}

@@ -15,7 +15,11 @@ import { WORKFLOWS } from "@/lib/workflows.mjs";
 
 const WORKFLOW_OPTIONS = ["FEATURE", "TECH_DEBT", "SUPPORT", "INTERNAL_BUG"];
 
-export function AddFilterDialog({ onAdd, onClose, busy }) {
+/* Legacy accent palette (src/jiraService.js :236-244, red dropped) — assigned deterministically
+   by creation order instead of the prototype's random pick (ui-polish.md decision 7). */
+const ACCENT_PALETTE = ["#7c3aed", "#0891b2", "#ea580c", "#16a34a", "#f59e0b"];
+
+export function AddFilterDialog({ onAdd, onClose, busy, existingCount = 0 }) {
   const [workflowType, setWorkflowType] = useState("FEATURE");
   const [sourceType, setSourceType] = useState("JIRA_FILTER");
   const [name, setName] = useState("");
@@ -34,6 +38,7 @@ export function AddFilterDialog({ onAdd, onClose, busy }) {
       name: name.trim(),
       workflowType,
       sourceType,
+      accentColor: ACCENT_PALETTE[existingCount % ACCENT_PALETTE.length],
       ...(sourceType === "JIRA_FILTER"
         ? { jiraFilterId: jiraFilterId.trim() }
         : { jql: jql.trim() }),
@@ -49,7 +54,7 @@ export function AddFilterDialog({ onAdd, onClose, busy }) {
             {WORKFLOW_OPTIONS.map((type) => (
               <label
                 key={type}
-                className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${workflowType === type ? "border-ring bg-accent" : ""}`}
+                className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${workflowType === type ? "border-ring bg-accent" : "hover:border-border-strong"}`}
               >
                 <input
                   type="radio"
@@ -140,7 +145,7 @@ export function AddFilterDialog({ onAdd, onClose, busy }) {
         )}
 
         {error && (
-          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm font-medium text-danger-strong">
             {error}
           </p>
         )}

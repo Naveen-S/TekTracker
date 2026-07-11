@@ -1,8 +1,21 @@
 "use client";
 
+import { Layers, ListChecks, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import {
+  DaysRemainingPill,
+  HeroCopy,
+  HeroEyebrow,
+  HeroShell,
+  HeroTitle,
+} from "@/components/ui/hero-shell";
 import { formatDate, getDaysRemaining } from "@/lib/metrics.mjs";
+
+const WELCOME_FEATURES = [
+  { icon: Layers, label: "Multiple Jira filters", detail: "Roadmap, support, tech debt — one board" },
+  { icon: ListChecks, label: "Stage-by-stage tracking", detail: "The full SDLC beyond Jira status" },
+  { icon: TrendingUp, label: "Leadership-ready metrics", detail: "Health, velocity, and risk at a glance" },
+];
 
 export function Hero({
   showWelcome,
@@ -15,79 +28,69 @@ export function Hero({
 }) {
   if (showWelcome) {
     return (
-      <section className="rounded-xl border bg-gradient-to-br from-[#0b1620] to-[#15303f] p-10 text-center text-white">
-        <h1 className="text-2xl font-semibold">Sprint Tracker</h1>
-        <p className="mt-2 text-sm text-white/70">
-          Track delivery progress across multiple Jira filters with real-time visibility
-        </p>
-        <p className="mt-4 text-xs text-white/60">
+      <HeroShell className="flex min-h-80 flex-col items-center justify-center gap-4 px-5 py-10 text-center md:px-8 md:py-12">
+        <span className="inline-flex items-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-white/80 backdrop-blur-sm">
           {team.name} · {sprint.name} · {formatDate(sprint.developmentStart)} –{" "}
           {formatDate(sprint.developmentEnd)}
-        </p>
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+        </span>
+        <HeroTitle className="mt-0">Sprint Tracker</HeroTitle>
+        <HeroCopy className="max-w-md">
+          Track delivery progress across multiple Jira filters with real-time visibility
+        </HeroCopy>
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-3">
           {onAddFilter ? (
             <Button onClick={onAddFilter}>+ Add Jira Filter to Get Started</Button>
           ) : (
-            <p className="text-sm text-white/70">
-              A team Lead/EM adds the Jira filters — nothing here yet.
-            </p>
+            <HeroCopy>A team Lead/EM adds the Jira filters — nothing here yet.</HeroCopy>
           )}
           {onConfigureSprint && (
-            <Button
-              variant="outline"
-              className="border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white"
-              onClick={onConfigureSprint}
-            >
+            <Button variant="onDark" onClick={onConfigureSprint}>
               Configure Sprint
             </Button>
           )}
         </div>
-      </section>
+        <div className="mt-4 grid w-full max-w-2xl gap-3 sm:grid-cols-3">
+          {WELCOME_FEATURES.map(({ icon: Icon, label, detail }) => (
+            <div
+              key={label}
+              className="rounded-lg border border-white/10 bg-white/5 p-3 text-left backdrop-blur-sm"
+            >
+              <Icon className="size-4 text-on-ink-accent" aria-hidden="true" />
+              <p className="mt-1.5 text-[13px] font-semibold text-white">{label}</p>
+              <p className="mt-0.5 text-xs text-white/60">{detail}</p>
+            </div>
+          ))}
+        </div>
+      </HeroShell>
     );
   }
 
   const daysRemaining = getDaysRemaining(sprint);
   return (
-    <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-gradient-to-br from-[#0b1620] to-[#15303f] px-6 py-5 text-white">
+    <HeroShell className="flex flex-wrap items-center justify-between gap-4 px-5 py-6 md:px-8 md:py-7">
       <div>
-        <p className="text-xs uppercase tracking-wide text-white/60">
+        <HeroEyebrow>
           {sprint.name} · {formatDate(sprint.developmentStart)} – {formatDate(sprint.developmentEnd)}
           {sprint.releaseDate ? ` · release ${formatDate(sprint.releaseDate)}` : ""}
-        </p>
-        <h1 className="mt-1 text-xl font-semibold">
-          {team.name} — sprint delivery board
-        </h1>
-        <div className="mt-2 flex items-center gap-2 text-sm text-white/75">
-          <span>Roadmap, support, and tech-debt tracks with stage-by-stage delivery visibility.</span>
-          <Badge tone={daysRemaining < 3 ? "danger" : "info"}>
-            {daysRemaining > 0
-              ? `${daysRemaining} days remaining`
-              : daysRemaining === 0
-                ? "Last day!"
-                : "Sprint ended"}
-          </Badge>
+        </HeroEyebrow>
+        <HeroTitle>{team.name} — sprint delivery board</HeroTitle>
+        <div className="mt-2 flex flex-wrap items-center gap-2.5">
+          <HeroCopy>
+            Roadmap, support, and tech-debt tracks with stage-by-stage delivery visibility.
+          </HeroCopy>
+          <DaysRemainingPill days={daysRemaining} />
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white"
-          onClick={onToggleDensity}
-        >
+        <Button variant="onDark" size="sm" onClick={onToggleDensity}>
           {density === "dense" ? "Relaxed view" : "Dense view"}
         </Button>
         {onConfigureSprint && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white"
-            onClick={onConfigureSprint}
-          >
+          <Button variant="onDark" size="sm" onClick={onConfigureSprint}>
             Configure Sprint
           </Button>
         )}
       </div>
-    </section>
+    </HeroShell>
   );
 }

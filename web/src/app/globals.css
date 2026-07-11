@@ -5,10 +5,15 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ── Light (default) ───────────────────────────────────────────────
-   Seeded from the Tekion design tokens in the Vite app (src/styles.css):
-   teal brand + slate neutrals + semantic colors. Full re-skin is later. */
+   Tekion design tokens ported from the legacy app (src/styles.css :6-111):
+   teal #00bfa5 on ink #0b1620, a #f4f7fa canvas, slate neutrals, and the
+   semantic health colors used by the delivery matrix (ui-polish.md (a)). */
 :root {
   --radius: 0.625rem;
+
+  /* Page canvas + quiet surfaces (legacy --bg-app / --bg-subtle) */
+  --bg-app: #f4f7fa;
+  --bg-subtle: #f7f9fb;
 
   --background: #ffffff;
   --foreground: #0b1620;
@@ -36,8 +41,32 @@
   --destructive-foreground: #ffffff;
 
   --border: #dde4ec;
+  --border-subtle: #eaeef3;
+  --border-strong: #c4cfdb;
   --input: #dde4ec;
   --ring: #00a892;
+
+  /* Brand ink — the dark hero/avatar/toast surface (legacy --brand-ink) */
+  --ink: #0b1620;
+
+  /* Health semantics — the exact triplets the legacy matrix used
+     (src/workflows.js getHealthStatus: text/border/bg per band) */
+  --success: #10b981;
+  --success-strong: #059669;
+  --success-soft: #ecfdf5;
+  --info: #3b82f6;
+  --info-strong: #2563eb;
+  --info-soft: #eff6ff;
+  --warn: #f59e0b;
+  --warn-strong: #d97706;
+  --warn-soft: #fffbeb;
+  --danger: #ef4444;
+  --danger-strong: #dc2626;
+  --danger-soft: #fef2f2;
+
+  /* Accent tints that stay readable on the ink hero (legacy teal-200 / #fca5a5) */
+  --on-ink-accent: #7fe3d5;
+  --on-ink-danger: #fca5a5;
 
   --chart-1: #00bfa5;
   --chart-2: #0ea5e9;
@@ -58,6 +87,9 @@
 /* ── Dark (opt-in) ─────────────────────────────────────────────────
    Defined now so a later theme toggle can flip it; not active by default. */
 .dark {
+  --bg-app: #0b1620;
+  --bg-subtle: #131c2a;
+
   --background: #0b1620;
   --foreground: #f7f9fb;
 
@@ -83,6 +115,8 @@
   --destructive-foreground: #ffffff;
 
   --border: #2a3849;
+  --border-subtle: #1e2a3a;
+  --border-strong: #334155;
   --input: #2a3849;
   --ring: #00bfa5;
 
@@ -104,6 +138,9 @@
 
 /* Map the design tokens to Tailwind utility colors (bg-primary, text-foreground, …). */
 @theme inline {
+  --color-app: var(--bg-app);
+  --color-subtle: var(--bg-subtle);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -121,8 +158,28 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
+  --color-ink: var(--ink);
+
+  --color-success: var(--success);
+  --color-success-strong: var(--success-strong);
+  --color-success-soft: var(--success-soft);
+  --color-info: var(--info);
+  --color-info-strong: var(--info-strong);
+  --color-info-soft: var(--info-soft);
+  --color-warn: var(--warn);
+  --color-warn-strong: var(--warn-strong);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-strong: var(--danger-strong);
+  --color-danger-soft: var(--danger-soft);
+
+  --color-on-ink-accent: var(--on-ink-accent);
+  --color-on-ink-danger: var(--on-ink-danger);
 
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -139,8 +196,10 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Legacy type stack (src/styles.css :69-80): Manrope display, Inter body, JetBrains Mono code. */
+  --font-display: var(--font-manrope), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", monospace;
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -148,11 +207,66 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+@theme {
+  /* Elevation — ink-tinted shadow scale (legacy src/styles.css :92-98);
+     replaces Tailwind's neutral defaults so shadow-* reads warm, not gray. */
+  --shadow-xs: 0 1px 2px rgb(11 22 32 / 0.04);
+  --shadow-sm: 0 1px 3px rgb(11 22 32 / 0.06), 0 1px 2px rgb(11 22 32 / 0.04);
+  --shadow-md: 0 4px 12px rgb(11 22 32 / 0.07), 0 2px 4px rgb(11 22 32 / 0.04);
+  --shadow-lg: 0 12px 32px rgb(11 22 32 / 0.1), 0 4px 8px rgb(11 22 32 / 0.05);
+  --shadow-xl: 0 24px 56px rgb(11 22 32 / 0.16);
+  /* Teal glow under primary buttons (legacy --shadow-brand) */
+  --shadow-brand: 0 6px 18px rgb(0 191 165 / 0.3);
+  /* Right-edge shadow separating the matrix's frozen column while it scrolls */
+  --shadow-col: 4px 0 8px rgb(11 22 32 / 0.05);
+
+  /* Motion (legacy :101-106) */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* Toast: rise in, hold, fade out ~3s total (legacy .share-toast :169-177) */
+  --animate-toast: rise 0.2s cubic-bezier(0.22, 1, 0.36, 1), toast-out 0.3s ease 2.7s forwards;
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes toast-out {
+    to {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+}
+
+/* The signature ink hero surface: dual teal radial glows over brand ink
+   (legacy .hero-panel, src/styles.css :381-396). */
+@utility hero-panel {
+  border: 1px solid rgb(255 255 255 / 0.05);
+  background:
+    radial-gradient(ellipse at 100% 0%, rgb(0 191 165 / 0.22), transparent 50%),
+    radial-gradient(ellipse at 0% 100%, rgb(0 191 165 / 0.09), transparent 60%),
+    var(--ink);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-app text-foreground;
+  }
+  ::selection {
+    background-color: #c8f2ec; /* brand teal-100 (legacy :149) */
+    color: var(--ink);
+  }
+  a {
+    text-underline-offset: 3px;
   }
 }

@@ -3,10 +3,14 @@
 /**
  * Connected-JQL sidebar — port of the prototype's FilterPanel: search, per-filter cards with
  * accent + stats + done-bar, drag-reorder (managers, disabled while searching), remove, collapse.
+ * Styling follows the legacy .filter-panel system (src/styles.css :626-842).
  */
 import { useRef, useState } from "react";
-import { Input } from "@/components/ui/input";
+import { ChevronLeft, ChevronRight, GripVertical, Plus, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const iconButton =
+  "grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
 
 export function FilterPanel({
   allFilters,
@@ -36,18 +40,19 @@ export function FilterPanel({
   const dragEnabled = Boolean(onReorderFilters) && !searchQuery;
 
   if (isCollapsed) {
+    // Below xl the workspace stacks, so the rail lies flat; at xl+ it is the legacy vertical rail.
     return (
-      <aside className="flex flex-col items-center gap-2 rounded-xl border bg-card py-3">
+      <aside className="flex items-center gap-2 rounded-xl border bg-card px-3 py-2 xl:sticky xl:top-19 xl:flex-col xl:px-0 xl:py-3">
         <button
           type="button"
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          className={iconButton}
           onClick={onToggleCollapse}
           aria-label="Expand filters panel"
           title="Expand filters panel"
         >
-          →
+          <ChevronRight className="size-4" />
         </button>
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground [writing-mode:vertical-rl]">
+        <p className="text-[10px] font-bold tracking-widest uppercase text-accent-foreground xl:[writing-mode:vertical-rl]">
           Connected JQL
         </p>
       </aside>
@@ -55,46 +60,50 @@ export function FilterPanel({
   }
 
   return (
-    <aside className="flex flex-col gap-3 rounded-xl border bg-card p-4">
+    <aside className="flex flex-col gap-3 rounded-xl border bg-card p-4 xl:sticky xl:top-19 xl:max-h-[calc(100vh-6.5rem)] xl:overflow-hidden">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="text-[11px] font-bold tracking-widest uppercase text-accent-foreground">
             Connected JQL
           </p>
-          <h2 className="text-base font-semibold">Jira filters</h2>
+          <h2 className="font-display text-base font-bold">Jira filters</h2>
         </div>
         <div className="flex items-center gap-1">
           <button
             type="button"
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            className={iconButton}
             onClick={onToggleCollapse}
             aria-label="Collapse filters panel"
             title="Collapse filters panel"
           >
-            ←
+            <ChevronLeft className="size-4" />
           </button>
           {onAddFilter && (
             <button
               type="button"
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              className={iconButton}
               onClick={onAddFilter}
               aria-label="Add filter"
               title="Add Jira filter"
             >
-              +
+              <Plus className="size-4" />
             </button>
           )}
         </div>
       </div>
 
-      <Input
-        value={searchQuery}
-        onChange={(event) => onSearchChange(event.target.value)}
-        placeholder="Search filters, assignees, keys"
-        aria-label="Search"
-      />
+      <div className="flex items-center gap-2 rounded-md border border-transparent bg-subtle px-2.5 transition-all focus-within:border-ring focus-within:bg-background focus-within:ring-[3px] focus-within:ring-ring/25">
+        <Search className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <input
+          value={searchQuery}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="Search filters, assignees, keys"
+          aria-label="Search"
+          className="h-9 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+        />
+      </div>
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 overflow-y-auto">
         {allFilters.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
             No filters added yet.
@@ -107,6 +116,7 @@ export function FilterPanel({
         ) : (
           visibleFilters.map((filter, index) => {
             const { totalPts, pct } = statsFor(filter);
+            const accent = filter.accentColor ?? "#00a892";
             return (
               <article
                 key={filter.id}
@@ -138,27 +148,27 @@ export function FilterPanel({
                     ?.scrollIntoView({ behavior: "smooth", block: "start" })
                 }
                 className={cn(
-                  "cursor-pointer rounded-lg border bg-background p-3 transition-colors hover:border-ring/60",
+                  "cursor-pointer rounded-lg border bg-card p-3 transition-all duration-200 ease-out hover:-translate-y-px hover:border-border-strong hover:shadow-xs",
                   dragEnabled && "cursor-grab",
-                  dragOver === index && "border-ring ring-2 ring-ring/30",
+                  dragOver === index && "border-primary bg-accent ring-2 ring-primary/20",
                 )}
               >
                 <div className="flex items-center gap-2">
                   {dragEnabled && (
-                    <span className="text-muted-foreground/60" aria-hidden="true">
-                      ⋮⋮
-                    </span>
+                    <GripVertical className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
                   )}
                   <span
-                    className="size-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: filter.accentColor ?? "#00a892" }}
+                    className="h-2 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: accent }}
                     aria-hidden="true"
                   />
-                  <strong className="flex-1 truncate text-sm">{filter.name}</strong>
+                  <strong className="flex-1 truncate font-display text-[13px] font-bold">
+                    {filter.name}
+                  </strong>
                   {onRemoveFilter && (
                     <button
                       type="button"
-                      className="rounded p-0.5 text-muted-foreground hover:bg-red-50 hover:text-red-600"
+                      className="rounded p-1 text-danger-strong/70 transition-colors hover:bg-danger-soft hover:text-danger-strong"
                       onClick={(event) => {
                         event.stopPropagation();
                         onRemoveFilter(filter.id);
@@ -166,24 +176,33 @@ export function FilterPanel({
                       aria-label={`Remove ${filter.name}`}
                       title="Remove filter (stage progress is kept)"
                     >
-                      ✕
+                      <X className="size-3.5" />
                     </button>
                   )}
                 </div>
                 {filter.jql && (
-                  <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground" title={filter.jql}>
+                  <p
+                    className="mt-1.5 truncate rounded-sm bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+                    title={filter.jql}
+                  >
                     {filter.jql}
                   </p>
                 )}
-                <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-                  <span>{filter.issues.length} issues</span>
-                  <span>{totalPts} pts</span>
-                  <span>{pct}%</span>
+                <div className="mt-2 flex items-center gap-1.5">
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold text-secondary-foreground">
+                    {filter.issues.length} issues
+                  </span>
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold text-secondary-foreground">
+                    {totalPts} pts
+                  </span>
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold text-secondary-foreground">
+                    {pct}%
+                  </span>
                 </div>
-                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted">
+                <div className="mt-2 h-0.75 overflow-hidden rounded-full bg-muted">
                   <span
-                    className="block h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${pct}%` }}
+                    className="block h-full rounded-full transition-all duration-300"
+                    style={{ width: `${pct}%`, backgroundColor: accent }}
                   />
                 </div>
               </article>

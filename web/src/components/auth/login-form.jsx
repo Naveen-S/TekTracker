@@ -10,6 +10,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { apiFetch } from "@/lib/api-client";
 
 export function LoginForm() {
@@ -37,11 +38,11 @@ export function LoginForm() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
-      <div className="w-full max-w-md rounded-xl border bg-card p-8 shadow-sm">
-        <div className="mb-8 flex flex-col items-center gap-2 text-center">
+    <main className="flex min-h-screen items-center justify-center p-6">
+      <div className="w-full max-w-105 rounded-2xl border bg-card p-6 shadow-md animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out sm:p-10">
+        <div className="mb-7 flex flex-col items-center gap-2 text-center">
           <Image src="/tekion-logo.svg" alt="Tekion" width={120} height={28} priority />
-          <h1 className="mt-2 text-xl font-semibold">Sprint Tracker</h1>
+          <h1 className="mt-2 font-display text-2xl font-bold tracking-tight">Sprint Tracker</h1>
           <p className="text-sm text-muted-foreground">Connect your Jira account to get started</p>
         </div>
 
@@ -87,12 +88,13 @@ export function LoginForm() {
           </div>
 
           {error && (
-            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <p className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm font-medium text-danger-strong">
               {error}
             </p>
           )}
 
           <Button type="submit" disabled={loading} className="w-full">
+            {loading && <Spinner />}
             {loading ? "Connecting…" : "Connect to Jira"}
           </Button>
         </form>

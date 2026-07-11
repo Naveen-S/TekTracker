@@ -8,7 +8,9 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -33,6 +35,7 @@ function SectionCard({ title, subtitle, children }) {
 function TeamCard({ team, run, busy }) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("MEMBER");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const addMember = (event) => {
     event.preventDefault();
@@ -52,17 +55,41 @@ function TeamCard({ team, run, busy }) {
         <Button
           variant="ghost"
           size="sm"
-          className="text-red-600 hover:bg-red-50 hover:text-red-700"
+          className="text-danger-strong hover:bg-danger-soft hover:text-danger-strong"
           disabled={busy}
-          onClick={() => {
-            if (window.confirm(`Delete team ${team.key}? This removes its filters, cached issues, and progress.`)) {
-              run(`Delete ${team.key}`, () => apiFetch(`/api/teams/${team.id}`, { method: "DELETE" }));
-            }
-          }}
+          onClick={() => setConfirmingDelete(true)}
         >
           Delete
         </Button>
       </div>
+
+      {confirmingDelete && (
+        <Dialog
+          open
+          title={`Delete team ${team.key}?`}
+          tone="error"
+          onClose={() => setConfirmingDelete(false)}
+        >
+          <p className="text-sm">
+            This removes the team&apos;s filters, cached issues, memberships, and stage progress.
+            It cannot be undone.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setConfirmingDelete(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setConfirmingDelete(false);
+                run(`Delete ${team.key}`, () => apiFetch(`/api/teams/${team.id}`, { method: "DELETE" }));
+              }}
+            >
+              Delete team
+            </Button>
+          </div>
+        </Dialog>
+      )}
 
       <ul className="mt-3 flex flex-col gap-1.5">
         {team.memberships.length === 0 && (
@@ -95,7 +122,7 @@ function TeamCard({ team, run, busy }) {
             </Select>
             <button
               type="button"
-              className="rounded p-0.5 text-muted-foreground hover:bg-red-50 hover:text-red-600"
+              className="rounded p-1 text-muted-foreground transition-colors hover:bg-danger-soft hover:text-danger-strong"
               disabled={busy}
               aria-label={`Remove ${membership.user.email}`}
               onClick={() =>
@@ -104,7 +131,7 @@ function TeamCard({ team, run, busy }) {
                 )
               }
             >
-              ✕
+              <X className="size-3.5" />
             </button>
           </li>
         ))}
@@ -163,7 +190,7 @@ export function AdminPanel({ teams, sprints }) {
   };
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-col gap-5 p-6">
+    <main className="mx-auto flex w-full max-w-4xl flex-col gap-5 p-4 md:p-6">
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Admin</h1>
@@ -176,7 +203,7 @@ export function AdminPanel({ teams, sprints }) {
 
       {status && (
         <p
-          className={`rounded-md border px-3 py-2 text-sm ${status.ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`}
+          className={`rounded-md border px-3 py-2 text-sm font-medium ${status.ok ? "border-success/35 bg-success-soft text-success-strong" : "border-danger/30 bg-danger-soft text-danger-strong"}`}
         >
           {status.text}
         </p>

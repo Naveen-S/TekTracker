@@ -1,12 +1,13 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
+/* Legacy tint pairs (src/styles.css :34-45): soft bg + strong text per semantic tone. */
 const toneClasses = {
   neutral: "border-border bg-muted text-muted-foreground",
-  info: "border-blue-200 bg-blue-50 text-blue-700",
-  success: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  warn: "border-amber-200 bg-amber-50 text-amber-700",
-  danger: "border-red-200 bg-red-50 text-red-700",
+  info: "border-info/30 bg-info-soft text-info-strong",
+  success: "border-success/35 bg-success-soft text-success-strong",
+  warn: "border-warn/35 bg-warn-soft text-warn-strong",
+  danger: "border-danger/30 bg-danger-soft text-danger-strong",
   brand: "border-accent bg-accent text-accent-foreground",
 };
 

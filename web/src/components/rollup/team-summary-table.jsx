@@ -10,11 +10,11 @@ import { Badge } from "@/components/ui/badge";
 const TONE_RANK = { danger: 0, warn: 1, info: 2, success: 3, neutral: 4 };
 
 const BANDS = [
-  { key: "done", icon: "✓", label: "Done", className: "text-emerald-600" },
-  { key: "ahead", icon: "↗", label: "Ahead", className: "text-emerald-600" },
-  { key: "onTrack", icon: "→", label: "On Track", className: "text-blue-600" },
-  { key: "atRisk", icon: "⚠", label: "At Risk", className: "text-amber-600" },
-  { key: "behind", icon: "↓", label: "Behind", className: "text-red-600" },
+  { key: "done", icon: "✓", label: "Done", className: "text-success-strong" },
+  { key: "ahead", icon: "↗", label: "Ahead", className: "text-success-strong" },
+  { key: "onTrack", icon: "→", label: "On Track", className: "text-info-strong" },
+  { key: "atRisk", icon: "⚠", label: "At Risk", className: "text-warn-strong" },
+  { key: "behind", icon: "↓", label: "Behind", className: "text-danger-strong" },
 ];
 
 /** Staleness label from the max Filter.lastSyncedAt, relative to the request time. */
@@ -32,7 +32,7 @@ function HeaderCell({ children, align = "left" }) {
   return (
     <th
       scope="col"
-      className={`px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground ${align === "right" ? "text-right" : "text-left"}`}
+      className={`px-3 py-2 text-[11px] font-bold tracking-wider uppercase text-muted-foreground ${align === "right" ? "text-right" : "text-left"}`}
     >
       {children}
     </th>
@@ -49,7 +49,7 @@ export function TeamSummaryTable({ perTeam, selectedSprint, asOf, viewerIsAdmin 
   return (
     <section className="overflow-x-auto rounded-xl border bg-card" aria-label="Per-team summary">
       <table className="w-full min-w-[960px] border-collapse text-sm">
-        <thead className="border-b bg-muted/40">
+        <thead className="border-b border-border-subtle bg-subtle">
           <tr>
             <HeaderCell>Team</HeaderCell>
             <HeaderCell>My role</HeaderCell>
@@ -65,7 +65,7 @@ export function TeamSummaryTable({ perTeam, selectedSprint, asOf, viewerIsAdmin 
         </thead>
         <tbody>
           {rows.map(({ team, myRole, filters, metrics, lastSyncedAt }) => (
-            <tr key={team.id} className="border-b last:border-b-0 hover:bg-muted/30">
+            <tr key={team.id} className="border-b border-border-subtle transition-colors last:border-b-0 hover:bg-subtle">
               <td className="px-3 py-2.5">
                 <p className="font-medium">
                   <span className="text-muted-foreground">{team.key}</span> · {team.name}
@@ -101,7 +101,7 @@ export function TeamSummaryTable({ perTeam, selectedSprint, asOf, viewerIsAdmin 
                 </span>
               </td>
               <td
-                className={`px-3 py-2.5 text-right tabular-nums ${metrics.blockedCount > 0 ? "font-semibold text-red-600" : "text-muted-foreground"}`}
+                className={`px-3 py-2.5 text-right tabular-nums ${metrics.blockedCount > 0 ? "font-semibold text-danger-strong" : "text-muted-foreground"}`}
               >
                 {metrics.blockedCount > 0 ? `⊗ ${metrics.blockedCount}` : "0"}
               </td>
@@ -109,7 +109,7 @@ export function TeamSummaryTable({ perTeam, selectedSprint, asOf, viewerIsAdmin 
               <td className="px-3 py-2.5 text-right">
                 <Link
                   href={`/?team=${team.id}&sprint=${selectedSprint.id}`}
-                  className="whitespace-nowrap font-medium text-blue-700 hover:underline"
+                  className="whitespace-nowrap font-semibold text-accent-foreground hover:underline"
                 >
                   Open board →
                 </Link>
@@ -118,7 +118,7 @@ export function TeamSummaryTable({ perTeam, selectedSprint, asOf, viewerIsAdmin 
           ))}
         </tbody>
       </table>
-      <p className="border-t px-3 py-2 text-xs text-muted-foreground">
+      <p className="border-t border-border-subtle bg-subtle px-3 py-2 text-xs text-muted-foreground">
         Teams sorted worst health first · syncs happen on each team&apos;s own board
       </p>
     </section>

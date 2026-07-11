@@ -12,6 +12,7 @@ import { WORKFLOWS } from "@/lib/workflows.mjs";
 import { apiFetch } from "@/lib/api-client";
 import { useLocalPref } from "@/lib/use-local-pref";
 import { ActivityPill } from "@/components/ui/spinner";
+import { Toast, useToast } from "@/components/ui/toast";
 import { TopBar } from "./top-bar";
 import { Hero } from "./hero";
 import { MetricGrid } from "./metric-grid";
@@ -25,12 +26,17 @@ import { EmptyState } from "./empty-state";
 const DENSITY_KEY = "sprintTracker_viewDensity";
 const COLLAPSED_KEY = "sprintTracker_filtersPanelCollapsed";
 
-function summarizeSync(summary) {
-  const lines = summary.filters.map(
-    (f) => `${f.name}: ${f.total} issues (+${f.added} / −${f.removed})`,
-  );
-  if (summary.progressSeeded > 0) lines.push(`${summary.progressSeeded} checklist(s) seeded from Jira status`);
-  return lines.join("\n") || "No filters to sync.";
+/** One-line sync outcome for the success toast (errors keep the full alert modal). */
+function condenseSync(summary) {
+  if (summary.filters.length === 0) return "no filters to sync";
+  const added = summary.filters.reduce((sum, f) => sum + f.added, 0);
+  const removed = summary.filters.reduce((sum, f) => sum + f.removed, 0);
+  const parts = [
+    `${summary.filters.length} filter${summary.filters.length === 1 ? "" : "s"}`,
+    `+${added} / −${removed} issues`,
+  ];
+  if (summary.progressSeeded > 0) parts.push(`${summary.progressSeeded} checklist(s) seeded`);
+  return parts.join(" · ");
 }
 
 export function Dashboard({
@@ -49,6 +55,7 @@ export function Dashboard({
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [alert, setAlert] = useState(null);
+  const [toast, showToast] = useToast();
   const [showAddFilter, setShowAddFilter] = useState(false);
   const [sprintDialogMode, setSprintDialogMode] = useState(null); // null | "create" | "edit"
   const [syncing, setSyncing] = useState(false);
@@ -93,10 +100,10 @@ export function Dashboard({
     startMutation(async () => {
       try {
         const summary = await apiFetch(`${base}/sync`, { method: "POST" });
-        // Alert lands together with the refreshed matrix, not before it.
+        // Toast lands together with the refreshed matrix, not before it.
         startMutation(() => {
           router.refresh();
-          setAlert({ title: "Sync completed", body: summarizeSync(summary), tone: "success" });
+          showToast(`Sync complete · ${condenseSync(summary)}`);
         });
       } catch (error) {
         setAlert({ title: "Sync failed", body: error.message, tone: "error" });
@@ -121,7 +128,7 @@ export function Dashboard({
         const summary = await apiFetch(`${base}/sync`, { method: "POST" });
         startMutation(() => {
           router.refresh();
-          setAlert({ title: "Filter added", body: summarizeSync(summary), tone: "success" });
+          showToast(`Filter added · ${condenseSync(summary)}`);
         });
       } catch (error) {
         setAlert({ title: "Filter added — sync failed", body: error.message, tone: "error" });
@@ -190,7 +197,7 @@ export function Dashboard({
   const showWelcome = Boolean(selectedTeam && selectedSprint && filters.length === 0);
 
   return (
-    <div className="flex min-h-screen flex-col bg-muted/30">
+    <div className="flex min-h-screen flex-col">
       <TopBar
         user={user}
         teams={teams}
@@ -207,7 +214,7 @@ export function Dashboard({
         onLogout={handleLogout}
       />
 
-      <main className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-5 p-5">
+      <main className="flex w-full flex-1 flex-col gap-5 p-4 md:p-6">
         {!selectedTeam ? (
           <EmptyState
             title="You're not on a team yet"
@@ -246,7 +253,7 @@ export function Dashboard({
               <>
                 <MetricGrid metrics={metrics} sprint={selectedSprint} />
                 <section
-                  className={`grid flex-1 items-start gap-5 ${collapsed ? "grid-cols-[56px_1fr]" : "grid-cols-[300px_1fr]"}`}
+                  className={`grid flex-1 grid-cols-1 items-start gap-5 transition-[grid-template-columns] duration-300 ease-out ${collapsed ? "xl:grid-cols-[56px_1fr]" : "xl:grid-cols-[300px_1fr]"}`}
                 >
                   <FilterPanel
                     allFilters={filters}
@@ -280,9 +287,15 @@ export function Dashboard({
       </main>
 
       <ActivityPill show={busy || syncing} label={syncing ? "Syncing Jira…" : "Updating…"} />
+      <Toast toast={toast} />
       <AlertDialog alert={alert} onClose={() => setAlert(null)} />
       {showAddFilter && base && (
-        <AddFilterDialog onAdd={handleAddFilter} onClose={() => setShowAddFilter(false)} busy={busy} />
+        <AddFilterDialog
+          onAdd={handleAddFilter}
+          onClose={() => setShowAddFilter(false)}
+          busy={busy}
+          existingCount={filters.length}
+        />
       )}
       {sprintDialogMode && (
         <SprintConfigDialog
@@ -291,6 +304,7 @@ export function Dashboard({
           selectedTeamId={selectedTeam?.id}
           onClose={() => setSprintDialogMode(null)}
           onSelect={select}
+          onSaved={() => showToast("Sprint saved")}
         />
       )}
     </div>
