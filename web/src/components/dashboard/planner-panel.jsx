@@ -19,6 +19,7 @@ export function PlannerPanel({
   jiraBaseUrl,
   canWrite,
   busy,
+  asOf,
   onToggleStage,
   onToggleBlocked,
 }) {
@@ -49,7 +50,14 @@ export function PlannerPanel({
         </div>
       </div>
 
-      <div className="overflow-x-auto" role="region" aria-label="Sprint delivery matrix" tabIndex="0">
+      {/* overflow-x makes this a scroll container on BOTH axes, so sticky headers can only pin
+          against it — cap its height so long matrices scroll (and pin) here, not on the page. */}
+      <div
+        className="max-h-[calc(100vh-10.5rem)] overflow-auto"
+        role="region"
+        aria-label="Sprint delivery matrix"
+        tabIndex="0"
+      >
         {allFilters.length === 0 ? (
           <div className="py-16 text-center text-sm text-muted-foreground">
             <h3 className="font-display text-base font-bold text-foreground">No sprint data to display</h3>
@@ -61,13 +69,13 @@ export function PlannerPanel({
             <p>Clear the search to return to the full sprint matrix</p>
           </div>
         ) : (
-          visibleFilters.map((filter) => {
+          visibleFilters.map((filter, index) => {
             const workflow = WORKFLOWS[filter.workflowType];
             const accent = filter.accentColor ?? "#00a892";
             return (
-              <div key={filter.id} id={`filter-section-${filter.id}`}>
+              <div key={filter.id} id={`filter-section-${filter.id}`} className={index > 0 ? "mt-5" : undefined}>
                 <div
-                  className="flex min-w-225 items-baseline gap-2 border-b border-border-subtle px-4 py-2.5"
+                  className={`flex min-w-225 items-baseline gap-2 border-b border-border-subtle px-4 py-2.5 ${index > 0 ? "border-t" : ""}`}
                   style={{ backgroundColor: `color-mix(in srgb, ${accent} 6%, white)` }}
                 >
                   <span
@@ -82,7 +90,7 @@ export function PlannerPanel({
                 </div>
 
                 <div
-                  className="grid min-w-225"
+                  className="sticky top-0 z-2 grid min-w-225"
                   style={{
                     gridTemplateColumns: `minmax(230px, 1.4fr) repeat(${workflow.stages.length}, minmax(64px, 1fr)) minmax(110px, 0.7fr)`,
                   }}
@@ -116,6 +124,7 @@ export function PlannerPanel({
                     jiraBaseUrl={jiraBaseUrl}
                     canWrite={canWrite}
                     busy={busy}
+                    asOf={asOf}
                     onToggleStage={onToggleStage}
                     onToggleBlocked={onToggleBlocked}
                   />

@@ -1,90 +1,86 @@
 # Current Feature
 
-**UI polish — visual parity with the legacy app (step-6 addendum)** — full spec:
-@context/features/ui-polish.md
+**Share view + export (migration step 8)** — full spec:
+@context/features/share-view-export.md
 
-Not a numbered master-plan step: step 6 is Done, but per Naveen (2026-07-09) the `web/` UI looks
-amateurish next to the legacy Vite app. This re-skins `web/` to the **legacy design system**
-([src/styles.css](../src/styles.css) is the reference spec — teal `#00BFA5` on ink `#0B1620`,
-`#F4F7FA` canvas, Manrope/Inter/JetBrains Mono, layered ink shadows, hover lifts) — which *is*
-§11 realized. Pulled ahead of step 8 because share/export will render these same components.
-**Zero logic/API/schema changes** except one dialog payload field (accent assignment). Dark-mode
-toggle and skeletons stay post-v1.
+The next in-order master-plan step (1–7 Done): replace the prototype's base64 `?share=` URL with
+the server-persisted **`SharedView` token** (§9) rendered at a public read-only **`/share/[token]`**
+page (live or frozen, with expiry), and **port the PDF/PNG export** (client-side capture of
+dedicated offscreen A4 pages). Closes §14.3 ("share view encodes the whole dataset in the URL")
+and realizes §13 hardening item 4. **No schema change, no migration** — `SharedView` shipped in
+the `init` migration. ui-polish landed first precisely so these surfaces render the finished
+design system.
 
 ## Status
 
-**Done 2026-07-10** — all 9 decisions implemented as proposed; the step-6 deferred polish is
-landed. Token layer (legacy fonts via `next/font/google`, `#F4F7FA` canvas, ink shadow scale +
-`--shadow-brand`, motion tokens, health triplets, `hero-panel` `@utility`); UI kit (button lift +
-brand glow + `onDark` glass variant, dialog blur/rise/tone-strips, tokenized Badge, **new
-`ui/toast.jsx`** + ink ActivityPill, **new server-safe `ui/hero-shell.jsx`**, lucide icons);
-chrome/metric/matrix/sidebar/login/admin/rollup restyled to the legacy system (accent spines,
-`color-mix` tints, 3-state bordered stage badges w/ glow rings, bordered health pills, frozen
-first column, tone-striped metric cards, styled confirm replacing `window.confirm`); AddFilter
-sends deterministic palette `accentColor`. **Verified:** lint clean; `prisma validate` +
-`migrate status` up to date (no schema change, no migration, **no new deps**); **DB/env-free
-build green** (24 `ƒ Dynamic`); token audits pass (no Geist, no hero hex in components, no raw
-palette tone maps, no `tailwind.config.*`, no `window.confirm`); **29/29 SSR smoke on dev+Neon**
-against **Naveen's real synced data** (1 team / 2 filters / 73 issues — render-only, no writes)
-+ compiled-CSS checks (hero gradients, `shadow-brand`, `animate-toast`, fonts in the prod
-bundle). Harness deleted, dev server stopped, `.env` restored. ⚠️ Naveen's side-by-side browser
-eyeball (`:3000` vs `:3002`) is the remaining acceptance; the still-open 6a real-Jira UI run can
-piggyback. See @context/features/ui-polish.md "As-built notes". **Next:** step 8 (share view +
-export) or step 9 (localStorage importer).
+**Done 2026-07-12** — all 10 decisions implemented as proposed (asOf threaded slightly wider than
+specced: also `MetricGrid`/`PlannerPanel`/`IssueRow` props, since the client leaves compute
+health/velocity themselves). New: `lib/share-token.js`, `getShareData`/`buildShareSnapshot`,
+`lib/schemas/share.js`, `POST/GET …/shares` + `DELETE /api/shares/[shareId]`, public
+`/share/[token]` (session-less, noindex, generic invalid state), `share-dialog.jsx`,
+`export-dialog.jsx`, Hero Share/Export buttons. Deps `html2canvas-pro@2.2.3` + `jspdf@2.5.2`
+exact, dynamic-imported. **Capture spike passed** (headless Chrome: oklch + `color-mix` + hero
+gradients → PNG, no color-parse error). **Verified:** lint clean; `prisma validate`/`migrate
+status` up to date (**no schema change, no migration**); **DB/env-free build green (27 `ƒ
+Dynamic`)**; `jspdf` absent from the dashboard chunk; **25/25 asOf pure fixtures**; **37/37 SSR
+smoke on dev+Neon** (fabricated SHSMK fixture, torn down to 0 leftovers) — cookie-less share
+render w/ no session chrome, create gates 401/403/400×3, **frozen 65% vs live 80% divergence
+after a progress PUT**, list scoping, revoke/expiry/unknown → same generic page. ⚠️ Human
+acceptance: open a share logged-out + export a real board to PDF/PNG (piggybacks the ui-polish
+side-by-side eyeball + 6a real-Jira run). See @context/features/share-view-export.md "As-built
+notes". **Next:** step 9 (localStorage importer) — the last step before cutover (step 10).
 
 ## Goals
 
-- **(a) Token layer — `web/src/app/globals.css` + `layout.jsx`**: legacy font stack via
-  `next/font/google` (Manrope display / Inter sans / JetBrains Mono) replacing Geist; shadow
-  tokens (`--shadow-xs…xl`, `--shadow-brand` teal glow); motion tokens (ease-out/in-out,
-  120/180/280ms) + `rise`/`fade-out`; `#F4F7FA` page canvas; selection/link base treatments.
-- **(b) UI kit — `web/src/components/ui/`**: button hover-lift + brand glow + **on-dark variant**;
-  dialog overlay blur + rise entrance; badge tint alignment; **new `toast.jsx`** (ink bg,
-  bottom-right, rise/fade ~3s); ActivityPill restyle; lucide icons replacing text glyphs.
-- **(c) Chrome**: TopBar (56px, product block, ink avatar pill, icon buttons, RefreshCw sync);
-  **one shared Hero** (ink + dual teal radial glows, eyebrow, days-remaining pill w/ urgent
-  variant, glass welcome state) reused by `/` and `/rollup` (kills 3 copy-pastes).
-- **(d) Metric cards — `metric-grid.jsx`**: 3px tone top-stripe, 28px icon tile, display-font
-  26/800 value, hover lift; drop raw color maps for tokens.
-- **(e) Matrix + sidebar — `planner-panel,issue-row,filter-panel.jsx`**: real border-subtle
-  gridlines (kill `gap-px`), sticky first column w/ scroll shadow, `color-mix` 6% accent section
-  tints + dots, 3px accent issue spine, teal jira-key chip, tri-state completion badge, 3-state
-  bordered stage badges w/ hover glow rings + done wash + blocked state, bordered health pills,
-  restyled sidebar cards (drag states, search, JQL chip, accent bars), collapsed rail.
-- **(f) Login — `login-form.jsx`**: 420px radius-16 p-40 card on canvas, spinner while connecting,
-  legacy header/footer.
-- **(g) Feedback/admin/rollup**: success paths → toast (errors keep AlertDialog); admin
-  `window.confirm` → styled confirm; rollup table raw colors → tokens, hero → shared component
-  (stays a server component).
-- **(h)** AddFilter sends deterministic palette `accentColor` (count % palette, red excluded) —
-  the only non-presentation change; existing null accents keep teal default.
-- **Acceptance:** lint + DB/env-free build green; no `tailwind.config.*`, no new deps, no
-  migration; token-audit greps (no Geist, no hardcoded hero hex, no raw `text-blue-700`-class
-  maps, lucide imported); 6a/6b behavioral SSR smoke still passes; toast + `accentColor` +
-  `color-mix` render; **Naveen side-by-side browser eyeball `:3000` vs `:3002`** (definition of
-  done) + the still-open 6a real-Jira UI run piggybacks.
+- **(a) Data + token layer — `web/src/lib/`**: `generateShareToken()` (192-bit base64url,
+  app-supplied over the schema's guessable cuid default); `getShareData(token)` +
+  `buildShareSnapshot()` beside `getDashboardData` in `lib/dashboard-data.js` (live = batched
+  current reads; frozen = parse `snapshot` Json); optional **`asOf`** threaded through
+  `getHealthStatus`/`getWeeklyVelocity`/`computeSprintMetrics` in `lib/metrics.mjs` (default
+  `new Date()`) so frozen shares don't drift.
+- **(b) API — `lib/schemas/share.js` + routes**: `POST/GET
+  /api/teams/[teamId]/sprints/[sprintId]/shares` (create gated `TEAM_WRITER_ROLES`, filterIds
+  validated ⊆ team+sprint; list = own shares, admin all) + flat `DELETE /api/shares/[shareId]`
+  (creator or global admin). Step-4 patterns: `force-dynamic`, `parseJsonBody`+zod,
+  `handleRouteError`, `{ error }` bodies.
+- **(c) Public page — `web/src/app/share/[token]/page.jsx`**: no auth gate (token = bearer
+  capability), `force-dynamic`, `robots: noindex`; read-only reuse of HeroShell + MetricGrid +
+  matrix (null write handlers, stored `viewDensity` as prop); generic invalid/expired state for
+  unknown/expired/revoked tokens.
+- **(d) Share dialog + Hero — `components/dashboard/`**: `share-dialog.jsx` (live/frozen toggle,
+  expiry presets 7d/30d/never, create → clipboard + toast w/ AlertDialog fallback, manage list w/
+  copy + revoke); Hero gains the §11 **Share + Export** buttons (`onDark`, hidden on welcome).
+- **(e) Export — `components/dashboard/export-dialog.jsx`**: port legacy ExportModal (filter
+  toggles, paged preview, offscreen 794px A4 SummaryPage/IssuesPage, single metrics recompute
+  over selection) + capture (`document.fonts.ready`, scale 2, PDF = jsPDF A4/page, PNG = merged
+  canvas). Deps: **`html2canvas-pro`** + `jspdf@2.5.2` exact, dynamically imported. **Spike the
+  oklch capture first.**
+- **(f)** No env, no schema, no migration.
+- **Acceptance:** lint + DB/env-free build green (`/share/[token]` + new routes `ƒ Dynamic`);
+  `migrate status` unchanged; curl/SSR smoke (cookie-less share render, 403s, frozen-vs-live
+  divergence, expiry/revoke → generic page, list scoping); asOf pure fixtures; capture spike
+  proven; Naveen browser acceptance (create/copy/open share logged-out; real PDF/PNG eyeball).
 
 ## Notes
 
-- **Read installed docs first** (`node_modules/next/dist/docs/`, `web/AGENTS.md`): `next/font/
-  google` multi-family setup; how Tailwind v4 `@theme` registers `--shadow-*`/`--font-*`
-  namespaces so utilities emit them. No `tailwind.config.*` may appear.
-- **Inline styles stay data-driven-only** (6a precedent): accent `color-mix` tint, accent
-  spine/dot/bar colors, `gridTemplateColumns`. Everything else = tokens/utilities; no hex in
-  components.
-- **Sticky header/column inside `overflow-x-auto`**: sticky-vs-page-scroll doesn't work from
-  inside a scroll container — replicate legacy nesting (container owns x only), verify with real
-  overflow.
-- `next/font/google` fetches at build — confirm `yarn build` stays green offline/DB-free
-  (`next/font/local` is the escape hatch).
-- `rollup/team-summary-table.jsx` must stay a server component (its header comment).
-- Legacy `--bg-base`/`--bg-surface` (login CSS) are **undeclared** — read as `#F4F7FA`/`#FFFFFF`.
-- Health triplets: [src/workflows.js:107-175](../src/workflows.js#L107-L175); accent palette:
-  [src/jiraService.js:236-244](../src/jiraService.js#L236-L244) (drop red, pick by index not
-  random); stage-badge state values in the spec Scope (e).
-- **Doc-sync (§17):** §11 6a note → polish landed (toasts/motion/elevation/legacy type); flip any
-  "modal alerts for now" wording. Don't over-claim: dark mode still absent, step 8 untouched, no
-  new master-plan number.
+- **html2canvas vs Tailwind v4 colors is the landmine**: the theme is oklch + ui-polish
+  `color-mix()`; stock html2canvas 1.4.1 throws on modern color functions → `html2canvas-pro`,
+  spiked before the full port (fallback: hex-only self-contained print-page styles).
+- **Next 16 async `params`** on `[token]`/`[shareId]` — read `node_modules/next/dist/docs/`
+  first (`web/AGENTS.md`).
+- **Public page leaks nothing**: no TopBar, no `can` flags, no user object in props; stays
+  `force-dynamic`; DB/env-free build invariant must hold.
+- **Snapshot Json dates land as ISO strings** — metrics coerce via `new Date(...)`, but verify
+  the frozen render path against real snapshot data.
+- **`includedFilterIds` has no FK** — live shares skip deleted ids; POST validates ownership so
+  no foreign filter can be smuggled in. Progress reads derive teamId from the loaded filters.
+- **Clipboard can be blocked** (plain-http dev) — the AlertDialog copy-fallback is required, not
+  polish.
+- If `PlannerPanel`/`MetricGrid` read the density local pref internally, lift to a prop with the
+  pref as the dashboard default — don't fork components.
+- **Doc-sync (§17):** §5 Share-view row → BUILT in `web/` + Export row note; §13.4 implemented
+  (auth-gated shares explicitly NOT built); §14.3 fixed in web/; §11 flip "wait for step 8"; §12
+  asOf note; master-plan step 8 DONE. §7 stays the legacy snapshot; steps 9–10 untouched.
 
 ## History
 
@@ -505,3 +501,61 @@ export) or step 9 (localStorage importer).
   gains the §11 Share/Export buttons (clipboard + toast, AlertDialog fallback). Out of scope:
   roll-up/cross-team shares, `requiresAuth`, retention/rate-limiting, export of `/rollup`,
   steps 9–10.
+- 2026-07-11 — Picked @context/features/share-view-export.md as the current feature (migration
+  **step 8** — SharedView token route `/share/[token]` + share dialog + PDF/PNG export port).
+  Branch `feature/share-view-export` created off `feature/ui-polish` (whose Done-but-uncommitted
+  diff rides along until Naveen's eyeball + commit). ui-polish remains **Done**.
+- 2026-07-12 — **Implemented share-view-export (migration step 8).** Read the installed Next 16
+  dynamic-routes + generate-metadata docs first (async `params` Promise; `robots` metadata
+  shape). Data layer: optional **`asOf` clock** through `getHealthStatus`/`getWeeklyVelocity`/
+  `computeSprintMetrics` (+ additive `asOf` props on `MetricGrid`/`PlannerPanel`/`IssueRow` —
+  the client leaves compute health/velocity themselves; dashboard//rollup pass nothing),
+  `lib/share-token.js` (192-bit base64url over the schema's guessable cuid default), and
+  `getShareData(token)` + `buildShareSnapshot` in `lib/dashboard-data.js` (frozen snapshots
+  freeze filters+issues+progress **and the sprint window**, trimmed to in-scope keys; live
+  resolves `includedFilterIds` at request time, deleted filters drop out, all-gone → null).
+  API: `lib/schemas/share.js` (zod-4, future-`expiresAt` check added), writer-gated
+  `POST/GET /api/teams/[teamId]/sprints/[sprintId]/shares` (filterIds validated ⊆ team+sprint —
+  the only guard on the FK-less `includedFilterIds`; list = sprint+creator scope, admin all,
+  rows carry resolvable filterNames) + flat creator/admin `DELETE /api/shares/[shareId]`.
+  UI: public session-less `/share/[token]` (force-dynamic, `robots: noindex`, one generic
+  invalid/expired state, HeroShell header w/ live-staleness or frozen chip — no
+  DaysRemainingPill on frozen, read-only MetricGrid+PlannerPanel, share's `viewDensity`);
+  `share-dialog.jsx` (live/frozen cards, expiry presets 7/30/never, created link always inline
+  w/ Copy — subsumes the clipboard fallback, manage list w/ copy+revoke, inline errors);
+  `export-dialog.jsx` (legacy ExportModal port: accent filter toggles, paged preview, offscreen
+  794px A4 SummaryPage/IssuesPage, single `computeSprintMetrics` recompute, PDF/PNG capture
+  inline — no separate hook; render-time page clamp per the installed set-state-in-effect
+  rule); Hero + Dashboard wiring (Share = writer-gated, Export = anyone). Deps
+  **`html2canvas-pro@2.2.3` + `jspdf@2.5.2`** exact, dynamic-imported — **spiked FIRST** via a
+  temporary page + headless Chrome (`SPIKE_OK`: oklch + `color-mix` + hero-panel gradients
+  captured; spike deleted). No schema change, no migration. Verified: lint clean; migrate
+  status up to date; **DB/env-free build green (27 `ƒ Dynamic`** incl. the 3 new surfaces);
+  jspdf confirmed split out of the dashboard chunk; **25/25 plain-Node asOf fixtures**; **37/37
+  SSR smoke on dev+Neon** (fabricated SHSMK team/sprint/users w/ minted cookies: cookie-less
+  render + noindex + no session chrome, 401/403/400×3 create gates, **frozen 65% held vs live
+  65%→80% after a progress PUT**, own-vs-admin list scoping + viewer 403, revoke
+  403/401/200→invalid→404, expired/unknown → same generic 200 page); fixture torn down (0
+  leftovers), harnesses deleted. Smoke ran against the already-running dev server (Naveen's);
+  stopped it only for the env-free build and **restarted it after** (:3002 → 200). As-built
+  deviations in share-view-export.md. Docs synced (§5 both rows, §11 step-8 note, §12 asOf,
+  §13.4 built w/ optional-auth NOT built, §14.3 fixed-in-web, master-plan step 8 DONE).
+  **Done.** ⚠️ Human acceptance: open a share logged-out + export a real board to PDF/PNG.
+  **Next:** step 9 (localStorage importer — seed.md needs a refresh, it predates steps 3–7),
+  then step 10 (cutover).
+- 2026-07-14 — **UI iteration (per Naveen, rides on the step-8 branch):** (1) Delivery Matrix
+  filter sections now separated — `mt-5` gap between sections + `border-t` on the tinted section
+  header (on the `min-w-225` row so it spans the scrolled width); the public `/share/[token]`
+  page inherits via the shared `PlannerPanel` (export A4 pages unaffected — separate rendering).
+  (2) The bottom-right `ActivityPill` replaced by a full-page **`PageLoader`** overlay
+  (`ui/spinner.jsx`: ink-blur backdrop per the dialog system, centered ink spinner panel,
+  rendered last so it covers open dialogs; blocks interaction until `router.refresh()` lands) —
+  swapped at both call sites (dashboard "Updating…/Syncing Jira…", admin "Working…"). (3) Stage
+  headers now **stick while scrolling a long filter**: the matrix scroll region gets
+  `max-h-[calc(100vh-10.5rem)] overflow-auto` (an `overflow-x` ancestor is a scroll container on
+  both axes, so sticky can only pin against it — the root cause of the legacy app's inert sticky
+  header, ui-polish "skipped" note) and each filter's stage-header row is `sticky top-0 z-2`
+  (above the `z-1` frozen first column; headers hand off per section since sticky is constrained
+  to its filter wrapper). Long matrices now scroll inside the panel instead of the page; share
+  page inherits. Lint + DB/env-free build green (27 ƒ Dynamic; one build attempt failed on a
+  transient Google Fonts fetch, clean on retry).

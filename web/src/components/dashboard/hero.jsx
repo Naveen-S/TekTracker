@@ -1,6 +1,6 @@
 "use client";
 
-import { Layers, ListChecks, TrendingUp } from "lucide-react";
+import { Download, Layers, Link2, ListChecks, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DaysRemainingPill,
@@ -25,6 +25,8 @@ export function Hero({
   onToggleDensity,
   onConfigureSprint,
   onAddFilter,
+  onShare,
+  onExport,
 }) {
   if (showWelcome) {
     return (
@@ -81,10 +83,20 @@ export function Hero({
           <DaysRemainingPill days={daysRemaining} />
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button variant="onDark" size="sm" onClick={onToggleDensity}>
           {density === "dense" ? "Relaxed view" : "Dense view"}
         </Button>
+        {onShare && (
+          <Button variant="onDark" size="sm" onClick={onShare}>
+            <Link2 /> Share View
+          </Button>
+        )}
+        {onExport && (
+          <Button variant="onDark" size="sm" onClick={onExport}>
+            <Download /> Export
+          </Button>
+        )}
         {onConfigureSprint && (
           <Button variant="onDark" size="sm" onClick={onConfigureSprint}>
             Configure Sprint

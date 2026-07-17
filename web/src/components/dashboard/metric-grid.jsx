@@ -56,8 +56,9 @@ function Metric({ label, icon, value, detail, tone }) {
   );
 }
 
-export function MetricGrid({ metrics, sprint }) {
-  const velocity = getWeeklyVelocity(sprint, metrics.velocityCompletedPoints, metrics.velocityPoints);
+/** `asOf` (optional) pins the velocity clock — frozen shared views pass their capture time. */
+export function MetricGrid({ metrics, sprint, asOf }) {
+  const velocity = getWeeklyVelocity(sprint, metrics.velocityCompletedPoints, metrics.velocityPoints, asOf);
   return (
     <section
       className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"

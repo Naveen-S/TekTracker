@@ -34,11 +34,15 @@ export function calculateWeightedCompletion(stageCompletion, weights) {
   return totalWeight > 0 ? Math.round((completedWeight / totalWeight) * 100) : 0;
 }
 
-/** Per-issue health vs the time-elapsed expectation (§12 bands). */
-export function getHealthStatus(completionPercent, isBlocked, sprint) {
+/**
+ * Per-issue health vs the time-elapsed expectation (§12 bands). `asOf` (Date or ISO string,
+ * default: now) is the explicit clock — frozen shared views pass their `capturedAt` so health
+ * doesn't drift after capture (share-view-export.md decision 6).
+ */
+export function getHealthStatus(completionPercent, isBlocked, sprint, asOf) {
   if (isBlocked) return { status: "Blocked", tone: "danger", icon: "⊗" };
 
-  const today = new Date();
+  const today = asOf ? new Date(asOf) : new Date();
   const startDate = new Date(sprint.developmentStart);
   const endDate = new Date(sprint.developmentEnd);
   const totalDays = (endDate - startDate) / DAY_MS;
@@ -67,9 +71,9 @@ export function resolveProgress(jiraKey, filterWorkflowType, progressByKey) {
 /**
  * Aggregate sprint metrics over a set of filters (§12) — same return shape as the prototype's
  * `computeSprintMetrics`, minus hex colors. Issues appearing in several filters are counted per
- * appearance (prototype parity).
+ * appearance (prototype parity). Optional `asOf` is the health clock (frozen shares).
  */
-export function computeSprintMetrics(filters, progressByKey, sprint) {
+export function computeSprintMetrics(filters, progressByKey, sprint, asOf) {
   const issues = filters.flatMap((filter) =>
     (filter.issues ?? []).map((issue) => {
       const { workflowType, stageCompletion, blocked } = resolveProgress(
@@ -87,7 +91,7 @@ export function computeSprintMetrics(filters, progressByKey, sprint) {
         percent,
         completedStages: stageCompletion.filter(Boolean).length,
         blocked,
-        health: getHealthStatus(percent, blocked, sprint),
+        health: getHealthStatus(percent, blocked, sprint, asOf),
       };
     }),
   );
@@ -229,10 +233,13 @@ export function snapshotValues(metrics) {
   };
 }
 
-/** Naive linear velocity + projection (§12) — replace with SprintSnapshot actuals in step 7. */
-export function getWeeklyVelocity(sprint, completedPoints, points) {
+/**
+ * Naive linear velocity + projection (§12) — replace with SprintSnapshot actuals in step 10.
+ * Optional `asOf` is the explicit clock (frozen shares, decision 6).
+ */
+export function getWeeklyVelocity(sprint, completedPoints, points, asOf) {
   const start = new Date(sprint.developmentStart);
-  const today = new Date();
+  const today = asOf ? new Date(asOf) : new Date();
   const end = new Date(sprint.developmentEnd);
 
   const totalDuration = (end - start) / DAY_MS;

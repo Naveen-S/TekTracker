@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { ActivityPill } from "@/components/ui/spinner";
+import { PageLoader } from "@/components/ui/spinner";
 import { apiFetch } from "@/lib/api-client";
 import { formatDate } from "@/lib/metrics.mjs";
 
@@ -349,7 +349,7 @@ export function AdminPanel({ teams, sprints }) {
         </form>
       </SectionCard>
 
-      <ActivityPill show={busy} label="Working…" />
+      <PageLoader show={busy} label="Working…" />
     </main>
   );
 }

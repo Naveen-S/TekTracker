@@ -95,8 +95,8 @@ Key relationships:
 | Sync Jira (pull live status) | **[BUILT]** | Legacy: `handleSyncAll`; diffs added/removed issues. **`web/`: server-side sync engine + `POST …/sync` route with hybrid stage seeding** (step 5, 2026-07-07). |
 | Configure sprint (dates, name) | **[PARTIAL]** | Legacy modal has no gating and no first-class sprint. **`web/`: admin-gated API (step 4) + admin-only UI (SprintConfig dialog + `/admin`, step 6a, 2026-07-08)**; legacy app ungated until cutover. |
 | Reorder filters | **[BUILT]** | Drag + priority default sort. **`web/` UI: drag → PUT `…/filters/order`** (step 6a, 2026-07-08). |
-| Export PDF / PNG | **[BUILT]** | Client-side `html2canvas` + `jsPDF`; include/exclude filters. |
-| Share view | **[PARTIAL]** | Encodes **entire dataset** into a base64 URL — fragile, not live, not access-controlled. |
+| Export PDF / PNG | **[BUILT]** | Legacy: client-side `html2canvas` + `jsPDF`; include/exclude filters. **`web/` port (step 8, 2026-07-12): `html2canvas-pro` (Tailwind-v4-oklch-safe) + `jsPDF` over re-skinned offscreen A4 pages, dynamic-imported.** |
+| Share view | **[BUILT in `web/` — 2026-07-12, step 8]** | Legacy still encodes the dataset into a base64 URL until cutover. **`web/`: server-persisted `SharedView` → public read-only `/share/[token]`** (192-bit token, live or frozen w/ `asOf`-pinned metrics, expiry, revocation); see context/features/share-view-export.md. |
 | Multi-team / ED roll-up | **[BUILT in `web/` — 2026-07-08]** | Team + membership model and admin APIs came in step 4 (2026-07-07); the roll-up *view* is step 6b: read-only `/rollup` server page (combined `MetricGrid` + per-team table via pure `aggregateRollup`), membership-derived, no Sync — staleness from `lastSyncedAt`. |
 | Trend / burndown / "projected by end of sprint" | **[PARTIAL — data BUILT in `web/` 2026-07-09]** | Daily per-team `SprintSnapshot` rows written by the step-7 cron (`POST /api/cron/daily`); the trend/burndown *UI* is still unbuilt (step 10 post-v1). |
 | AI summary (Gemini) | **[GAP]** | Post-v1; use cases ratified 2026-06-10 (see §16). |
@@ -713,9 +713,12 @@ Jira** button. Footer: "Engineering Internal Tool @ Tekion Corp."
 > with Tailwind v4 + hand-written shadcn-style components on **server data**
 > (`usePersistedSprintState` retired; localStorage keeps only density/collapse): `/login`, `/`
 > (server component + client leaves: TopBar w/ team+sprint selectors, Hero, MetricGrid, FilterPanel,
-> PlannerPanel matrix, AddFilter/SprintConfig/Alert dialogs), `/admin`. Export/Share buttons wait
-> for step 8; ED roll-up views are step 6b; dark-mode toggle, toasts (modal alerts for now), and
-> loading skeletons are post-6a polish. See context/features/ui-port.md.
+> PlannerPanel matrix, AddFilter/SprintConfig/Alert dialogs), `/admin`. Export/Share buttons
+> **landed with step 8 (2026-07-12)** — Hero "Share View" (ShareDialog: live/frozen, expiry,
+> manage/revoke list, clipboard+toast) and "Export" (ExportDialog: filter toggles, paged preview,
+> PDF/PNG via `html2canvas-pro`+`jsPDF`), plus the public read-only `/share/[token]` page; ED
+> roll-up views are step 6b; dark-mode toggle and loading skeletons stay post-v1. See
+> context/features/ui-port.md and context/features/share-view-export.md.
 >
 > **[BUILT in `web/` 2026-07-10 — ui-polish, step-6 addendum]** — the deferred polish landed as a
 > full re-skin to the **legacy design system** (`src/styles.css` is the reference): legacy type
@@ -758,6 +761,10 @@ Reference implementation: [`src/workflows.js`](src/workflows.js) and
   a **naive linear** model — replace with snapshot-based actuals once `SprintSnapshot` exists.
   (Snapshot rows exist as of step 7, 2026-07-09 — the UI still computes the naive model; the swap
   is step 10.)
+- **Explicit clock (`asOf`) — `web/` only, step 8 (2026-07-12):** the time-dependent functions
+  (`getHealthStatus`, `getWeeklyVelocity`, `computeSprintMetrics`) take an optional `asOf`
+  (default: now). Frozen shared views pass their snapshot's `capturedAt` so health/velocity can't
+  drift after capture; all other callers pass nothing and behave as before.
 
 > All of the above depend on **manual stage completion** today. They become trustworthy only once the
 > hybrid seed-from-Jira model (§6) lands.
@@ -791,6 +798,11 @@ file store. Token is **plaintext on disk** in `.sessions/`. Acceptable for a loc
    Configure Sprint is admin-only chrome, `/admin` 404s for non-admins, VIEWERs get a read-only
    matrix — all still re-checked server-side per request.
 4. **Share links**: short token, optional expiry, optional auth requirement; never embed the dataset.
+   **[BUILT in `web/` 2026-07-12, step 8]** — `/share/[token]` over `SharedView`: app-generated
+   192-bit token (the schema's cuid default is too guessable for a capability URL), read-time expiry,
+   creator/admin revocation, dataset never in a URL. The "optional auth requirement" is deliberately
+   **NOT built** (needs a schema column; deferred until a concrete need — the token is the bearer
+   capability, and the page is `robots: noindex`).
 5. Move `SESSION_SECRET` and all secrets to the platform's secret store; rotate. **[PARTIAL in `web/`]**
    the legacy `SESSION_SECRET` is **retired** — `web/` reads `SESSION_PASSWORD` (iron-session sealing)
    and `TOKEN_ENCRYPTION_KEY` from env/secret store and **fails loudly** if absent (no `dev-secret`
@@ -816,7 +828,9 @@ spec-internal ambiguities to resolve.
    manual edits win thereafter; legacy app unchanged until cutover.
 3. **Share view encodes the whole dataset in the URL.** Base64 of all filters + issues + stages will
    exceed URL limits for real sprints, leaks a snapshot into browser history, and is not live. *Fix:*
-   `SharedView` token (§9).
+   `SharedView` token (§9). **[Fixed in `web/` 2026-07-12, step 8]** — token route `/share/[token]`,
+   live or frozen (frozen snapshots pin metrics to `capturedAt` via the new metrics `asOf` clock);
+   legacy app unchanged until cutover. See context/features/share-view-export.md.
 4. **Jira tokens stored in plaintext.** *Fix:* encrypt at rest / OAuth (§13).
 5. **Sprint identity is derived from mutable dates.** `getSprintKey = startDate_endDate` makes a
    sprint's identity its own dates — there's no stable handle to roll up or share by, and editing the
@@ -921,6 +935,6 @@ The plan — exact next steps, in order
 5. Sync with hybrid seeding — port the Jira client (keep field IDs/pagination isolated in one module); on sync, upsert the Issue cache and create missing IssueProgress rows seeded via StatusStageMapping; never touch rows that already exist. **[DONE 2026-07-07]** — `lib/jira/client.js` grown (`getJiraAuthForUser` decrypting the caller's credential, `fetchFilter`, paginated `searchIssues` via `/search/jql` + `nextPageToken`, 2000-issue safety cap), pure `lib/jira/transform.js` (per-team field ids, full assignee+accountId/priority/dueDate now kept), `lib/sync/engine.js` + pure `lib/sync/seeding.mjs`, `POST /api/teams/[teamId]/sprints/[sprintId]/sync` (writer roles). Verified: 15 standalone checks + full pipeline live over HTTP (pagination, jql refresh, seeding shapes, create-only re-sync, manual-edit survival, removed-issue progress survival, owning-workflow re-eval 10→4). ⚠️ Real-Tekion-issue sync blocked: the stored API token is **dead** (expired/revoked; Jira degrades bad Basic auth to *anonymous*, so searches return empty instead of 401 — which also hid the failure). Engine now **fail-fasts via `/myself`** before syncing (verified live: 401 + reconnect message). *Update 2026-07-09 (step 7):* the stored token is **alive again** (Naveen re-logged in) — the step-7 cron ran the engine end-to-end against real Jira (`/myself` passed; `/search/jql` answered 200). A UI-driven sync of real filters is the remaining re-verify. See context/features/sync-hybrid-seeding.md.
 6. UI port — pages for login, team dashboard (the existing Delivery Matrix, re-skinned), ED roll-up, admin; swap usePersistedSprintState for server data; localStorage keeps only density/collapse. **[DONE 2026-07-08 — 6a + 6b]** — 6a: `/login` + `/` dashboard (server component + Prisma reads via `lib/dashboard-data.js`, pure `lib/metrics.mjs` fixture-parity-checked against the prototype, client leaves fetching the step-4/5 routes + `router.refresh()`) + minimal `/admin`; RBAC-aware chrome (VIEWER read-only, admin-only sprint config), two localStorage prefs via `useSyncExternalStore`; verified by lint/DB-free build + ~30-check SSR smoke (see context/features/ui-port.md). 6b: membership-derived **`/rollup`** (server page + `getRollupData` batched reads + pure `aggregateRollup`/shared `bandSprintHealth`, per-team summary table, TopBar link at ≥2 teams or admin, no Sync — staleness from `lastSyncedAt`); verified by 34/34 pure fixtures + 32/32 SSR smoke (see context/features/ed-rollup.md). ⚠️ Real-Jira acceptance still pending, narrowed 2026-07-09: the token is alive and the sync engine ran live against real Jira (step 7), but the UI-driven flow (login page → dashboard Sync on real filters) hasn't been exercised.
 7. Background job — a cron on your internal infra hitting an internal route: refresh issue caches + write the daily per-team SprintSnapshot for active sprints. **[DONE 2026-07-09]** — secret-gated `POST /api/cron/daily` (`CRON_SECRET` bearer, timingSafeEqual over sha256 digests; first session-less route) → `lib/cron/daily.js` `runDailyJob`: per ACTIVE sprint, sequential per-team refresh via the step-5 engine with the `CRON_SYNC_USER_EMAIL` service credential (absent/dead → refresh skipped, snapshots still written; per-team errors isolated), then batched per-team metrics → UTC-midnight `SprintSnapshot` upsert; pure `snapshotValues` in `lib/metrics.mjs`. Verified: 23/23 pure fixtures, DB/env-free build, 30/30 live dev+Neon checks (gates, hand-computed rows, PLANNING/filterless skips, degrade path, idempotent re-run, unset-secret 500). Scheduling on Tekion infra is a deploy-time task. See context/features/background-sync-snapshots.md.
-8. Share view + export — SharedView token route (/share/[token], live or frozen, expiry) replacing the base64 URL; port PDF/PNG export.
+8. Share view + export — SharedView token route (/share/[token], live or frozen, expiry) replacing the base64 URL; port PDF/PNG export. **[DONE 2026-07-12]** — public session-less `/share/[token]` (192-bit app-generated token, `robots: noindex`, generic invalid/expired state; live = current rows, frozen = input snapshot w/ metrics pinned to `capturedAt` via the new optional `asOf` clock threaded through `lib/metrics.mjs` + the MetricGrid/PlannerPanel/IssueRow props); writer-gated `POST/GET …/shares` (filterIds validated ⊆ team+sprint) + creator/admin `DELETE /api/shares/[shareId]`; ShareDialog (live/frozen, expiry presets, manage/revoke, clipboard+toast) + ExportDialog (filter toggles, paged preview, offscreen A4 pages → PDF/PNG) behind new Hero buttons. Deps `html2canvas-pro@2.2.3` (stock html2canvas can't parse the Tailwind-v4 oklch/`color-mix` theme — proven by a headless-Chrome capture spike) + `jspdf@2.5.2`, dynamic-imported (verified absent from the dashboard chunk). No schema change, no migration. Verified: lint; DB/env-free build (27 ƒ Dynamic); 25/25 asOf fixtures; 37/37 SSR smoke on dev+Neon incl. frozen-vs-live divergence, list scoping, revoke/expiry → generic page. Human acceptance (browser share open + real PDF/PNG) pending with the ui-polish eyeball. See context/features/share-view-export.md.
 9. Importer — one-time script that takes the localStorage JSON (sprintTracker_sprintData + config) and writes Sprint/Filter/IssueProgress rows so your current sprints carry over.
 10. Cutover, then post-v1 — promote web/ to repo root, delete the Vite app; then burndown/trend UI from snapshots, then Gemini (risk call-outs + narrative first).

@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import { WORKFLOWS } from "@/lib/workflows.mjs";
 import { apiFetch } from "@/lib/api-client";
 import { useLocalPref } from "@/lib/use-local-pref";
-import { ActivityPill } from "@/components/ui/spinner";
+import { PageLoader } from "@/components/ui/spinner";
 import { Toast, useToast } from "@/components/ui/toast";
 import { TopBar } from "./top-bar";
 import { Hero } from "./hero";
@@ -20,6 +20,8 @@ import { FilterPanel } from "./filter-panel";
 import { PlannerPanel } from "./planner-panel";
 import { AddFilterDialog } from "./add-filter-dialog";
 import { SprintConfigDialog } from "./sprint-config-dialog";
+import { ShareDialog } from "./share-dialog";
+import { ExportDialog } from "./export-dialog";
 import { AlertDialog } from "./alert-dialog";
 import { EmptyState } from "./empty-state";
 
@@ -57,6 +59,8 @@ export function Dashboard({
   const [alert, setAlert] = useState(null);
   const [toast, showToast] = useToast();
   const [showAddFilter, setShowAddFilter] = useState(false);
+  const [showShare, setShowShare] = useState(false);
+  const [showExport, setShowExport] = useState(false);
   const [sprintDialogMode, setSprintDialogMode] = useState(null); // null | "create" | "edit"
   const [syncing, setSyncing] = useState(false);
   // busy covers the whole round-trip — the API call AND the router.refresh() re-render — so the
@@ -247,6 +251,8 @@ export function Dashboard({
               onToggleDensity={toggleDensity}
               onConfigureSprint={can.configureSprint ? () => setSprintDialogMode("edit") : null}
               onAddFilter={can.manage ? () => setShowAddFilter(true) : null}
+              onShare={can.write && base ? () => setShowShare(true) : null}
+              onExport={() => setShowExport(true)}
             />
 
             {!showWelcome && metrics && (
@@ -286,7 +292,6 @@ export function Dashboard({
         )}
       </main>
 
-      <ActivityPill show={busy || syncing} label={syncing ? "Syncing Jira…" : "Updating…"} />
       <Toast toast={toast} />
       <AlertDialog alert={alert} onClose={() => setAlert(null)} />
       {showAddFilter && base && (
@@ -295,6 +300,24 @@ export function Dashboard({
           onClose={() => setShowAddFilter(false)}
           busy={busy}
           existingCount={filters.length}
+        />
+      )}
+      {showShare && base && (
+        <ShareDialog
+          base={base}
+          filters={filters}
+          density={density}
+          onClose={() => setShowShare(false)}
+          showToast={showToast}
+        />
+      )}
+      {showExport && selectedSprint && (
+        <ExportDialog
+          sprint={selectedSprint}
+          filters={filters}
+          progressByKey={progressByKey}
+          onClose={() => setShowExport(false)}
+          showToast={showToast}
         />
       )}
       {sprintDialogMode && (
@@ -307,6 +330,7 @@ export function Dashboard({
           onSaved={() => showToast("Sprint saved")}
         />
       )}
+      <PageLoader show={busy || syncing} label={syncing ? "Syncing Jira…" : "Updating…"} />
     </div>
   );
 }

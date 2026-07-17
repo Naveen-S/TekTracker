@@ -2,8 +2,9 @@
  * Server-only dashboard data assembly (ui-port.md (b), ed-rollup.md (b)): the `/` page resolves
  * the caller's teams+role, the selected team/sprint (with defaults), the sprint's filters+cached
  * issues, progress rows, and computed metrics; the `/rollup` page resolves the same across EVERY
- * team the caller belongs to (admin: all teams) for one sprint. Reads go straight through Prisma
- * (coding-standards: server components fetch directly).
+ * team the caller belongs to (admin: all teams) for one sprint; the public `/share/[token]` page
+ * resolves a SharedView token (share-view-export.md — session-less by design). Reads go straight
+ * through Prisma (coding-standards: server components fetch directly).
  */
 import { prisma } from "@/lib/db";
 import { Role, SprintState } from "@/generated/prisma/client";
@@ -161,3 +162,96 @@ export async function getRollupData(user, { sprintId } = {}) {
 
 /** Team roles that make the VIEWER-only UI read-only (re-exported for the client shell). */
 export const VIEWER_ROLE = Role.VIEWER;
+
+/**
+ * Freeze the INPUTS of a shared view (share-view-export.md decision 5): filters (with cached
+ * issues), progress rows, and the sprint window as of capture. Stored in `SharedView.snapshot`;
+ * the share page recomputes metrics from these with `asOf = capturedAt`, so a frozen share's
+ * numbers never drift — not even if an admin later edits the sprint dates. The JSON round-trip
+ * turns Dates into ISO strings (metrics/format helpers coerce them back).
+ */
+export function buildShareSnapshot(filters, progressRows, sprint) {
+  return JSON.parse(
+    JSON.stringify({
+      capturedAt: new Date(),
+      sprint: {
+        name: sprint.name,
+        developmentStart: sprint.developmentStart,
+        developmentEnd: sprint.developmentEnd,
+        releaseDate: sprint.releaseDate,
+      },
+      filters,
+      progress: progressRows,
+    }),
+  );
+}
+
+/**
+ * Public read model for `/share/[token]` (share-view-export.md (a)) — the ONLY session-less data
+ * assembly: the token is the bearer capability (decision 2), so this returns board data with no
+ * user/role/`can` fields at all. `null` for unknown, revoked (row deleted), or expired tokens —
+ * and for a live share whose included filters were ALL deleted since sharing; the page renders
+ * the same generic invalid/expired state for every null (don't reveal which).
+ */
+export async function getShareData(token) {
+  if (!token) return null;
+  const share = await prisma.sharedView.findUnique({
+    where: { token },
+    include: { sprint: true },
+  });
+  if (!share) return null;
+  if (share.expiresAt && share.expiresAt.getTime() < Date.now()) return null;
+
+  const jiraBaseUrl = process.env.JIRA_BASE_URL?.trim().replace(/\/+$/, "") ?? null;
+
+  if (!share.isLive) {
+    const snapshot = share.snapshot;
+    if (!snapshot || !Array.isArray(snapshot.filters)) return null;
+    const sprint = snapshot.sprint ?? share.sprint;
+    const asOf = snapshot.capturedAt ?? share.createdAt.toISOString();
+    const progressByKey = Object.fromEntries(
+      (snapshot.progress ?? []).map((row) => [row.jiraKey, row]),
+    );
+    return {
+      isLive: false,
+      viewDensity: share.viewDensity,
+      jiraBaseUrl,
+      sprint,
+      filters: snapshot.filters,
+      progressByKey,
+      metrics: computeSprintMetrics(snapshot.filters, progressByKey, sprint, asOf),
+      asOf,
+      lastSyncedAt: null,
+    };
+  }
+
+  // Live share: resolve includedFilterIds → current rows; filters deleted since sharing drop out.
+  const filters = await prisma.filter.findMany({
+    where: { id: { in: share.includedFilterIds }, sprintId: share.sprintId },
+    orderBy: { sortOrder: "asc" },
+    include: { issues: { orderBy: { jiraKey: "asc" } } },
+  });
+  if (filters.length === 0) return null;
+  // One team per share (decision 3, validated on create) — progress keys are (team, sprint, key).
+  const teamId = filters[0].teamId;
+  const progress = await prisma.issueProgress.findMany({
+    where: { teamId, sprintId: share.sprintId },
+    select: { jiraKey: true, workflowType: true, stageCompletion: true, blocked: true, blockedReason: true },
+  });
+  const progressByKey = Object.fromEntries(progress.map((row) => [row.jiraKey, row]));
+  const syncTimes = filters.map((filter) => filter.lastSyncedAt).filter((value) => value !== null);
+  return {
+    isLive: true,
+    viewDensity: share.viewDensity,
+    jiraBaseUrl,
+    sprint: share.sprint,
+    filters,
+    progressByKey,
+    metrics: computeSprintMetrics(filters, progressByKey, share.sprint),
+    asOf: null,
+    lastSyncedAt:
+      syncTimes.length > 0
+        ? new Date(Math.max(...syncTimes.map((value) => value.getTime())))
+        : null,
+  };
+}

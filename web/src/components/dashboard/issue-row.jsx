@@ -34,6 +34,7 @@ export function IssueRow({
   jiraBaseUrl,
   canWrite,
   busy,
+  asOf,
   onToggleStage,
   onToggleBlocked,
 }) {
@@ -43,7 +44,8 @@ export function IssueRow({
     progressByKey,
   );
   const percent = calculateWeightedCompletion(stageCompletion, WORKFLOWS[workflowType].weights);
-  const health = getHealthStatus(percent, blocked, sprint);
+  // `asOf` pins the health clock (frozen shared views); undefined = now (dashboard).
+  const health = getHealthStatus(percent, blocked, sprint, asOf);
   const jiraUrl = jiraBaseUrl ? `${jiraBaseUrl}/browse/${issue.jiraKey}` : null;
   const accent = filter.accentColor ?? "#00a892";
   const pad = density === "dense" ? "py-1.5" : "py-3";

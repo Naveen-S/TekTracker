@@ -30,7 +30,29 @@ Two halves:
 
 ## Status
 
-**Planned 2026-07-11.**
+**Done 2026-07-12.** All of (a)–(f) implemented as proposed: `lib/share-token.js` (192-bit
+base64url), `getShareData`/`buildShareSnapshot` in `lib/dashboard-data.js`, optional `asOf`
+through `getHealthStatus`/`getWeeklyVelocity`/`computeSprintMetrics` (**plus** `MetricGrid`/
+`PlannerPanel`/`IssueRow` props — see as-built), `lib/schemas/share.js`, nested
+`POST/GET …/shares` + flat `DELETE /api/shares/[shareId]`, public `app/share/[token]/page.jsx`
+(no auth gate, `robots: noindex`, generic invalid/expired state), `share-dialog.jsx` +
+`export-dialog.jsx` + Hero Share/Export buttons. Deps: **`html2canvas-pro@2.2.3` +
+`jspdf@2.5.2`** (exact), dynamically imported. **The capture spike passed** (decision 8): a
+temporary page captured the oklch theme + `color-mix()` tints + hero gradients through
+html2canvas-pro under headless Chrome (`SPIKE_OK`, 51KB PNG dataURL) — no hex-fallback needed;
+spike page deleted. **Verified:** lint clean; `prisma validate` + `migrate status` up to date
+(**no schema change, no migration**); **DB/env-free build green — 27 `ƒ Dynamic`** incl.
+`/share/[token]` and both share routes; `jspdf` confirmed **absent from the dashboard chunk**
+(dynamic-import split real); **25/25 plain-Node `asOf` fixtures** (band shifts at fixed clocks,
+determinism, Date/ISO parity, aggregates asOf-independent); **37/37 SSR smoke on dev+Neon**
+(fabricated SHSMK team/sprint/filters/progress + writer/viewer/stranger users, minted cookies:
+cookie-less share page renders matrix+metrics with **no session chrome**, noindex meta; create
+gates 401/403/400×3; **frozen-vs-live divergence proven** — progress PUT moved the live page
+65%→80% while the frozen page held 65%; list scoping own-vs-admin + viewer 403; revoke
+403/401/200→invalid→404; expired + unknown tokens → same generic page, HTTP 200 no redirect).
+Fixture torn down (0 leftovers), harnesses deleted, `.env` restored, dev server restarted.
+⚠️ Human acceptance remains: create/copy/open a share logged-out in a browser + export a real
+board to PDF/PNG (piggybacks the still-open ui-polish side-by-side eyeball + 6a real-Jira run).
 
 ## Decisions
 
@@ -225,6 +247,47 @@ defaults, flag if you disagree). None block implementation.
 - **Export of the roll-up page**, scheduled/emailed reports, and the **Gemini narrative** on
   exports — post-v1 (§16).
 - **Importer** ([seed.md](./seed.md), step 9) and cutover (step 10).
+
+## As-built notes (vs. the spec)
+
+- **`html2canvas-pro@2.2.3`** was latest at install (spec left the version open); `jspdf@2.5.2`
+  as planned — 2.5.2 behaved under Next/Turbopack, so jsPDF 3.x was never evaluated. Capture
+  options ported verbatim from the legacy hook (scale 2, white bg, width 794).
+- **`asOf` threads wider than decision 6 named.** `MetricGrid`, `PlannerPanel`, and `IssueRow`
+  compute velocity/health themselves at render, so each gained an optional `asOf` prop (default
+  undefined = now) — without it a frozen share's *matrix pills and velocity card* would drift
+  even though the top-line metrics didn't. Dashboard and `/rollup` pass nothing; behavior there
+  is unchanged.
+- **Frozen shares don't render `DaysRemainingPill`** — a live countdown over frozen data is
+  incoherent; they get a "Frozen snapshot" chip instead. Live shares keep the pill on the real
+  clock.
+- **The snapshot freezes the sprint window too** (`name`/dates inside `snapshot.sprint`), so a
+  later admin date-edit can't shift frozen numbers; and it **trims progress rows to the keys in
+  the shared filters' issues** rather than freezing the whole team+sprint progress set.
+- **Manage-list scope is sprint + creator (admin: whole sprint), not team-intersected** —
+  `SharedView` has no team column and a frozen share may reference only deleted filters, so
+  team-derivation can't be made reliable; rows carry resolvable `filterNames` for display
+  instead. A creator with two teams sees their own other-team shares for the same sprint in the
+  dialog; labeled by filter names, judged harmless for an internal tool.
+- **Dialog errors render inline** (AddFilterDialog's error-box pattern), not via the app-level
+  AlertDialog — an app alert would layer over the still-open dialog. The created share link
+  **always renders inline with a Copy button**, which subsumes the clipboard-blocked fallback
+  (decision 10's AlertDialog fallback path never needs to exist).
+- **No separate `useExport` hook** — the capture lives inside `export-dialog.jsx` (single
+  consumer). The legacy page-clamp `useEffect` was replaced by a render-time clamp: the
+  installed `react-hooks/set-state-in-effect` rule (the one that shaped 6a's `useLocalPref`)
+  rejects it, and the clamp was redundant anyway. `ShareDialog`'s list loader keeps its
+  setState in `.then` callbacks for the same rule.
+- **`ExportDialog` uses our `Dialog` chrome** ("Sprint Report — <name>" title, actions in the
+  body row) instead of the legacy header-actions layout; offscreen pages park at `-left-500`
+  (canonical spacing classes per the installed Tailwind lint, ui-polish precedent). Success
+  closes the dialog + toasts, legacy parity.
+- **No filter-subset picker in `ShareDialog`** (spec: "skip unless trivial") — a share always
+  covers the whole current board; the export dialog is where per-filter selection lives.
+- **Past `expiresAt` is rejected at create (400)** — small validation addition beyond the spec.
+- **Smoke ran against the already-running dev server** (found on :3002 — Naveen's, presumably
+  for the ui-polish eyeball); it hot-compiled the new routes. It was stopped for the env-free
+  production build (dev and build share `.next`) and **restarted afterwards** (answers 200).
 
 ## Doc-sync (§17 — do in the same PR)
 
