@@ -11,7 +11,19 @@ schema change, no migration, no new deps.
 
 ## Status
 
-**In progress since 2026-07-18.**
+**Done 2026-07-18** — the Next.js app now lives at the **repo root**; the Vite prototype is
+backed up (startable, Node 20) in **`legacy/`**; Node 22 is the runtime (`.nvmrc` + `engines`,
+`.yarnrc` shim gone). Two `git mv` phases (54 + 101 renames, history follows), zero app-code
+changes, no schema change/migration. **Verified at root under Node 22.22.2:** lint clean,
+`prisma validate`/`migrate status` up to date, **DB/env-free build green (27 ƒ Dynamic — the
+step-8 list exactly)**, :3002 smoke (auth gate 307, login 200, share generic page, cron 401,
+`health/db` ok on Neon, minted-admin dashboard SSR w/ full chrome), legacy boots on
+:3000/:3001. Commits by Naveen (session shell can't run the Tekion gitleaks hook). As-built
+deviations in @context/features/cutover.md (notably: `verify-web` skill renamed **`verify`**,
+`legacy/**` ESLint-ignored). ⚠️ Pending human acceptance before merge: side-by-side eyeball,
+real-Jira UI sync, share/export, day-in-the-life pass. **Next:** post-v1 — trend/burndown UI
+from `SprintSnapshot` (step-10 "then" clause), then Gemini; deployment re-point to repo root is
+deploy-time.
 
 ## Goals
 
@@ -612,3 +624,23 @@ schema change, no migration, no new deps.
 - 2026-07-18 — Picked @context/features/cutover.md as the current feature (migration **step 10**
   — cutover: promote `web/` to repo root, retire the Vite app into `legacy/`, Node 22 bump).
   Branch `feature/cutover` created.
+- 2026-07-18 — **Implemented cutover (migration step 10 — the final step).** Phase 1: Vite app
+  `git mv`'d into `legacy/` (54 renames; untracked `.env`/`node_modules`/`dist` hand-moved;
+  plaintext-token `.sessions/` deleted; `legacy/README.md`; `sprint-tracker-legacy` rename;
+  boot-verified under Node 20 — Vite :3000 → 200, Express :3001 → 401 JSON). Phase 2: `web/*`
+  promoted to root (101 renames; `web/CLAUDE.md` deleted; `.env` moved; node_modules/.next
+  dropped for a fresh install), root `.gitignore` = web's + re-added `.claude/*` rules (the
+  predicted exposure fired and was caught). **Node 22 landed with it**: `.nvmrc` 22 +
+  `engines >=22.12`, `.yarnrc` deleted, fresh install under 22.22.2 passed engines natively,
+  postinstall regenerated the Prisma client. Config/docs: `turbopack.root` pin kept (comment
+  updated), `sprint-tracker` rename, CLAUDE.md/README.md rewritten + AGENTS.md at root,
+  `.claude/skills` `web/` sweep w/ **`verify-web` → `verify` rename** (Naveen), `.env.example`
+  header, `legacy/**` ESLint-ignored (only config-behavior change — root lint swept the retired
+  tree). Doc-synced project-overview (path note + Last-reviewed, §3 moot-flag, §7 retitled
+  "Legacy architecture (retired)", 5× "unchanged until cutover" → "retired to legacy/", §10
+  Framework row complete, §16 amendments incl. Node-22 DONE, master-plan step 10 DONE). Zero
+  app-code changes; no schema change, no migration, no new deps. **Verified** (see Status).
+  Commits d954be0 (docs) + 7ba9521 (phase 1) by Naveen — the Tekion gitleaks pre-commit hook
+  can't fetch its config from the session shell; phase-2 commit pending. **Done** pending
+  Naveen's human acceptance + merge. **Next:** post-v1 — trend/burndown UI from snapshots, then
+  Gemini (risk call-outs + narrative first).

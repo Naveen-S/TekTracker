@@ -30,7 +30,31 @@ docs/skills that say `web/`.
 
 ## Status
 
-**Planned 2026-07-18.**
+**Done 2026-07-18** (planned same day). Two-phase `git mv` on `feature/cutover`, committed by
+Naveen (the Tekion gitleaks pre-commit hook can't fetch its config from the session shell — see
+as-built): **phase 1** retired the Vite app into `legacy/` (54 renames; untracked
+`.env`/`node_modules`/`dist` moved by hand; plaintext-token `.sessions/` deleted;
+`legacy/README.md` added; `sprint-tracker-legacy` package rename; **backup verified usable** —
+`yarn dev:all` under Node 20 answered on :3000 + :3001); **phase 2** promoted `web/*` to root
+(101 renames; `web/CLAUDE.md` deleted; `web/.env` → `.env`; `web/node_modules`/`.next` deleted
+for the fresh install). **Node 22 bump landed with phase 2**: `.nvmrc` (22) + `engines >=22.12`,
+`.yarnrc` shim deleted, fresh `yarn install` under 22.22.2 **passed the engine check natively**
+(postinstall regenerated the Prisma client). Config/docs: root `.gitignore` = web's + re-added
+`.claude/*` rules (the predicted exposure fired — `.claude/settings.json` went visible — and was
+caught), `turbopack.root` comment updated (pin kept), `sprint-tracker` package rename, CLAUDE.md/
+README.md rewritten + AGENTS.md now root, `.claude/skills` `web/`-path sweep (**`verify-web`
+renamed `verify`** — Naveen, mid-implementation), `.env.example` header fixed, `legacy/**` added
+to ESLint ignores (the only config-behavior change; root lint otherwise swept the retired tree).
+**Verified at root under Node 22.22.2:** lint clean; `prisma validate` + `migrate status` up to
+date (3 migrations); **DB/env-free build green — 27 `ƒ Dynamic`, byte-for-byte the step-8 route
+list**; dev-server smoke on :3002 — unauth `/` 307→`/login`, `/login` 200, unknown share token →
+generic invalid page, cron bad-bearer 401, `health/db` `{ok,db:true}` against Neon via the moved
+`.env`, minted-admin dashboard SSR 200 with full chrome (Add filter / Sync Jira / Roll-up /
+Share View / Export); `git log --follow` walks `legacy/server.js` into pre-move history. ⚠️ Human
+acceptance (decision 9) still pending before merge: side-by-side eyeball, real-Jira UI sync,
+share-open/PDF-export, plus a day-in-the-life pass on the root app. **Deployment re-pointing is
+a deploy-time task.** **Next:** post-v1 — trend/burndown UI from snapshots (the step-10 "then"
+clause), then Gemini.
 
 ## Decisions
 
@@ -132,8 +156,9 @@ Decision 1 is ratified (Naveen, 2026-07-18); decision 3 was ratified 2026-06-14 
 - Root `CLAUDE.md` rewrite + root `AGENTS.md` + real `README.md` (decision 8).
 - `.claude/skills/` path updates: `verify-web`, `api-route`, `prisma-change`, `finish-feature`,
   `start-feature`, `doc-sync`, `plan-feature` — every instruction that says `web/` or
-  `cd web` now means the repo root (sweep with a grep; keep skill *names* — `verify-web` stays
-  `verify-web`).
+  `cd web` now means the repo root (sweep with a grep). **Amended during implementation (Naveen,
+  2026-07-18): `verify-web` is renamed to `verify`** — "web" lost its meaning at cutover, and the
+  name matches the harness convention (its built-in `verify` defers to a project verify skill).
 - `.env.example`: if the `CRON_*` crontab example embeds a `web/` path, fix it.
 
 **(e) Explicitly: no schema change, no migration, no new dependency, no application-code edit.**
@@ -236,7 +261,36 @@ The DB/env-free build invariant must survive the move unchanged.
 
 ## As-built deviations from the spec
 
-_(fill in during implementation)_
+- **Commits are Naveen's, not the assistant's.** The Tekion `alcatrazprehook` gitleaks
+  pre-commit hook clones its config (`/tmp/gitleaks_false_positives`) from GitLab/Bitbucket and
+  fails auth from the Claude Code session shell (sandboxed and unsandboxed) — commits succeed
+  only from Naveen's own terminal. The "two commits, decision 2" structure held; the docs-prep
+  commit (`d954be0`) landed first as a third, earlier commit.
+- **`verify-web` → `verify` skill rename** (Naveen, mid-implementation) — supersedes the spec's
+  "keep skill names" line (amended in scope (d)); matches the harness convention where the
+  built-in `verify` defers to a project verify skill. References in finish-feature /
+  prisma-change / api-route updated.
+- **`legacy/**` added to `eslint.config.mjs` ignores** — not in the spec's edit list. Root
+  `eslint` (flat config, no path argument) swept the retired tree (23 errors incl. its `dist/`
+  bundle). Same treatment as `src/generated/**`.
+- **`web/scripts/` was dropped, not moved** — empty and untracked (git never tracked it; its
+  only planned content was the skipped step-9 importer's seed-data).
+- **Root `.gitignore` is a modify, not a rename, in commit B** — it was `git mv -f`'d from
+  `web/.gitignore` over the phase-1 interim file, then edited (re-added `.claude/*` rules);
+  git records modify+delete. No history value lost (a 7-line file).
+- **Phase 1 created an interim root `.gitignore`** (`.DS_Store`/`node_modules`/`.claude` rules)
+  so commit A wouldn't expose `.claude/` internals — replaced in phase 2 as specced.
+- **yarn had to be installed under Node 22** (`npm i -g yarn@1.22.22` in the nvm 22.22.2
+  prefix; only corepack shipped with it). `.nvmrc` says `22` (floating major — nvm resolves to
+  the installed 22.x; `engines >=22.12` pins the floor) rather than a hard-pinned patch version.
+- **Smoke additions:** `GET /api/health/db` (the Feature-3 smoke route, still in the tree)
+  doubled as the Neon-connectivity probe; the minted-cookie flow reused the established
+  `sealData` harness pattern via a temp script at repo root (scratchpad scripts can't resolve
+  the repo's `node_modules`), deleted after.
+- **Legacy boot check ran in phase 1** (before commit A) rather than at the end — freshest
+  moment to catch a broken move; `concurrently` leaves orphan listeners on :3000/:3001 when
+  killed, cleaned up with `lsof`/`kill`.
+- Commit A's message lost its closing paren (`…phase 1` instead of `…phase 1)`) — cosmetic.
 
 ## References
 

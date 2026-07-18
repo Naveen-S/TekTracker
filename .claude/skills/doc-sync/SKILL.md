@@ -13,11 +13,12 @@ section, that is the authoritative checklist; the rules below are the general ri
 
 1. **Status tags** — update `[BUILT]` / `[PARTIAL]` / `[PLANNED]` / `[GAP]` honestly, and **don't
    over-claim** (precedent: surfacing `isAdmin` + adding `requireUser()` did NOT flip
-   "Admin settings / RBAC" from [GAP] — enforcement hadn't landed). New `web/` work is tagged
-   `[BUILT in web/ — YYYY-MM-DD]` since both apps coexist until cutover.
-2. **§7 stays the LEGACY snapshot** of the Vite/Express app until promotion — record new-world
-   changes in the target sections (§8–§13), not by rewriting §7.
-3. **§9 ↔ `web/prisma/schema.prisma` byte-consistency** — schema block, mermaid ER diagram, and
+   "Admin settings / RBAC" from [GAP] — enforcement hadn't landed). Pre-cutover entries keep
+   their historical `[BUILT in web/ — YYYY-MM-DD]` tags; since the 2026-07-18 cutover the Next
+   app IS the repo root, so new work is tagged with the date alone.
+2. **§7 describes the RETIRED legacy app** (Vite/Express, backed up in `legacy/` at cutover) —
+   record new-world changes in the target sections (§8–§13), never by rewriting §7.
+3. **§9 ↔ `prisma/schema.prisma` byte-consistency** — schema block, mermaid ER diagram, and
    the rationale bullets all move together with any model change (see /prisma-change).
 4. **§5 feature table, §10 stack table, §13 hardening items** — append dated notes to the touched
    rows/items (e.g. "**[BUILT in `web/` 2026-06-29]** …").

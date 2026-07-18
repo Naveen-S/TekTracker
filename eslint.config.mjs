@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Prisma's generated client (modern `prisma-client` generator) — generated code, not linted.
     "src/generated/**",
+    // The retired Vite prototype (backed up at the 2026-07-18 cutover) — reference only, never
+    // held to this ruleset.
+    "legacy/**",
   ]),
 ]);
 

@@ -22,7 +22,7 @@ description: Pick a drafted feature spec as the current feature — update conte
 4. Before writing code:
    - Read the spec's References list.
    - For ANY Next 16 / Tailwind v4 / Prisma 7 API you'll touch, read the installed docs first
-     (`node_modules/next/dist/docs/`, `web/AGENTS.md`) — these versions differ from training data;
+     (`node_modules/next/dist/docs/`, `AGENTS.md`) — these versions differ from training data;
      the async `cookies()` shape was a real example.
 5. Implement to the spec, nothing more (ai-interaction.md: no unrequested features, minimal
    changes, preserve existing patterns). If a **PROPOSED** decision proves wrong mid-build, stop

@@ -6,7 +6,12 @@
 > **[BUILT]**, **[PARTIAL]**, **[PLANNED]**, or **[GAP]** so the as-built state is never confused
 > with the target state.
 >
-> Last reviewed: 2026-07-09 · Owner: Naveen · Audience: engineers + Claude Code.
+> Last reviewed: 2026-07-18 · Owner: Naveen · Audience: engineers + Claude Code.
+>
+> **Path note (cutover, 2026-07-18):** the Next.js app was promoted from the `web/` subfolder to
+> the **repo root**, and the legacy Vite/Express app was backed up into **`legacy/`**. Historical
+> `web/...` paths in dated entries below refer to the pre-cutover layout — read them as today's
+> repo root. They are deliberately not rewritten.
 
 ---
 
@@ -50,11 +55,12 @@ Key relationships:
   a separate data source.
 - Each scrum team has dedicated **filters/tracks**: Roadmap, Tech Debt, Support, Internal Bugs.
 
-> **[GAP — legacy app only]** The **legacy Vite build** has no team, role, or multi-team concept —
-> it is single-user and localStorage-scoped. In `web/` the team/membership model + RBAC landed in
-> step 4 (2026-07-07) and the **multi-team roll-up view (`/rollup`) is BUILT (step 6b,
-> 2026-07-08)** — membership-derived per §9. VP *trend* still needs `SprintSnapshot` (step 7).
-> See §9, §10, §15.
+> **[GAP — legacy app only; moot since cutover 2026-07-18]** The **legacy Vite build** (retired
+> to `legacy/`) has no team, role, or multi-team concept — it is single-user and
+> localStorage-scoped. In `web/` the team/membership model + RBAC landed in step 4 (2026-07-07)
+> and the **multi-team roll-up view (`/rollup`) is BUILT (step 6b, 2026-07-08)** —
+> membership-derived per §9. VP *trend* still needs the trend UI (step 10 post-v1; snapshot data
+> exists since step 7). See §9, §10, §15.
 
 ---
 
@@ -153,7 +159,12 @@ See context/features/sync-hybrid-seeding.md.
 
 ---
 
-## 7. Current architecture (as-built) — honest snapshot
+## 7. Legacy architecture (retired 2026-07-18 — backed up in `legacy/`)
+
+> This section describes the original Vite/Express prototype. At cutover (master-plan step 10) it
+> was **moved to `legacy/`, not deleted** (decided with Naveen 2026-07-18), and remains startable
+> there for reference — Node 20 only, see `legacy/README.md`. It is kept as the honest map of
+> what `legacy/` contains; do not rewrite it to describe the Next.js app (that lives in §8–§13).
 
 ```
 Browser (Vite 2 + React 18, JSX)
@@ -675,7 +686,7 @@ erDiagram
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Framework | **Next.js 16** (App Router) | Migration target (ratified 2026-06-10); scaffold in a `web/` subfolder, promote to root at parity. Current build is Vite 2 + React 18. |
+| Framework | **Next.js 16** (App Router) | **Migration complete (2026-07-18, step 10):** the Next app now lives at the repo root; the Vite 2 + React 18 prototype is backed up in `legacy/`. |
 | Language | **JavaScript** (decided 2026-06-10) | With **zod validation at every API boundary** + JSDoc `@typedef`s on domain shapes. |
 | Database | **Neon (PostgreSQL)** | Serverless Postgres; app itself runs on Tekion internal infra (decided 2026-06-10). |
 | ORM | **Prisma 7** | Schema in §9. |
@@ -821,25 +832,25 @@ spec-internal ambiguities to resolve.
    **[Fixed in `web/` 2026-07-08, step 6b]** — membership-derived `/rollup` server page: per-team
    `computeSprintMetrics` + pure `aggregateRollup` (never merges per-team progress maps, §9);
    see context/features/ed-rollup.md. VP *trend* remains open until `SprintSnapshot` (step 7, §14.8);
-   legacy app unchanged until cutover.
+   legacy app retired to `legacy/` at cutover (2026-07-18).
 2. **Stages are manual and Jira sync doesn't touch them.** Metrics are only as good as manual upkeep,
    and the 10-stage lifecycle doesn't map to Jira status. *Fix:* hybrid seed-from-status model (§6).
    **[Fixed in `web/` 2026-07-07, step 5]** — sync seeds missing progress from `StatusStageMapping`,
-   manual edits win thereafter; legacy app unchanged until cutover.
+   manual edits win thereafter; legacy app retired to `legacy/` at cutover (2026-07-18).
 3. **Share view encodes the whole dataset in the URL.** Base64 of all filters + issues + stages will
    exceed URL limits for real sprints, leaks a snapshot into browser history, and is not live. *Fix:*
    `SharedView` token (§9). **[Fixed in `web/` 2026-07-12, step 8]** — token route `/share/[token]`,
    live or frozen (frozen snapshots pin metrics to `capturedAt` via the new metrics `asOf` clock);
-   legacy app unchanged until cutover. See context/features/share-view-export.md.
+   legacy app retired to `legacy/` at cutover (2026-07-18). See context/features/share-view-export.md.
 4. **Jira tokens stored in plaintext.** *Fix:* encrypt at rest / OAuth (§13).
 5. **Sprint identity is derived from mutable dates.** `getSprintKey = startDate_endDate` makes a
    sprint's identity its own dates — there's no stable handle to roll up or share by, and editing the
    dates orphans all data bucketed under the old key. *Fix:* first-class **org-level** `Sprint` rows
    (§9) with a stable id and one shared cadence for all teams. **[Fixed in `web/` 2026-07-07,
-   step 4]** — `/api/sprints` CRUD over first-class rows; legacy app unchanged until cutover.
+   step 4]** — `/api/sprints` CRUD over first-class rows; legacy app retired to `legacy/` at cutover (2026-07-18).
 6. **Sprint config has no admin gating.** Spec wants admin-only; today anyone can change dates, which
    silently re-buckets all data. *Fix:* RBAC (§13). **[Fixed in `web/` 2026-07-07, step 4]** —
-   sprint mutations require `User.isAdmin`; legacy app unchanged until cutover.
+   sprint mutations require `User.isAdmin`; legacy app retired to `legacy/` at cutover (2026-07-18).
 7. **Hardcoded Jira custom-field IDs** (`customfield_10008`, `_10020`). Brittle if projects differ.
    *Fix:* per-team field config; discover via Jira field metadata. **[Fixed in `web/` 2026-07-07,
    step 5]** — sync reads `Team.storyPointsFieldId`/`sprintFieldId` (those ids remain the global
@@ -888,12 +899,15 @@ All previously open decisions are now resolved:
 - **Hosting: app on Tekion internal infra; database on Neon.**
 - **Migration: fresh Next.js App Router app in a `web/` subfolder of this repo**; port hooks/components
   over; both apps runnable until parity, then promote `web/` to root and delete the Vite app.
+  *(Amended 2026-07-18 with Naveen, executed at cutover: the Vite app was **backed up into
+  `legacy/`, not deleted** — it stays startable there for reference, Node 20 only. See
+  context/features/cutover.md.)*
   - **Deferred follow-up (added 2026-06-14): bump the runtime to Node 22 (≥22.12) once the Vite app is
     retired.** Today both apps share one Node and the legacy Vite 2 app pins us to Node 20.19.4; a
-    transitive Prisma dep wants Node ≥22, worked around by `ignore-engines true` in `web/.yarnrc`. At
-    promotion: move to Node 22.12+ (Prisma 7's floor), add `.nvmrc`/`engines`, and delete the
-    `web/.yarnrc` shim (the engine check then passes natively). Re-verify the Vite app on 22 *before*
-    switching if it hasn't been retired yet.
+    transitive Prisma dep wants Node ≥22, worked around by `ignore-engines true` in `web/.yarnrc`.
+    **[DONE 2026-07-18 at cutover]** — `.nvmrc` (22) + `engines >=22.12` added, the `.yarnrc` shim
+    deleted; fresh install under Node 22.22.2 passes the engine check natively. The "re-verify the
+    Vite app on 22" clause is void — the legacy app is retired-in-place on Node 20.
 - **Filter templates: keep** (team-level `FilterTemplate`).
 - **Roll-up grouping: single implicit org** — no `Org` table; sprints are global; ED views are
   membership-derived.
@@ -938,4 +952,4 @@ The plan — exact next steps, in order
 7. Background job — a cron on your internal infra hitting an internal route: refresh issue caches + write the daily per-team SprintSnapshot for active sprints. **[DONE 2026-07-09]** — secret-gated `POST /api/cron/daily` (`CRON_SECRET` bearer, timingSafeEqual over sha256 digests; first session-less route) → `lib/cron/daily.js` `runDailyJob`: per ACTIVE sprint, sequential per-team refresh via the step-5 engine with the `CRON_SYNC_USER_EMAIL` service credential (absent/dead → refresh skipped, snapshots still written; per-team errors isolated), then batched per-team metrics → UTC-midnight `SprintSnapshot` upsert; pure `snapshotValues` in `lib/metrics.mjs`. Verified: 23/23 pure fixtures, DB/env-free build, 30/30 live dev+Neon checks (gates, hand-computed rows, PLANNING/filterless skips, degrade path, idempotent re-run, unset-secret 500). Scheduling on Tekion infra is a deploy-time task. See context/features/background-sync-snapshots.md.
 8. Share view + export — SharedView token route (/share/[token], live or frozen, expiry) replacing the base64 URL; port PDF/PNG export. **[DONE 2026-07-12]** — public session-less `/share/[token]` (192-bit app-generated token, `robots: noindex`, generic invalid/expired state; live = current rows, frozen = input snapshot w/ metrics pinned to `capturedAt` via the new optional `asOf` clock threaded through `lib/metrics.mjs` + the MetricGrid/PlannerPanel/IssueRow props); writer-gated `POST/GET …/shares` (filterIds validated ⊆ team+sprint) + creator/admin `DELETE /api/shares/[shareId]`; ShareDialog (live/frozen, expiry presets, manage/revoke, clipboard+toast) + ExportDialog (filter toggles, paged preview, offscreen A4 pages → PDF/PNG) behind new Hero buttons. Deps `html2canvas-pro@2.2.3` (stock html2canvas can't parse the Tailwind-v4 oklch/`color-mix` theme — proven by a headless-Chrome capture spike) + `jspdf@2.5.2`, dynamic-imported (verified absent from the dashboard chunk). No schema change, no migration. Verified: lint; DB/env-free build (27 ƒ Dynamic); 25/25 asOf fixtures; 37/37 SSR smoke on dev+Neon incl. frozen-vs-live divergence, list scoping, revoke/expiry → generic page. Human acceptance (browser share open + real PDF/PNG) pending with the ui-polish eyeball. See context/features/share-view-export.md.
 9. Importer — one-time script that takes the localStorage JSON (sprintTracker_sprintData + config) and writes Sprint/Filter/IssueProgress rows so your current sprints carry over. **[SKIPPED 2026-07-18]** — Naveen no longer has older sprint data in localStorage (current work already lives in `web/` via real syncs), so there is nothing to import; decided with Naveen 2026-07-18. Spec draft kept for reference at context/features/seed.md.
-10. Cutover, then post-v1 — promote web/ to repo root, delete the Vite app; then burndown/trend UI from snapshots, then Gemini (risk call-outs + narrative first).
+10. Cutover, then post-v1 — promote web/ to repo root, delete the Vite app; then burndown/trend UI from snapshots, then Gemini (risk call-outs + narrative first). **[DONE 2026-07-18 (cutover half)]** — two-phase `git mv` on `feature/cutover`: the Vite app (src/, server.js, docs/, lockfiles, untracked .env/node_modules/dist) **retired into `legacy/` instead of deleted** (ratified with Naveen 2026-07-18; startable there under Node 20 — verified :3000/:3001 answer) with plaintext-token `.sessions/` deleted; then `web/*` promoted to root (101 renames, history follows via `git log --follow`). Node 22 bump landed with it (`.nvmrc`, `engines >=22.12`, `.yarnrc` shim deleted, fresh install under 22.22.2). Config/docs: root `.gitignore` = web's + re-added `.claude/*` rules, `turbopack.root` pin kept (dual lockfile with `legacy/yarn.lock`), package renames (`sprint-tracker` / `sprint-tracker-legacy`), CLAUDE.md/AGENTS.md/README.md rewritten for the single-app root, `.claude/skills` `web/`-path sweep (+ `verify-web` renamed `verify`, per Naveen), `legacy/**` added to ESLint ignores (the only config-behavior change). Zero app-code changes; no schema change, no migration. Verified at root under Node 22: lint clean; `prisma validate` + `migrate status` up to date; **DB/env-free build green, 27 ƒ Dynamic (same as step 8)**; dev-server smoke on :3002 — unauth 307, login 200, unknown share → generic page, cron bad-bearer 401, `health/db` ok against Neon, minted-admin dashboard SSR with full chrome. **Deployment re-pointing (build from repo root) is a deploy-time task; post-v1 items (trend UI, Gemini) remain open.** See context/features/cutover.md.

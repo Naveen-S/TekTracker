@@ -1,13 +1,13 @@
 ---
 name: finish-feature
-description: Completion ritual for the current feature — run the web/ verification suite, record as-built deviations in the spec, doc-sync project-overview.md, mark Done in current-feature.md with a dated History entry, and name the next in-order migration step. Use before declaring any feature done or committing it.
+description: Completion ritual for the current feature — run the verification suite, record as-built deviations in the spec, doc-sync project-overview.md, mark Done in current-feature.md with a dated History entry, and name the next in-order migration step. Use before declaring any feature done or committing it.
 ---
 
 # Finish the current feature (completion ritual)
 
 Nothing is marked Done until every step below has actually run. In order:
 
-1. **Verify** — run /verify-web. All green is a precondition for everything else. If anything
+1. **Verify** — run /verify. All green is a precondition for everything else. If anything
    fails, fix it first; if stuck after 2–3 attempts, stop and explain (ai-interaction.md).
 
 2. **Feature spec** (`context/features/<slug>.md`):
