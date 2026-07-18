@@ -1,5 +1,14 @@
 # Import Vite localStorage data into Postgres
 
+## Status
+
+**SKIPPED 2026-07-18 (decided with Naveen) — never implemented.** No older sprint data remains in
+the Vite app's localStorage (current work already lives in `web/` via real syncs), so there is
+nothing to import. Master-plan step 9 is marked skipped in project-overview.md and the §16
+"one-time importer" decision is annotated as dropped. This draft (written 2026-06-15, before
+steps 3–8 landed — its prerequisites/idempotency notes predate the live Neon data) is kept for
+reference only. The next in-order step is **10 (cutover)**.
+
 ## Overview
 
 One-time **importer** that lifts the current Vite app's `localStorage` sprint data into the new

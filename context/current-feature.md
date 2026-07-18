@@ -1,86 +1,60 @@
 # Current Feature
 
-**Share view + export (migration step 8)** — full spec:
-@context/features/share-view-export.md
+**Cutover (migration step 10)** — full spec: @context/features/cutover.md
 
-The next in-order master-plan step (1–7 Done): replace the prototype's base64 `?share=` URL with
-the server-persisted **`SharedView` token** (§9) rendered at a public read-only **`/share/[token]`**
-page (live or frozen, with expiry), and **port the PDF/PNG export** (client-side capture of
-dedicated offscreen A4 pages). Closes §14.3 ("share view encodes the whole dataset in the URL")
-and realizes §13 hardening item 4. **No schema change, no migration** — `SharedView` shipped in
-the `init` migration. ui-polish landed first precisely so these surfaces render the finished
-design system.
+The final master-plan step (1–8 Done; 9 skipped 2026-07-18): promote `web/` to the repo root so
+the Next.js app IS the repository, retire the legacy Vite/Express app into **`legacy/`** (backed
+up, **not deleted** — ratified with Naveen 2026-07-18, amending §16's delete-at-parity plan), and
+land the deferred Node 22 bump (`.nvmrc` + `engines >=22.12`, delete the `web/.yarnrc`
+`ignore-engines` shim). **Zero application-code changes** — file moves + config/docs only; no
+schema change, no migration, no new deps.
 
 ## Status
 
-**Done 2026-07-12** — all 10 decisions implemented as proposed (asOf threaded slightly wider than
-specced: also `MetricGrid`/`PlannerPanel`/`IssueRow` props, since the client leaves compute
-health/velocity themselves). New: `lib/share-token.js`, `getShareData`/`buildShareSnapshot`,
-`lib/schemas/share.js`, `POST/GET …/shares` + `DELETE /api/shares/[shareId]`, public
-`/share/[token]` (session-less, noindex, generic invalid state), `share-dialog.jsx`,
-`export-dialog.jsx`, Hero Share/Export buttons. Deps `html2canvas-pro@2.2.3` + `jspdf@2.5.2`
-exact, dynamic-imported. **Capture spike passed** (headless Chrome: oklch + `color-mix` + hero
-gradients → PNG, no color-parse error). **Verified:** lint clean; `prisma validate`/`migrate
-status` up to date (**no schema change, no migration**); **DB/env-free build green (27 `ƒ
-Dynamic`)**; `jspdf` absent from the dashboard chunk; **25/25 asOf pure fixtures**; **37/37 SSR
-smoke on dev+Neon** (fabricated SHSMK fixture, torn down to 0 leftovers) — cookie-less share
-render w/ no session chrome, create gates 401/403/400×3, **frozen 65% vs live 80% divergence
-after a progress PUT**, list scoping, revoke/expiry/unknown → same generic page. ⚠️ Human
-acceptance: open a share logged-out + export a real board to PDF/PNG (piggybacks the ui-polish
-side-by-side eyeball + 6a real-Jira run). See @context/features/share-view-export.md "As-built
-notes". **Next:** step 9 (localStorage importer) — the last step before cutover (step 10).
+**In progress since 2026-07-18.**
 
 ## Goals
 
-- **(a) Data + token layer — `web/src/lib/`**: `generateShareToken()` (192-bit base64url,
-  app-supplied over the schema's guessable cuid default); `getShareData(token)` +
-  `buildShareSnapshot()` beside `getDashboardData` in `lib/dashboard-data.js` (live = batched
-  current reads; frozen = parse `snapshot` Json); optional **`asOf`** threaded through
-  `getHealthStatus`/`getWeeklyVelocity`/`computeSprintMetrics` in `lib/metrics.mjs` (default
-  `new Date()`) so frozen shares don't drift.
-- **(b) API — `lib/schemas/share.js` + routes**: `POST/GET
-  /api/teams/[teamId]/sprints/[sprintId]/shares` (create gated `TEAM_WRITER_ROLES`, filterIds
-  validated ⊆ team+sprint; list = own shares, admin all) + flat `DELETE /api/shares/[shareId]`
-  (creator or global admin). Step-4 patterns: `force-dynamic`, `parseJsonBody`+zod,
-  `handleRouteError`, `{ error }` bodies.
-- **(c) Public page — `web/src/app/share/[token]/page.jsx`**: no auth gate (token = bearer
-  capability), `force-dynamic`, `robots: noindex`; read-only reuse of HeroShell + MetricGrid +
-  matrix (null write handlers, stored `viewDensity` as prop); generic invalid/expired state for
-  unknown/expired/revoked tokens.
-- **(d) Share dialog + Hero — `components/dashboard/`**: `share-dialog.jsx` (live/frozen toggle,
-  expiry presets 7d/30d/never, create → clipboard + toast w/ AlertDialog fallback, manage list w/
-  copy + revoke); Hero gains the §11 **Share + Export** buttons (`onDark`, hidden on welcome).
-- **(e) Export — `components/dashboard/export-dialog.jsx`**: port legacy ExportModal (filter
-  toggles, paged preview, offscreen 794px A4 SummaryPage/IssuesPage, single metrics recompute
-  over selection) + capture (`document.fonts.ready`, scale 2, PDF = jsPDF A4/page, PNG = merged
-  canvas). Deps: **`html2canvas-pro`** + `jspdf@2.5.2` exact, dynamically imported. **Spike the
-  oklch capture first.**
-- **(f)** No env, no schema, no migration.
-- **Acceptance:** lint + DB/env-free build green (`/share/[token]` + new routes `ƒ Dynamic`);
-  `migrate status` unchanged; curl/SSR smoke (cookie-less share render, 403s, frozen-vs-live
-  divergence, expiry/revoke → generic page, list scoping); asOf pure fixtures; capture spike
-  proven; Naveen browser acceptance (create/copy/open share logged-out; real PDF/PNG eyeball).
+- **(a) Phase 1 — retire:** `git mv` the Vite app (`src/`, `public/`, `index.html`,
+  `vite.config.js`, `server.js`, `setup-auth.js`, `package.json`, both lockfiles,
+  `.env.example`, `docs/`) → `legacy/`; old root `.gitignore` → `legacy/.gitignore` (minus the
+  `.claude/*` rules, which stay at root); plain-`mv` untracked `.env`/`node_modules`/`dist`;
+  **delete `.sessions/`** (plaintext tokens, never backed up); add `legacy/README.md` (what it
+  is, Node 20, `yarn dev:all` → :3000/:3001).
+- **(b) Phase 2 — promote:** `git mv` all of `web/` (incl. dotfiles) → root; delete
+  `web/CLAUDE.md`; root `.gitignore` = web's + re-added `.claude/*` / `!.claude/skills/` /
+  `.DS_Store`; `mv web/.env` → `.env`; delete `web/node_modules` + `web/.next` (the fresh
+  install rebuilds them).
+- **(c) Node 22:** `.nvmrc` (v22.22.2 is installed), `engines.node ">=22.12"`, delete `.yarnrc`,
+  fresh `yarn install` under 22 (must pass with no engine overrides; postinstall regenerates the
+  Prisma client).
+- **(d) Config/docs:** `turbopack.root` comment (pin stays — repo remains dual-lockfile);
+  package names `sprint-tracker` / `sprint-tracker-legacy`; root `CLAUDE.md`/`AGENTS.md`/
+  `README.md` rewrite; `.claude/skills/` `web/`-path sweep; `.env.example` crontab path check;
+  project-overview doc-sync (step 10 DONE, §7 retitled legacy, §16 amendments).
+- **(e)** Two commits (retire → promote) so rename detection + `git log --follow` stay clean.
+- **Acceptance:** at root under Node 22 — lint + `prisma validate`/`migrate status` +
+  **DB/env-free build green (27 ƒ Dynamic)**; dev-server smoke on :3002 (auth gate, dashboard
+  SSR, share page, cron 401); legacy boots from `legacy/` under Node 20 (:3000/:3001);
+  `git log --follow` shows pre-move history; zero load-bearing `web/` refs; `.sessions/` gone.
 
 ## Notes
 
-- **html2canvas vs Tailwind v4 colors is the landmine**: the theme is oklch + ui-polish
-  `color-mix()`; stock html2canvas 1.4.1 throws on modern color functions → `html2canvas-pro`,
-  spiked before the full port (fallback: hex-only self-contained print-page styles).
-- **Next 16 async `params`** on `[token]`/`[shareId]` — read `node_modules/next/dist/docs/`
-  first (`web/AGENTS.md`).
-- **Public page leaks nothing**: no TopBar, no `can` flags, no user object in props; stays
-  `force-dynamic`; DB/env-free build invariant must hold.
-- **Snapshot Json dates land as ISO strings** — metrics coerce via `new Date(...)`, but verify
-  the frozen render path against real snapshot data.
-- **`includedFilterIds` has no FK** — live shares skip deleted ids; POST validates ownership so
-  no foreign filter can be smuggled in. Progress reads derive teamId from the loaded filters.
-- **Clipboard can be blocked** (plain-http dev) — the AlertDialog copy-fallback is required, not
-  polish.
-- If `PlannerPanel`/`MetricGrid` read the density local pref internally, lift to a prop with the
-  pref as the dashboard default — don't fork components.
-- **Doc-sync (§17):** §5 Share-view row → BUILT in `web/` + Export row note; §13.4 implemented
-  (auth-gated shares explicitly NOT built); §14.3 fixed in web/; §11 flip "wait for step 8"; §12
-  asOf note; master-plan step 8 DONE. §7 stays the legacy snapshot; steps 9–10 untouched.
+- **gitignore semantics are the sneaky part**: leading-`/` rules are relative to the file's own
+  dir — web's file works at root verbatim, but the `.claude/*` allowlist rules must be re-added
+  to the root file by hand or they vanish into `legacy/.gitignore`.
+- **`git mv` won't move untracked files** (`.env`, `node_modules`, `dist`, `.next`) — handle
+  explicitly; verify root `.env` carries DATABASE_URL/secrets/CRON_* after the move (the server
+  fails loudly without them, by design).
+- **Do NOT add `"type": "module"`** to the promoted package.json — the CJS default is why the
+  `.mjs` conventions (workflows/seeding/seed) exist.
+- Stop the running :3002 dev server before phase 2 (its cwd disappears); restart from root
+  after. Close stale app tabs (export-saga lesson).
+- Historical `web/...` paths in context/ docs are **not** rewritten — true when written; a note
+  in project-overview maps them to the post-cutover root.
+- Naveen's pending human acceptance (side-by-side eyeball, real-Jira UI sync, share/export)
+  is recommended **before merge**; legacy stays runnable so cutover doesn't destroy the
+  comparison.
 
 ## History
 
@@ -614,3 +588,27 @@ notes". **Next:** step 9 (localStorage importer) — the last step before cutove
   and a time-suffixed filename proves the fresh code ran. Lint green; dev server stopped for
   the build and restarted (:3002 → 200). User action: **close the app tab entirely**, open a
   fresh one, export — filename must end in `_HHMM`.
+- 2026-07-18 — Planning session (no code): began refreshing @context/features/seed.md for
+  **step 9** (localStorage importer); Naveen decided to **skip step 9** instead — no older sprint
+  data remains in localStorage (current work already lives in `web/` via real syncs), so there is
+  nothing to import. Master-plan step 9 marked **[SKIPPED]** and the §16 importer decision
+  annotated as dropped; seed.md Status updated (draft kept for reference, refresh not written).
+  **Next in order: step 10 (cutover)** — promote `web/` to repo root, delete the Vite app, Node 22
+  bump per §16.
+- 2026-07-18 — Planning session (no code): drafted @context/features/cutover.md (migration
+  **step 10** — the final step). Ratified with Naveen: the Vite app is **backed up into
+  `legacy/`, not deleted** (supersedes the §16 delete-at-parity plan) so it stays startable for
+  reference (Node 20; `cd legacy && yarn dev:all`). Repo surveyed first (root vs `web/` layout,
+  `turbopack.root` pin, dual lockfiles, untracked `.env`/`node_modules`/`.sessions`, legacy
+  `docs/`). 10 decisions, notably: two-commit `git mv` (retire → promote) for rename-detection
+  safety; Node 22 bump (`.nvmrc` + `engines`, delete `web/.yarnrc`) lands in the same feature
+  after promotion with a fresh install; dev port stays :3002 (legacy keeps :3000/:3001 for the
+  pending side-by-side); `turbopack.root` pin stays (repo remains dual-lockfile with
+  `legacy/yarn.lock`); `.sessions/` **deleted** not backed up (plaintext tokens, §13);
+  CLAUDE.md/AGENTS.md/README consolidation to root + `.claude/skills` path sweep; the pending
+  human-acceptance items recommended before merge but no longer blocked by cutover (legacy stays
+  runnable). Zero app-code changes; no schema/migration/deps. Not yet started — awaiting
+  start-feature.
+- 2026-07-18 — Picked @context/features/cutover.md as the current feature (migration **step 10**
+  — cutover: promote `web/` to repo root, retire the Vite app into `legacy/`, Node 22 bump).
+  Branch `feature/cutover` created.
