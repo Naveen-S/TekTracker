@@ -288,6 +288,40 @@ defaults, flag if you disagree). None block implementation.
 - **Smoke ran against the already-running dev server** (found on :3002 — Naveen's, presumably
   for the ui-polish eyeball); it hot-compiled the new routes. It was stopped for the env-free
   production build (dev and build share `.next`) and **restarted afterwards** (answers 200).
+- **2026-07-18 iteration — report pages re-skinned to the legacy export design** (per Naveen,
+  comparing a `web/` PDF against a legacy sample): the original port re-authored the
+  Summary/Issues pages in muted grays; they now follow `src/styles.css` :1728-2152 verbatim —
+  teal `#00bfa5` eyebrow/section labels + 2px teal divider, white bordered metric boxes with
+  24px display numerals, **3-col** accent-spined filter cards (were stacked rows), pastel
+  green/orange/blue/amber leadership cards (`OverallCard`, fixed print hex — legacy styled its
+  "warn" band identically to "good", kept faithfully), tinted `bg-muted` table head, accent
+  filter-header cells (bg-subtle + 4px accent spine + display pct), zebra rows, teal mono keys,
+  pill pct badges (legacy fixed hex), `rounded-sm` bordered health badges, right-aligned bordered
+  page footer; print pages `p-8` (legacy `--sp-8`); dialog chrome gained the legacy accent dots
+  on filter toggles + teal label + danger hint. Verified by a temporary `/export-spike` fixture
+  page screenshotted with headless Chrome against the legacy sample PDF (pages rendered via
+  poppler), then deleted; lint + DB/env-free build green.
+- **2026-07-18 follow-up — capture font fidelity**: Naveen's re-export still showed wrong
+  font/weight/alignment even though the DOM pages were right. Root cause: `next/font` loaded the
+  families as **variable fonts**, and WebKit's canvas ignores `ctx.font` weights on variable
+  fonts (everything drew at 400, with drifted metrics); the legacy app never hit this because
+  its Google `@import` served **per-weight static faces**. Fix: `layout.jsx` now loads the exact
+  legacy weight sets as static instances (Manrope 400–800, Inter 400–700, Mono 400–600 — the
+  served CSS was verified to emit single-weight `@font-face` rules), and the capture gained
+  `onclone: (doc) => doc.fonts.ready` so the cloned iframe's layout metrics can't race font
+  loading. Verified via a capture spike (DOM page + in-page html2canvas-pro run + a `ctx.font`
+  400-vs-800 probe, headless-Chrome screenshots): captures pre/post are pixel-identical in
+  Chrome (no regression; Chrome handled variable weights), the WebKit path is covered by the
+  static faces that legacy's correct exports already proved out in Naveen's browser.
+  **Second-pass verification (same day):** Naveen's next export still looked light — but it
+  rendered *identically* to the pre-fix 01:12 export (150dpi pdftoppm crops), i.e. it came from
+  a **stale tab** that never received the font fix (open since ~01:00; the fix landed ~13:25 and
+  the dev HMR socket had dropped). Proven by reproducing the real capture pipeline (offscreen
+  `-left-500` source, same options) in **Playwright WebKit** against the fixed dev server: the
+  captured canvas matches the DOM weights, and a `ctx.font` ink-density probe measured
+  400/700/800 = 37.3/52.1/59.5 — WebKit canvas honors all three static faces (with variable
+  fonts it had collapsed 700/800 into synthetic bold, the exact artifact in Naveen's PDFs).
+  Chromium verified equally. Remedy for stale sessions: hard-reload before exporting.
 
 ## Doc-sync (§17 — do in the same PR)
 

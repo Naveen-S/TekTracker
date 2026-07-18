@@ -559,3 +559,58 @@ notes". **Next:** step 9 (localStorage importer) — the last step before cutove
   to its filter wrapper). Long matrices now scroll inside the panel instead of the page; share
   page inherits. Lint + DB/env-free build green (27 ƒ Dynamic; one build attempt failed on a
   transient Google Fonts fetch, clean on retry).
+- 2026-07-18 — **Export report re-skinned to the legacy design (per Naveen, rides on the step-8
+  branch):** comparing a `web/` PDF export against a legacy sample showed the step-8 port had
+  re-authored the report pages in muted grays. `export-dialog.jsx`'s SummaryPage/IssuesPage now
+  follow the legacy export system (`src/styles.css` :1728-2152) verbatim: teal eyebrow/labels +
+  2px teal divider, white bordered metric boxes w/ display numerals, 3-col accent filter cards,
+  pastel Sprint-Health/Completion/Projected leadership cards (fixed print hex, new
+  `OverallCard`), tinted table head, accent filter-header cells w/ display pct, zebra rows, teal
+  mono keys, pill pct badges, bordered health badges, bordered right-aligned footer; print pages
+  `p-8`; dialog toggles gained the legacy accent dots. Verified visually: temporary
+  `/export-spike` fixture page screenshotted via headless Chrome against the legacy sample PDF
+  (rendered w/ poppler) — page-for-page match — then deleted; lint + DB/env-free build green.
+  Details in share-view-export.md as-built notes.
+- 2026-07-18 — **Export capture font fidelity (follow-up, per Naveen: "font, weight and
+  alignment still not accurate"):** the re-exported PDF drew everything at weight ~400 with
+  drifted baselines even though the DOM pages were correct. Root cause: `next/font` served the
+  type stack as **variable fonts**, and WebKit's canvas ignores `ctx.font` weights on variable
+  fonts — legacy never hit this because its Google `@import` delivered per-weight **static**
+  faces. Fixed by loading the legacy weight sets as static instances in `layout.jsx` (Manrope
+  400–800, Inter 400–700, Mono 400–600; served CSS verified to emit single-weight `@font-face`
+  rules) + `onclone: fonts.ready` in the capture options (clone-side metric race). Verified with
+  a capture spike (in-page html2canvas-pro run + ctx.font weight probe): Chrome captures
+  pre/post pixel-identical (no regression), WebKit path covered by the static faces legacy's own
+  correct exports proved. Spike deleted; lint + DB/env-free build green. Details in
+  share-view-export.md.
+- 2026-07-18 — **Export font follow-up №2 (Naveen: side-by-side still off):** his re-export
+  rendered *pixel-equivalent to the pre-fix 01:12 PDF* (150dpi crop comparison) — a **stale
+  tab** that never loaded the static-font fix, not a code gap. Closed the loop by reproducing
+  the exact capture pipeline (offscreen `-left-500` source + captureOptions) in **Playwright
+  WebKit** against the fixed dev server: captured canvas matches DOM weights; ctx.font
+  ink-density probe 400/700/800 = 37.3/52.1/59.5 proves WebKit canvas honors the static faces
+  (variable fonts had collapsed 700/800 into synthetic bold — the artifact in his PDFs).
+  Chromium re-verified; spike + temp exports removed; lint + DB/env-free build green. Remedy:
+  hard-reload the app tab, then export.
+- 2026-07-18 — **Export font follow-up №3 (Naveen: still off after re-export):** his 14:28/14:29
+  exports still matched the stale rendering — and the `:3002` dev server was found **dead**
+  shortly after (long-running since pre-fix; the repeated same-`.next` production builds likely
+  wedged it), so a hard reload at that time couldn't have loaded fresh code — the exports came
+  from the same stale tab. No local Manrope/Inter installed (local-font interference ruled out).
+  Started a fresh dev server and completed the engine matrix via the capture-parity spike:
+  **Chromium, WebKit, and Firefox (Playwright) all render the capture pipeline correctly**
+  against current code — DOM-matching weights, 400/700/800 probe differentiated. No code change;
+  spike + temp export reverted; lint green (build skipped deliberately — code byte-identical to
+  the green builds, and a build would kill the dev server again). Remedy unchanged: reload the
+  tab against the fresh server, then export.
+- 2026-07-18 — **Export font follow-up №4 (July-legacy vs Aug-web PDF review):** the 15:23
+  export proved **byte-near-identical to the stale 14:28 one** (14,614,116 vs 14,614,117 bytes)
+  — every export today came from the same never-reloaded tab; html2canvas runs fully
+  client-side, so a stale tab keeps exporting July-17 code (variable fonts → synthetic-bold
+  canvas text) regardless of server restarts. Design parity itself re-confirmed against
+  `July_2026_Release_Week4_Report_2026-06-24.pdf` (already page-for-page from the re-skin).
+  Shipped one improvement doubling as a fresh-code sentinel: **export filenames now carry
+  `_HHMM`** (`…_Report_2026-07-18_1530.pdf`) so same-day exports don't collide as "(1)"/"(2)"
+  and a time-suffixed filename proves the fresh code ran. Lint green; dev server stopped for
+  the build and restarted (:3002 → 200). User action: **close the app tab entirely**, open a
+  fresh one, export — filename must end in `_HHMM`.

@@ -8,6 +8,11 @@
  * (legacy ExportModal.jsx:21-27). PDF = one page per print page via jsPDF; PNG = merged canvas.
  * `html2canvas-pro` (not stock html2canvas) because the Tailwind v4 theme is oklch/color-mix —
  * proven by the capture spike (decision 8). Both libs load on demand via dynamic import.
+ * The report pages follow the legacy export design system verbatim (src/styles.css :1728-2152):
+ * teal eyebrow/section labels + 2px teal divider, white bordered metric boxes, 3-col accent
+ * filter cards, pastel leadership cards, tinted table chrome with zebra rows. Print-only colors
+ * that legacy hardcoded (brand teal, pastels, pct badges) stay fixed hex here too — these are
+ * captured light-mode surfaces, never theme-flipped.
  */
 import { useMemo, useRef, useState } from "react";
 import { Download } from "lucide-react";
@@ -96,28 +101,34 @@ export function ExportDialog({ sprint, filters, progressByKey, onClose, showToas
     try {
       await document.fonts.ready;
       const html2canvas = (await import("html2canvas-pro")).default;
-      const baseName = `${sprint.name.replace(/\s+/g, "_")}_Week${velocity.weeksElapsed}_Report_${new Date().toISOString().split("T")[0]}`;
+      // Date + time in the filename so same-day exports don't collide as "(1)", "(2)", …
+      const now = new Date();
+      const stamp = `${now.toISOString().split("T")[0]}_${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
+      const baseName = `${sprint.name.replace(/\s+/g, "_")}_Week${velocity.weeksElapsed}_Report_${stamp}`;
       const pageEls = Array.from(offScreenRef.current.children);
+      // onclone: html2canvas measures layout in a cloned iframe whose webfonts load
+      // independently — without waiting, text metrics come from the fallback font and
+      // baselines/line breaks drift in the capture.
+      const captureOptions = {
+        scale: 2,
+        logging: false,
+        backgroundColor: "#ffffff",
+        width: 794,
+        onclone: (clonedDoc) => clonedDoc.fonts.ready,
+      };
 
       if (format === "pdf") {
         const { jsPDF } = await import("jspdf");
         const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
         for (let i = 0; i < pageEls.length; i++) {
-          const canvas = await html2canvas(pageEls[i], {
-            scale: 2,
-            logging: false,
-            backgroundColor: "#ffffff",
-            width: 794,
-          });
+          const canvas = await html2canvas(pageEls[i], captureOptions);
           if (i > 0) pdf.addPage();
           pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, 210, (canvas.height * 210) / canvas.width);
         }
         pdf.save(`${baseName}.pdf`);
       } else {
         const canvases = await Promise.all(
-          pageEls.map((el) =>
-            html2canvas(el, { scale: 2, logging: false, backgroundColor: "#ffffff", width: 794 }),
-          ),
+          pageEls.map((el) => html2canvas(el, captureOptions)),
         );
         const merged = document.createElement("canvas");
         merged.width = canvases[0].width;
@@ -148,7 +159,7 @@ export function ExportDialog({ sprint, filters, progressByKey, onClose, showToas
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-bold tracking-wider uppercase text-muted-foreground">
+            <span className="text-[11px] font-bold tracking-[0.08em] uppercase text-accent-foreground">
               Include filters
             </span>
             <div className="flex flex-wrap gap-1.5">
@@ -163,7 +174,7 @@ export function ExportDialog({ sprint, filters, progressByKey, onClose, showToas
                     disabled={busy}
                     onClick={() => toggleFilter(filter.id)}
                     className={cn(
-                      "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+                      "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
                       active ? "text-foreground" : "border-border text-muted-foreground hover:border-border-strong",
                     )}
                     style={
@@ -175,13 +186,18 @@ export function ExportDialog({ sprint, filters, progressByKey, onClose, showToas
                         : undefined
                     }
                   >
+                    <span
+                      className={cn("size-2 rounded-full", !active && "opacity-40")}
+                      style={{ backgroundColor: accent }}
+                      aria-hidden="true"
+                    />
                     {filter.name}
                   </button>
                 );
               })}
             </div>
             {nothingSelected && (
-              <span className="text-xs text-warn">Select at least one filter to export.</span>
+              <span className="text-xs text-danger">Select at least one filter to export.</span>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -206,7 +222,7 @@ export function ExportDialog({ sprint, filters, progressByKey, onClose, showToas
         )}
 
         <div className="overflow-x-auto rounded-lg border border-border-subtle bg-subtle p-4">
-          <div className="mx-auto w-198.5 bg-white p-10 shadow-sm">
+          <div className="mx-auto w-198.5 bg-white p-8 shadow-sm">
             {page.type === "summary" ? (
               <SummaryPage
                 sprint={sprint}
@@ -249,7 +265,7 @@ export function ExportDialog({ sprint, filters, progressByKey, onClose, showToas
       {/* Offscreen A4 print pages — what html2canvas-pro actually captures. Rendered (not
           display:none) so layout runs; parked far off-canvas like the legacy .export-offscreen. */}
       <div ref={offScreenRef} className="fixed top-0 -left-500" aria-hidden="true">
-        <div className="w-198.5 bg-white p-10">
+        <div className="w-198.5 bg-white p-8">
           <SummaryPage
             sprint={sprint}
             selectedFilters={selectedFilters}
@@ -259,7 +275,7 @@ export function ExportDialog({ sprint, filters, progressByKey, onClose, showToas
           />
         </div>
         {pages.slice(1).map((issuePage, index) => (
-          <div key={index} className="w-198.5 bg-white p-10">
+          <div key={index} className="w-198.5 bg-white p-8">
             <IssuesPage rows={issuePage.rows} pageNumber={index + 1} totalPages={totalPages - 1} />
           </div>
         ))}
@@ -268,11 +284,36 @@ export function ExportDialog({ sprint, filters, progressByKey, onClose, showToas
   );
 }
 
+/* Teal section label / eyebrow (legacy .export-section-label / .export-eyebrow — brand teal). */
 function SectionLabel({ children, className }) {
   return (
-    <p className={cn("text-[11px] font-bold tracking-widest uppercase text-muted-foreground", className)}>
+    <p className={cn("text-[11px] font-bold tracking-[0.08em] uppercase text-[#00bfa5]", className)}>
       {children}
     </p>
+  );
+}
+
+/* Pastel leadership cards (legacy styles.css :1880-1918). Legacy styled its "warn" band
+   identically to "good", so only good/risk/completion/projected exist. */
+const OVERALL_CARD = {
+  good: { box: "border-[#bbf7d0] bg-[#f0fdf4]", label: "text-[#15803d]", value: "text-[#14532d]" },
+  risk: { box: "border-[#fed7aa] bg-[#fff7ed]", label: "text-[#c2410c]", value: "text-[#7c2d12]" },
+  completion: { box: "border-[#bfdbfe] bg-[#eff6ff]", label: "text-[#1d4ed8]", value: "text-[#1e3a8a]" },
+  projected: { box: "border-[#fde68a] bg-[#fffbeb]", label: "text-[#b45309]", value: "text-[#78350f]" },
+};
+
+function OverallCard({ tone, label, value, detail }) {
+  const colors = OVERALL_CARD[tone];
+  return (
+    <div className={cn("rounded-md border px-5 py-4", colors.box)}>
+      <span className={cn("block text-[11px] font-bold tracking-[0.08em] uppercase", colors.label)}>
+        {label}
+      </span>
+      <strong className={cn("mt-2 block font-display text-[32px] leading-[1.05] font-extrabold", colors.value)}>
+        {value}
+      </strong>
+      <span className={cn("mt-1 block text-[11px]", colors.label)}>{detail}</span>
+    </div>
   );
 }
 
@@ -292,35 +333,29 @@ function SummaryPage({ sprint, selectedFilters, exportIssues, exportMetrics, vel
     day: "numeric",
   });
 
-  const healthCardTone = ["Healthy", "Excellent", "Complete"].includes(healthStatus)
-    ? "border-success-strong bg-success-soft"
-    : ["At Risk", "Critical"].includes(healthStatus)
-      ? "border-danger-strong bg-danger-soft"
-      : "border-warn-strong bg-warn-soft";
+  const healthTone = ["At Risk", "Critical"].includes(healthStatus) ? "risk" : "good";
 
   return (
     <div className="text-foreground">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-[11px] font-bold tracking-widest uppercase text-accent-foreground">
-            Sprint Report
-          </p>
-          <h3 className="mt-1 font-display text-2xl font-extrabold tracking-tight">{sprint.name}</h3>
-          <p className="mt-0.5 text-sm text-muted-foreground">
+          <SectionLabel>Sprint Report</SectionLabel>
+          <h3 className="mt-1 font-display text-2xl font-extrabold">{sprint.name}</h3>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">
             {formatDate(sprint.developmentStart)} – {formatDate(sprint.developmentEnd)}
           </p>
         </div>
-        <div className="text-right text-xs text-muted-foreground">
-          <span className="block">Generated on</span>
-          <strong className="text-foreground">{generatedOn}</strong>
+        <div className="shrink-0 text-right">
+          <span className="block text-[11px] text-muted-foreground">Generated on</span>
+          <strong className="mt-0.5 block text-[13px] font-bold text-foreground">{generatedOn}</strong>
         </div>
       </div>
-      <div className="mt-4 border-b border-border-subtle" />
+      <div className="mt-4 h-0.5 bg-[#00bfa5]" />
 
       <SectionLabel className="mt-5">
         This week&apos;s update — week {velocity.weeksElapsed} of {velocity.totalWeeks}
       </SectionLabel>
-      <div className="mt-2 grid grid-cols-4 gap-3">
+      <div className="mt-3 grid grid-cols-4 gap-3">
         <ReportMetricBox
           label="Week"
           value={`${velocity.weeksElapsed} / ${velocity.totalWeeks}`}
@@ -343,7 +378,7 @@ function SummaryPage({ sprint, selectedFilters, exportIssues, exportMetrics, vel
         />
       </div>
 
-      <div className="mt-4 flex flex-col gap-2">
+      <div className="mt-5 grid grid-cols-3 gap-3">
         {selectedFilters.map((filter) => {
           const filterIssues = exportIssues.filter((issue) => issue.filterId === filter.id);
           const fp = filterIssues.reduce((sum, issue) => sum + issue.storyPoints, 0);
@@ -358,22 +393,24 @@ function SummaryPage({ sprint, selectedFilters, exportIssues, exportMetrics, vel
           return (
             <div
               key={filter.id}
-              className="rounded-md border border-border-subtle p-3"
-              style={{ borderLeft: `3px solid ${accent}` }}
+              className="rounded-md border bg-white px-4 py-3"
+              style={{ borderLeft: `4px solid ${accent}` }}
             >
-              <div className="flex items-baseline justify-between gap-2">
-                <div className="flex items-baseline gap-2">
-                  <strong className="font-display text-sm font-bold">{filter.name}</strong>
-                  <span className="text-xs text-muted-foreground">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <strong className="block text-sm font-bold text-foreground">{filter.name}</strong>
+                  <span className="mt-0.5 block text-[11px] font-medium text-muted-foreground">
                     {WORKFLOWS[filter.workflowType].name}
                   </span>
                 </div>
-                <span className="text-sm font-bold">{fpct}%</span>
+                <span className="shrink-0 font-display text-lg font-extrabold text-foreground">
+                  {fpct}%
+                </span>
               </div>
-              <p className="mt-0.5 text-xs text-muted-foreground">
+              <p className="mt-1 text-[11px] text-muted-foreground">
                 {done} done · {active} active · {filterIssues.length} total
               </p>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border/60">
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
                 <span
                   className="block h-full rounded-full"
                   style={{ width: `${fpct}%`, backgroundColor: accent }}
@@ -385,28 +422,25 @@ function SummaryPage({ sprint, selectedFilters, exportIssues, exportMetrics, vel
       </div>
 
       <SectionLabel className="mt-5">Overall sprint metrics</SectionLabel>
-      <div className="mt-2 grid grid-cols-3 gap-3">
-        <div className={cn("rounded-md border p-3", healthCardTone)}>
-          <SectionLabel>Sprint health</SectionLabel>
-          <strong className="mt-1 block font-display text-xl font-extrabold">{healthStatus}</strong>
-          <span className="text-xs text-muted-foreground">
-            {featuresOnTrack}/{exportMetrics.totalFeatureIssues} features on track
-          </span>
-        </div>
-        <div className="rounded-md border border-border-subtle bg-subtle p-3">
-          <SectionLabel>Completion</SectionLabel>
-          <strong className="mt-1 block font-display text-xl font-extrabold">{completionPct}%</strong>
-          <span className="text-xs text-muted-foreground">
-            {Math.round(exportMetrics.completedPoints)} / {exportMetrics.points} story points
-          </span>
-        </div>
-        <div className="rounded-md border border-border-subtle bg-subtle p-3">
-          <SectionLabel>Projected</SectionLabel>
-          <strong className="mt-1 block font-display text-xl font-extrabold">
-            {Math.round(velocity.projectedPoints)} pts
-          </strong>
-          <span className="text-xs text-muted-foreground">by end of sprint</span>
-        </div>
+      <div className="mt-3 grid grid-cols-3 gap-3">
+        <OverallCard
+          tone={healthTone}
+          label="Sprint health"
+          value={healthStatus}
+          detail={`${featuresOnTrack}/${exportMetrics.totalFeatureIssues} features on track`}
+        />
+        <OverallCard
+          tone="completion"
+          label="Completion"
+          value={`${completionPct}%`}
+          detail={`${Math.round(exportMetrics.completedPoints)} / ${exportMetrics.points} story points`}
+        />
+        <OverallCard
+          tone="projected"
+          label="Projected"
+          value={`${Math.round(velocity.projectedPoints)} pts`}
+          detail="by end of sprint"
+        />
       </div>
     </div>
   );
@@ -414,26 +448,39 @@ function SummaryPage({ sprint, selectedFilters, exportIssues, exportMetrics, vel
 
 function ReportMetricBox({ label, value, detail }) {
   return (
-    <div className="rounded-md border border-border-subtle bg-subtle p-3">
-      <SectionLabel>{label}</SectionLabel>
-      <strong className="mt-1 block font-display text-xl font-extrabold">{value}</strong>
-      <span className="text-xs text-muted-foreground">{detail}</span>
+    <div className="rounded-md border bg-white px-4 py-3">
+      <p className="text-[11px] font-bold tracking-[0.06em] uppercase text-muted-foreground">{label}</p>
+      <strong className="mt-1 block font-display text-2xl leading-[1.1] font-extrabold text-foreground">
+        {value}
+      </strong>
+      <span className="mt-1 block text-[11px] text-muted-foreground">{detail}</span>
     </div>
   );
 }
+
+/* Legacy table chrome (styles.css :1986-2116). */
+const TH = "border-b-2 border-border px-3 py-2 text-left text-[11px] font-bold tracking-[0.06em] uppercase text-muted-foreground whitespace-nowrap";
+const TD = "border-b border-border-subtle px-3 py-2 align-middle";
+
+/* Progress pill colors — legacy .export-pct-badge--* fixed print hex (:2043-2045). */
+const PCT_BADGE = {
+  complete: "bg-[#ecfdf5] text-[#065f46]",
+  inProgress: "bg-[#f0f9ff] text-[#0369a1]",
+  notStarted: "bg-muted text-muted-foreground",
+};
 
 function IssuesPage({ rows, pageNumber, totalPages }) {
   return (
     <div className="text-foreground">
       <SectionLabel>Work breakdown by filter</SectionLabel>
-      <table className="mt-2 w-full border-collapse text-left">
+      <table className="mt-3 w-full border-collapse text-[13px]">
         <thead>
-          <tr className="border-b border-border-strong text-[11px] font-bold tracking-wider uppercase text-muted-foreground">
-            <th className="py-1.5 pr-2">Key</th>
-            <th className="py-1.5 pr-2">Title</th>
-            <th className="py-1.5 pr-2 text-center">Progress</th>
-            <th className="py-1.5 pr-2 text-center">Stages</th>
-            <th className="py-1.5 text-center">Health</th>
+          <tr className="bg-muted">
+            <th className={cn(TH, "w-22")}>Key</th>
+            <th className={TH}>Title</th>
+            <th className={cn(TH, "w-20 text-center")}>Progress</th>
+            <th className={cn(TH, "w-18 text-center")}>Stages</th>
+            <th className={cn(TH, "w-22.5 text-center")}>Health</th>
           </tr>
         </thead>
         <tbody>
@@ -443,23 +490,32 @@ function IssuesPage({ rows, pageNumber, totalPages }) {
               const accent = filter.accentColor ?? "#00a892";
               return (
                 <tr key={`fh-${filter.id}-${index}`}>
-                  <td colSpan={5} className="pt-3 pb-1.5">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="flex items-baseline gap-1.5">
+                  <td
+                    colSpan={5}
+                    className="border-t border-border-subtle bg-subtle px-4 py-3"
+                    style={{ borderLeft: `4px solid ${accent}` }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center text-sm font-bold text-foreground">
                         <span
-                          className="inline-block size-2 self-center rounded-full"
+                          className="mr-2 inline-block size-2 shrink-0 rounded-full"
                           style={{ backgroundColor: accent }}
                         />
-                        <strong className="font-display text-sm font-bold">{filter.name}</strong>
-                        <span className="text-xs text-muted-foreground">
-                          {WORKFLOWS[filter.workflowType].name} · {count} issues
-                        </span>
+                        {filter.name}
                       </span>
-                      <span className="text-xs font-semibold text-muted-foreground">
-                        {Math.round(fc)} / {fp} pts · {fpct}%
+                      <span className="font-display text-lg font-extrabold text-foreground">
+                        {fpct}%
                       </span>
                     </div>
-                    <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-border/60">
+                    <div className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                      <span>
+                        {WORKFLOWS[filter.workflowType].name} · {count} issues
+                      </span>
+                      <span>
+                        {Math.round(fc)} / {fp} pts
+                      </span>
+                    </div>
+                    <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
                       <span
                         className="block h-full rounded-full"
                         style={{ width: `${fpct}%`, backgroundColor: accent }}
@@ -471,35 +527,33 @@ function IssuesPage({ rows, pageNumber, totalPages }) {
             }
             const { issue } = row;
             const totalStages = WORKFLOWS[issue.workflowType].stages.length;
+            const pctTone =
+              issue.percent === 100 ? "complete" : issue.percent > 0 ? "inProgress" : "notStarted";
             return (
-              <tr key={issue.jiraKey} className="border-b border-border-subtle text-[12px]">
-                <td className="py-1.5 pr-2 font-mono text-[11px] font-semibold whitespace-nowrap">
+              <tr key={issue.jiraKey} className="even:bg-subtle">
+                <td className={cn(TD, "font-mono text-[11px] font-semibold text-accent-foreground whitespace-nowrap")}>
                   {issue.jiraKey}
                 </td>
-                <td className="py-1.5 pr-2">
+                <td className={TD}>
                   {issue.title.length > 55 ? `${issue.title.slice(0, 55)}…` : issue.title}
                 </td>
-                <td className="py-1.5 pr-2 text-center">
+                <td className={cn(TD, "text-center")}>
                   <span
                     className={cn(
-                      "inline-block min-w-11 rounded-md px-1.5 py-0.5 text-[11px] font-bold",
-                      issue.percent === 100
-                        ? "bg-success-soft text-success-strong"
-                        : issue.percent > 0
-                          ? "bg-info-soft text-info-strong"
-                          : "bg-muted text-muted-foreground",
+                      "inline-block rounded-full px-1.75 py-0.5 text-[11px] font-bold",
+                      PCT_BADGE[pctTone],
                     )}
                   >
                     {issue.percent}%
                   </span>
                 </td>
-                <td className="py-1.5 pr-2 text-center text-xs whitespace-nowrap">
+                <td className={cn(TD, "text-center whitespace-nowrap")}>
                   {totalStages > 0 ? `${issue.completedStages} / ${totalStages}` : "—"}
                 </td>
-                <td className="py-1.5 text-center">
+                <td className={cn(TD, "text-center")}>
                   <span
                     className={cn(
-                      "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-bold whitespace-nowrap",
+                      "inline-block rounded-sm border px-2 py-0.5 text-[11px] font-bold whitespace-nowrap",
                       HEALTH_BADGE[issue.health.tone] ?? HEALTH_BADGE.neutral,
                     )}
                   >
@@ -511,7 +565,7 @@ function IssuesPage({ rows, pageNumber, totalPages }) {
           })}
         </tbody>
       </table>
-      <p className="mt-3 text-center text-[11px] text-muted-foreground">
+      <p className="mt-3 border-t border-border-subtle pt-2 text-right text-[11px] text-muted-foreground">
         Page {pageNumber} of {totalPages}
       </p>
     </div>
