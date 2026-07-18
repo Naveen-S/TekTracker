@@ -1,7 +1,8 @@
-node_modules
-dist
+# Interim root ignores (phase 1 of the step-10 cutover) — replaced by the
+# promoted web/.gitignore in phase 2.
 .DS_Store
-.env
-.sessions
+node_modules
+
+# Claude Code project dir: only skills/ is tracked
 .claude/*
 !.claude/skills/
