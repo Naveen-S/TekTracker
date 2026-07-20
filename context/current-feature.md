@@ -1,73 +1,69 @@
 # Current Feature
 
-**Trend & burndown UI (post-v1)** — full spec: @context/features/trend-burndown.md
+**AI insights (post-v1 item 2)** — full spec: @context/features/ai-insights.md
 
-The master-plan step-10 "then" clause ("then burndown/trend UI from snapshots, then Gemini") —
-the next in-order feature now the migration is complete (steps 1–8 + 10 Done, 9 skipped; cutover
-on `main`). Render the trend/burndown view from the daily per-team `SprintSnapshot` rows the
-step-7 cron writes: a shared burndown panel on `/` and `/rollup` with ideal/actual/projection
-lines ("projected by end of sprint", §5/§14.8), plus §12's deferred velocity swap to
-snapshot-based actuals. **No schema change, no migration, no new deps, no new API routes.**
+The last open post-v1 item from the master plan (step 10's "then Gemini — risk call-outs +
+narrative first"), reframed per Naveen (2026-07-20) as a **provider-agnostic AI platform**: all
+AI specifics behind a neutral `generateJson` contract in `src/lib/ai/` (the `lib/jira/` isolation
+precedent), provider switched by `AI_PROVIDER` env — downtime/cost switching is an env flip, zero
+code changes. Gemini is the first adapter; an Anthropic adapter ships alongside to prove the
+abstraction. Product surface: an on-demand **"AI Digest" dialog** on `/` (Hero button) generating
+headline + leadership narrative + ranked risk call-outs, with Copy for the EM's weekly update
+upward (§2.2/§2.3, §16 use cases 1–2). **No schema change, no migration, no new deps, one new
+API route.**
 
 ## Status
 
-**Done 2026-07-19** — pure `buildTrendSeries`/`combineSnapshotsByDay`/`snapshotVelocity` (+
-`formatDateUTC`) in `lib/metrics.mjs`; snapshot reads + request-time `asOf` in
-`lib/dashboard-data.js`; server-safe SVG `TrendPanel` on `/` and `/rollup`; additive
-`velocityOverride` on the velocity card (naive detail **byte-identical** when absent). No schema
-change, no migration, no new deps, no new routes. **Verified:** 31/31 plain-Node fixtures; lint
-clean; `prisma validate`/`migrate status` up to date; **DB/env-free build green (27 ƒ Dynamic —
-unchanged)**; 23/23 SSR smoke on dev+Neon (fabricated 3-team PLANNING sprint w/ gap + partial
-day; share page proves the frozen/export invariant holds); headless-Chrome visual pass over a
-temporary spike page (5 states; one label collision found + fixed); fixture torn down to 0,
-harnesses/spike deleted, dev server stopped. ⚠️ Pending human acceptance: Naveen's eyeball on
-real accrued snapshots (cron scheduling on Tekion infra still pending, so real density is thin).
-**Next:** Gemini (risk call-outs + narrative first) — the last open post-v1 item.
+**Done 2026-07-20** — provider-agnostic platform (`src/lib/ai/`: `provider.js` w/ lazy config +
+`generateJson` (zod gate + one repair retry), `errors.js`, fetch-only Gemini + Anthropic
+adapters); pure `digest.mjs` + `schemas/ai.js` contract; `POST …/ai-digest` (TEAM_ALL_ROLES,
+503/502 mappings, 400 empty-board guard); `ai-digest-dialog.jsx` + Hero button behind
+server-provided `aiEnabled`; `.env.example` AI block. **No schema change, no migration, no new
+deps, one new route.** Verified: 39/39 plain-Node fixtures; lint; `prisma validate`/`migrate
+status` up to date; **DB/env-free build green — 28 ƒ Dynamic**; **25/25 smoke on dev+Neon w/
+contract-faithful mock providers** — incl. **the swap proof** (flip `AI_PROVIDER`
+gemini→anthropic → identical normalized digest, zero code changes), repair retry, 502/503/500
+states, sanitize-over-HTTP, share page clean; fixture torn down to 0, `.env` restored
+byte-identical. ⚠️ Pending human acceptance: Naveen sets a real provider key, reads a real
+digest, flips providers once. **Next:** roll-up digest (fast follow) or the remaining §16 AI
+use cases (Q&A, stage suggestions) / export-embedded narrative.
 
 ## Goals
 
-- **(a) Pure series builders — `src/lib/metrics.mjs`:** `buildTrendSeries(snapshots, sprint,
-  asOf)` (points + ideal line from the latest total + trailing-7-day projection; <2 snapshots →
-  no projection), `combineSnapshotsByDay(rows)` (roll-up per-day sums, issue-weighted
-  avgProgress, `teamCount` tags), `snapshotVelocity(points, sprint, asOf)` (velocity-card
-  override shape, `null` under the guard), `formatDateUTC`.
-- **(b) Data assembly — `src/lib/dashboard-data.js`:** `getDashboardData` reads the team's
-  snapshots (one ordered query); `getRollupData` reads batched `teamId: { in }` snapshots →
-  `combinedSnapshots`. `getShareData` untouched.
-- **(c) Chart panel — `src/components/dashboard/trend-panel.jsx`:** server-safe (no hooks, no
-  `"use client"` — hero-shell precedent); metric-card styling; stat row (completion %, snapshot
-  velocity, projected finish); inline-SVG burndown (ideal muted, actual teal, projection dashed,
-  `asOf` "today" marker, `<title>` tooltips); empty state "trend data accrues daily…" at 0
-  snapshots. Read the dataviz skill before writing chart markup.
-- **(d) Wiring:** `src/app/page.jsx` → `Dashboard` renders `TrendPanel` under `MetricGrid`;
-  `src/app/rollup/page.jsx` renders it between `MetricGrid` and `TeamSummaryTable`;
-  `src/components/dashboard/metric-grid.jsx` gains optional `velocityOverride` (absent → naive
-  model exactly as today, so share/export paths are byte-stable).
-- **Acceptance:** lint + DB/env-free build green (route list stays 27 ƒ Dynamic); plain-Node
-  fixtures for the pure functions; SSR smoke on dev+Neon (fabricated 2-team sprint w/ ~5 days of
-  snapshot rows incl. a gap + a partial day, minted cookies, teardown to 0); share pages render
-  velocity unchanged; Naveen's eyeball on real accrued data.
+- **(a) AI platform — `src/lib/ai/`:** `provider.js` (lazy `getAiConfig()` + `isAiConfigured()`,
+  `generateJson({ system, prompt, schema, maxOutputTokens })` dispatch, parse → zod → one repair
+  retry, `AiNotConfiguredError`/`AiProviderError`); thin fetch-only `adapters/gemini.js` +
+  `adapters/anthropic.js` (all endpoints/headers/model defaults isolated there).
+- **(b) Digest builder:** pure `src/lib/ai/digest.mjs` (`buildDigestInput` — worst-N mirror of
+  the risk panel, compact payload, never raw Jira dumps — plus `buildDigestPrompt`);
+  `src/lib/schemas/ai.js` (zod digest contract + flat JSON-schema rendering).
+- **(c) Route:** `POST /api/teams/[teamId]/sprints/[sprintId]/ai-digest` — force-dynamic,
+  `requireTeamRole(TEAM_ALL_ROLES)`, reuses `dashboard-data.js` assembly, returns
+  `{ digest, generatedAt, provider, model }`; provider errors → 502, unconfigured → 503.
+- **(d) UI:** `components/dashboard/ai-digest-dialog.jsx` (Generate/Regenerate, rendered digest,
+  Copy → clipboard + toast, inline errors); Hero "AI Digest" button (Sparkles, onDark);
+  Dashboard wiring gated on server-provided `aiEnabled`.
+- **(e) Env/docs:** `.env.example` AI block (`AI_PROVIDER`, both keys, `AI_MODEL`).
+- **Acceptance:** lint + DB/env-free build (28 ƒ Dynamic); plain-Node digest fixtures;
+  mock-provider round-trip proving the gemini↔anthropic swap; SSR/API smoke (RBAC, dormant
+  state, share pages unchanged); live Gemini smoke; Naveen reads a real digest + flips provider.
 
 ## Notes
 
-- **All 8 spec decisions are PROPOSED** (2026-07-19) — flag divergence to Naveen instead of
+- **All decisions except №1 are PROPOSED** (spec) — flag divergence to Naveen instead of
   silently changing course.
-- **Hydration-safe dates:** `capturedOn` is UTC midnight; the panel renders server-side on
-  `/rollup` but inside the client Dashboard tree on `/` — format labels with an explicit
-  `timeZone: "UTC"` or hydration mismatches lurk west of UTC.
-- **Never assume contiguous days** (snapshots start 2026-07-09; cron can miss days; partial team
-  coverage is summed as-is with `teamCount`). No zero-filling — a fabricated 0-remaining point
-  reads as "done".
-- **Division guards:** single-snapshot window (Δdays = 0), `rate ≤ 0` → `projectedFinishDate:
-  null` ("no burn this week"), `totalPoints = 0` → empty state, not a degenerate axis.
-- **The MetricGrid change must be prop-additive** — frozen-share numbers must not move (step-8
-  `asOf` invariant); `getWeeklyVelocity` stays exported and untouched.
-- SVG geometry attrs (`points`/`d`/`x`/`y`) are data-driven, not inline styles (ui-port
-  precedent); colors/typography stay Tailwind classes; any missing token goes in `globals.css`
-  `@theme` — **no `tailwind.config.*`**.
-- Read installed Next 16 docs (`node_modules/next/dist/docs/`, AGENTS.md) before touching pages;
-  verify RSC Date-prop serialization against the `TeamSummaryTable` precedent.
-- Cron scheduling on Tekion infra is still pending — the visible empty state is deliberate.
+- **No env reads at module load** anywhere in `lib/ai/` — the build must pass with every `AI_*`
+  var unset (that's also the supported dormant state: no Hero button, route → 503).
+- **Anthropic adapter:** consult the `claude-api` skill — the Messages API drifted from training
+  data (structured outputs = `output_config.format`; sampling params rejected; prefills 400).
+  **Gemini adapter:** verify the current REST shape + model ids via docs at implementation time.
+- **Prompt-injection surface:** issue titles/blockedReason are Jira-authored free text — mark as
+  data in the system prompt; render output as plain React text; link only jiraKeys that exist in
+  the digest input (drop hallucinated ones).
+- **Never log/echo secrets or raw provider payloads** — curated error messages only.
+- Gemini's responseSchema supports a JSON-Schema subset — the contract stays flat; zod in the
+  neutral layer is the real gate.
+- Read the installed Next 16 docs for the new route (async `params`).
 
 ## History
 
@@ -718,3 +714,80 @@ real accrued snapshots (cron scheduling on Tekion infra still pending, so real d
   pre-commit (Naveen's dev server holds :3002/.next). Docs synced (§11 note → two-up row; spec
   as-built). Naveen's first REAL snapshot landed meanwhile (cron run: 91% complete, 6.7 pts
   left, single-dot state rendering as designed).
+- 2026-07-20 — Planning session (no code): drafted @context/features/ai-insights.md (post-v1
+  item 2 — the master-plan step-10 "then Gemini" clause, **reframed per Naveen as a
+  provider-agnostic AI platform**: all AI specifics behind a neutral `generateJson` contract in
+  `src/lib/ai/` (the `lib/jira/` isolation precedent), provider switched by `AI_PROVIDER` env —
+  downtime/cost switching is an env flip + restart, zero code changes; **Gemini demoted to first
+  adapter, an Anthropic adapter ships alongside to prove the abstraction** via contract-faithful
+  mocks). Use cases: §16's risk call-outs + leadership narrative as an on-demand **"AI Digest"
+  dialog** on `/` (Hero button → generate → headline/narrative/call-outs → Copy + toast; the
+  deterministic RiskCalloutsPanel stays). Decision 1 (provider-agnostic, env-switched) ratified
+  with Naveen 2026-07-20; 9 PROPOSED incl. zero-dep fetch adapters, one new `POST …/ai-digest`
+  route (27→28 ƒ Dynamic), TEAM_ALL_ROLES generation, no persistence/schema change, pure
+  `digest.mjs` prompt builder (worst-N mirror of the risk panel, never raw Jira dumps),
+  zod-validated JSON contract w/ one repair retry, 502/503 error mappings,
+  dormant-when-unconfigured (build stays env-free). Out of scope: roll-up digest (fast follow),
+  export/share narrative, Q&A + stage suggestions, auto-failover chains, persistence, streaming.
+- 2026-07-20 — Picked @context/features/ai-insights.md as the current feature (post-v1
+  item 2 — provider-agnostic AI platform in `src/lib/ai/` w/ Gemini + Anthropic fetch adapters,
+  env-switched; on-demand "AI Digest" dialog on `/` for risk call-outs + leadership narrative).
+  Branch `feature/ai-insights` created.
+- 2026-07-20 — **Implemented ai-insights (post-v1 item 2 — the last master-plan clause).** Read
+  the house patterns (rbac/route-helpers/sync-route/dashboard-data/share-dialog) + the claude-api
+  skill first; verified the Gemini REST shape + current model ids against live docs
+  (`gemini-3.5-flash` stable; key sent via `x-goog-api-key` HEADER, not the docs' `?key=` form —
+  keys stay out of URLs/logs). Built the platform (`src/lib/ai/`): `provider.js` (lazy
+  `getAiConfig` — loud-fail on unknown provider/missing key, `AiNotConfiguredError` dormant
+  state; `generateJson` = adapter call → fence-strip parse → zod gate → ONE repair retry;
+  30s `AbortSignal.timeout`), `errors.js` (shared, avoids a provider↔adapter circular import;
+  curated `providerHttpError`, ≤200-char provider message, never raw payloads), fetch-only
+  `adapters/gemini.js` (`generationConfig.responseMimeType/responseSchema`,
+  `toGeminiSchema` strips `additionalProperties` — subset dialect) + `adapters/anthropic.js`
+  (`output_config.format` json_schema, refusal → 502, no sampling params); pure
+  `src/lib/ai/digest.mjs` (`buildDigestInput` — worst-N mirror of the risk panel w/ lockstep
+  comment, ISO dates, velocity-basis tag; `buildDigestPrompt` — injection-guard system prompt;
+  `sanitizeDigest` — hallucinated-key filter) + `src/lib/schemas/ai.js` (zod contract + strict
+  JSON-schema rendering, lockstep); `POST …/ai-digest` route (TEAM_ALL_ROLES, `getDigestData`
+  added to `dashboard-data.js`, same metrics/trend/velocity derivations as the board, 400
+  empty-board guard, 503 dormant / 502 provider / 500 misconfig); UI: `ai-digest-dialog.jsx`
+  (Generate/Regenerate/Copy → clipboard + toast, severity-badged call-outs w/ validated Jira-key
+  links, provider·model·time attribution + verify disclaimer), Hero "AI Digest" (Sparkles,
+  hidden on welcome), `Dashboard` wiring on `aiEnabled` (from `isAiConfigured()`,
+  `AI_PROVIDER`-set only so misconfig stays loud-visible); `.env.example` AI block (both keys
+  coexist — switching = flip `AI_PROVIDER`; `AI_MODEL` cost lever; advanced `*_BASE_URL`
+  overrides for mocks/proxies). No schema change, no migration, no new deps. Verified: 39/39
+  plain-Node fixtures (real-metrics-fed digest input, hand-checked `2026-07-23` projection,
+  order/cap/overflow, prompt determinism, sanitize, contract); lint; migrate status; DB/env-free
+  build **28 ƒ Dynamic**; 25/25 dev+Neon smoke w/ contract-faithful mock providers (wire-shape
+  assertions incl. no-key-in-URL + schema-dialect strip; 401/403/404/400 gates; VIEWER 200;
+  **swap proof: `AI_PROVIDER` flip → identical digest, zero code**; garbage→repair→200;
+  garbage/500/refusal → 502; dormant 503 + hidden button; bogus provider → 500; share page
+  no-AI). One harness bug found (mock prompt parser vs repair-retry append), zero app bugs;
+  fixture 0 leftovers, `.env` byte-identical, dev server healthy. Docs synced (§5 row BUILT in
+  part, §8 line, §10 AI row, §14.10 fixed, §16 amendment, master-plan clause DONE + remaining
+  ideas). **Done** — ⚠️ human acceptance: real key + provider flip. **Next:** roll-up digest
+  (fast follow), export narrative, or §16's Q&A / stage suggestions.
+- 2026-07-20 — Planning session (no code): drafted
+  @context/features/risk-comments-rollup-digest.md per Naveen's three asks — (1) board-level
+  **risk comments** on the RiskCalloutsPanel (known/agreed risks communicated upward as managed
+  context), (2) `/rollup` **"View all risks" dialog** (every risky issue across teams w/ team
+  chips, blocked reasons, comments — also fixes the roll-up's inaccurate "see the matrix below"
+  overflow line), (3) the **roll-up AI digest** (the ai-insights fast follow: portfolio prompt w/
+  per-team comparison; commented risks narrated as known/agreed). Asks ratified 2026-07-20;
+  10 PROPOSED decisions, notably: **first schema change since add-user-isadmin** —
+  `IssueProgress.riskComment String?` + migration (presence = acknowledged, survives sync, never
+  a metric input); comment writes ride the existing progress PUT (no new route there); flat
+  membership-derived `POST /api/rollup/ai-digest` (28 → 29 ƒ Dynamic) reusing `getRollupData`;
+  same digest contract (team attribution in text); `AiDigestDialog` generalized via an
+  `endpoint` prop; share/export stay comment- and digest-free. Sequencing: branches off the
+  uncommitted `feature/ai-insights`. Not yet started — awaiting start-feature.
+- 2026-07-20 — **Risk-panel iteration (per Naveen; rides on the ai-insights branch):** the
+  `/rollup` Risk call-outs now link Jira keys (`getRollupData` returns the env-derived
+  `jiraBaseUrl`; the panel already took the prop) and the ragged rows are fixed — the list is a
+  shared-track grid (`ul` grid + `col-span-full grid-cols-subgrid` rows, 4 cols on `/`, 5 with
+  the roll-up's teamKey chips) so badge/chip/key/title/pts align as columns on both boards.
+  Verified: lint; live-server smoke w/ minted admin cookie (linked `browse/GM-*` keys + 5-col
+  track on `/rollup`, 4-col on both team boards, subgrid utilities in compiled CSS; harness
+  deleted). Build deferred to pre-commit (dev server holds :3002/.next). Docs synced (§11 note,
+  trend-burndown.md as-built).

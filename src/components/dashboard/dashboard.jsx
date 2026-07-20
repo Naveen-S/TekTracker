@@ -23,6 +23,7 @@ import { FilterPanel } from "./filter-panel";
 import { PlannerPanel } from "./planner-panel";
 import { AddFilterDialog } from "./add-filter-dialog";
 import { SprintConfigDialog } from "./sprint-config-dialog";
+import { AiDigestDialog } from "./ai-digest-dialog";
 import { ShareDialog } from "./share-dialog";
 import { ExportDialog } from "./export-dialog";
 import { AlertDialog } from "./alert-dialog";
@@ -58,6 +59,7 @@ export function Dashboard({
   asOf,
   metrics,
   jiraBaseUrl,
+  aiEnabled,
 }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -66,6 +68,7 @@ export function Dashboard({
   const [showAddFilter, setShowAddFilter] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const [showAiDigest, setShowAiDigest] = useState(false);
   const [sprintDialogMode, setSprintDialogMode] = useState(null); // null | "create" | "edit"
   const [syncing, setSyncing] = useState(false);
   // busy covers the whole round-trip — the API call AND the router.refresh() re-render — so the
@@ -265,6 +268,7 @@ export function Dashboard({
               onAddFilter={can.manage ? () => setShowAddFilter(true) : null}
               onShare={can.write && base ? () => setShowShare(true) : null}
               onExport={() => setShowExport(true)}
+              onAiDigest={aiEnabled && base && !showWelcome ? () => setShowAiDigest(true) : null}
             />
 
             {!showWelcome && metrics && (
@@ -325,6 +329,14 @@ export function Dashboard({
           onClose={() => setShowAddFilter(false)}
           busy={busy}
           existingCount={filters.length}
+        />
+      )}
+      {showAiDigest && base && (
+        <AiDigestDialog
+          base={base}
+          jiraBaseUrl={jiraBaseUrl}
+          onClose={() => setShowAiDigest(false)}
+          showToast={showToast}
         />
       )}
       {showShare && base && (

@@ -43,6 +43,7 @@ export function RiskCalloutsPanel({ issues = [], progressByKey = {}, series, jir
     );
   const shown = risky.slice(0, MAX_ISSUE_ROWS);
   const overflow = risky.length - shown.length;
+  const hasTeamChips = shown.some((issue) => issue.teamKey);
   const blockedCount = risky.filter((issue) => issue.health.status === "Blocked").length;
   const behindCount = risky.filter((issue) => issue.health.status === "Behind").length;
   const atRiskCount = risky.length - blockedCount - behindCount;
@@ -104,13 +105,21 @@ export function RiskCalloutsPanel({ issues = [], progressByKey = {}, series, jir
           All clear — nothing blocked, behind, or at risk right now.
         </div>
       ) : (
-        <ul className="mt-2 divide-y divide-border-subtle">
+        // Shared column tracks (subgrid rows) so badge/chip/key/title/pts align across rows —
+        // per-row flexboxes left the title column ragged wherever badge widths differed.
+        <ul
+          className={`mt-2 grid gap-x-2 divide-y divide-border-subtle ${
+            hasTeamChips
+              ? "grid-cols-[auto_auto_auto_minmax(0,1fr)_auto]"
+              : "grid-cols-[auto_auto_minmax(0,1fr)_auto]"
+          }`}
+        >
           {signals.map((signal) => (
-            <li key={signal.key} className="flex items-start gap-2 py-2">
-              <Badge tone="warn" className="shrink-0">
+            <li key={signal.key} className="col-span-full grid grid-cols-subgrid items-start py-2">
+              <Badge tone="warn" className="justify-self-start">
                 ⚠ {signal.label}
               </Badge>
-              <span className="min-w-0 pt-0.5 text-xs text-secondary-foreground">
+              <span className="col-[2/-1] min-w-0 pt-0.5 text-xs text-secondary-foreground">
                 {signal.body}
               </span>
             </li>
@@ -120,20 +129,23 @@ export function RiskCalloutsPanel({ issues = [], progressByKey = {}, series, jir
             return (
               <li
                 key={`${issue.teamKey ?? ""}:${issue.filterId}:${issue.jiraKey}`}
-                className="flex items-start gap-2 py-2"
+                className="col-span-full grid grid-cols-subgrid items-start py-2"
               >
-                <Badge tone={issue.health.tone} className="shrink-0">
+                <Badge tone={issue.health.tone} className="justify-self-start">
                   {issue.health.icon} {issue.health.status}
                 </Badge>
-                {issue.teamKey && (
-                  <Badge tone="neutral" className="shrink-0">
-                    {issue.teamKey}
-                  </Badge>
-                )}
-                <span className="shrink-0 pt-0.5">
+                {hasTeamChips &&
+                  (issue.teamKey ? (
+                    <Badge tone="neutral" className="justify-self-start">
+                      {issue.teamKey}
+                    </Badge>
+                  ) : (
+                    <span aria-hidden="true" />
+                  ))}
+                <span className="justify-self-start pt-0.5">
                   <IssueKey jiraKey={issue.jiraKey} jiraBaseUrl={jiraBaseUrl} />
                 </span>
-                <span className="min-w-0 flex-1 pt-0.5">
+                <span className="min-w-0 pt-0.5">
                   <span className="block truncate text-xs text-secondary-foreground">
                     {issue.title}
                   </span>
@@ -144,7 +156,7 @@ export function RiskCalloutsPanel({ issues = [], progressByKey = {}, series, jir
                   )}
                 </span>
                 {issue.storyPoints > 0 && (
-                  <span className="shrink-0 pt-0.5 text-[11px] text-muted-foreground tabular-nums">
+                  <span className="justify-self-end pt-0.5 text-[11px] text-muted-foreground tabular-nums">
                     {issue.storyPoints} pts
                   </span>
                 )}
@@ -152,7 +164,7 @@ export function RiskCalloutsPanel({ issues = [], progressByKey = {}, series, jir
             );
           })}
           {overflow > 0 && (
-            <li className="py-2 text-xs text-muted-foreground">
+            <li className="col-span-full py-2 text-xs text-muted-foreground">
               + {overflow} more at-risk issue{overflow === 1 ? "" : "s"} — see the matrix below.
             </li>
           )}

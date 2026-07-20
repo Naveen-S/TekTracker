@@ -105,7 +105,7 @@ Key relationships:
 | Share view | **[BUILT in `web/` — 2026-07-12, step 8]** | Legacy still encodes the dataset into a base64 URL until cutover. **`web/`: server-persisted `SharedView` → public read-only `/share/[token]`** (192-bit token, live or frozen w/ `asOf`-pinned metrics, expiry, revocation); see context/features/share-view-export.md. |
 | Multi-team / ED roll-up | **[BUILT in `web/` — 2026-07-08]** | Team + membership model and admin APIs came in step 4 (2026-07-07); the roll-up *view* is step 6b: read-only `/rollup` server page (combined `MetricGrid` + per-team table via pure `aggregateRollup`), membership-derived, no Sync — staleness from `lastSyncedAt`. |
 | Trend / burndown / "projected by end of sprint" | **[BUILT — data 2026-07-09, UI 2026-07-19]** | Daily per-team `SprintSnapshot` rows written by the step-7 cron (`POST /api/cron/daily`); the burndown panel (ideal/actual/projection SVG + snapshot-based velocity) renders on `/` and `/rollup` (context/features/trend-burndown.md). |
-| AI summary (Gemini) | **[GAP]** | Post-v1; use cases ratified 2026-06-10 (see §16). |
+| AI summary (pluggable provider) | **[BUILT in part — 2026-07-20]** | Provider-agnostic platform (`src/lib/ai/` — Gemini + Anthropic fetch adapters, switched by `AI_PROVIDER` env; §16 amendment) behind the on-demand **"AI Digest"** dialog on `/` — §16 use cases 1–2 (risk call-outs + leadership narrative). Q&A + stage suggestions still open; roll-up digest is a fast follow. See context/features/ai-insights.md. |
 | Admin settings / RBAC | **[PARTIAL]** | Server-side RBAC live in the `web/` domain APIs (step 4, 2026-07-07): `User.isAdmin` + `TeamMembership.role` guards (`lib/rbac.js`) on teams/sprints/filters/progress. No admin UI yet. |
 
 ---
@@ -201,7 +201,7 @@ Next.js 16 (App Router) — single deployable
   ├─ Jira Cloud REST v3 client            ← per-user token OR Atlassian OAuth (see §13)
   ├─ Background sync (cron/queue)          ← refresh issue snapshots; write daily SprintSnapshot
   ├─ Redis (optional)                      ← hot reads / rate-limit smoothing for ED multi-team views
-  └─ Gemini (optional)                     ← narrative summary for exports/leadership digest
+  └─ AI provider (pluggable)               ← AI Digest narrative (BUILT 2026-07-20: lib/ai/, Gemini/Anthropic)
 ```
 
 > **[BUILT in `web/` 2026-07-09, step 7]** — the "Background sync (cron/queue)" line: an external
@@ -692,7 +692,7 @@ erDiagram
 | ORM | **Prisma 7** | Schema in §9. |
 | Caching | **Redis** (optional) | For ED multi-team reads + Jira rate-limit smoothing. |
 | Auth | **Jira email + API token, encrypted at rest** (decided 2026-06-10) | AES-GCM, key from a secret store; OAuth 3LO remains a later option (§13). **[BUILT in `web/` 2026-06-29]** iron-session cookie + AES-256-GCM `JiraCredential` (auth-layer.md). |
-| AI | **Gemini** (post-v1) | Candidates ranked: risk/blocker call-outs, leadership narrative, Q&A over sprint data, stage suggestions. |
+| AI | **Pluggable provider** (amended 2026-07-20; was "Gemini") | Provider-agnostic `src/lib/ai/` platform switched by `AI_PROVIDER` env (Gemini + Anthropic adapters ship). **[BUILT in part 2026-07-20]** — risk call-outs + leadership narrative ("AI Digest" dialog on `/`); Q&A over sprint data + stage suggestions remain post-v1. |
 | Styling | **Tailwind CSS v4 + shadcn/ui** | Current build uses hand-written CSS (`src/styles.css`). |
 
 ---
@@ -765,8 +765,9 @@ Jira** button. Footer: "Engineering Internal Tool @ Tekion Corp."
 > (`risk-callouts-panel.jsx`, iterated in per Naveen 2026-07-19) — the **deterministic
 > forerunner of the §16 Gemini risk-call-outs use case** (the AI narrative stays post-v1):
 > trend signals (no burn / off pace) + worst issues first (Blocked → Behind → At Risk, points
-> desc, capped w/ overflow line), blocked reasons inline, linked Jira keys on `/`, team-key
-> chips on `/rollup`, all-clear state. Frozen/live shares and exports deliberately show no
+> desc, capped w/ overflow line), blocked reasons inline, linked Jira keys on both boards
+> (roll-up too since 2026-07-20), team-key chips on `/rollup`, column-aligned rows via
+> subgrid (2026-07-20), all-clear state. Frozen/live shares and exports deliberately show no
 > trend/risk row. See context/features/trend-burndown.md.
 
 ---
@@ -888,7 +889,11 @@ spec-internal ambiguities to resolve.
    **[Partially addressed in `web/` 2026-07-09, step 7]** — the daily cron refreshes Issue caches in
    the background, so ED reads hit a warm cache; Redis is still open (optional/post-v1).
 10. **Gemini has no defined use case.** Listed in the stack with no feature. *Decide scope* (proposed:
-    auto-write the leadership narrative for exports) before building.
+    auto-write the leadership narrative for exports) before building. **[Fixed 2026-07-20]** — scope
+    decided AND built for the first two §16 use cases (risk call-outs + leadership narrative): the
+    on-demand "AI Digest" dialog on `/`, atop a **provider-agnostic** platform (`src/lib/ai/` —
+    Gemini is the first adapter, not load-bearing; switch providers via `AI_PROVIDER` env).
+    Export-embedded narrative, Q&A, and stage suggestions remain open post-v1 ideas.
 11. **JavaScript for a data-heavy, multi-persona app.** Higher bug surface. *Recommend* TypeScript for
     the migration, or `zod` validation at every boundary if staying on JS.
 12. **Internal Bugs lacks its own workflow** (reuses support/techdebt stages). Add `internalbug` if it
@@ -944,7 +949,11 @@ All previously open decisions are now resolved:
   with Jira and wait to be added to a team.
 - **Gemini: post-v1**, all four candidate use cases approved in principle (risk call-outs, narrative,
   Q&A, stage suggestions); start with risk call-outs + narrative since they need no new data plumbing
-  beyond snapshots.
+  beyond snapshots. *(Amended 2026-07-20 with Naveen: the integration is a **provider-agnostic AI
+  platform** — all AI specifics behind `src/lib/ai/`'s neutral `generateJson` contract, provider
+  switched by `AI_PROVIDER` env so downtime/cost switching needs zero code changes; **Gemini demoted
+  to the first adapter**, an Anthropic adapter ships alongside to prove the abstraction. Risk
+  call-outs + narrative BUILT 2026-07-20 as the "AI Digest" dialog; Q&A + stage suggestions open.)*
 
 ---
 
@@ -976,4 +985,4 @@ The plan — exact next steps, in order
 7. Background job — a cron on your internal infra hitting an internal route: refresh issue caches + write the daily per-team SprintSnapshot for active sprints. **[DONE 2026-07-09]** — secret-gated `POST /api/cron/daily` (`CRON_SECRET` bearer, timingSafeEqual over sha256 digests; first session-less route) → `lib/cron/daily.js` `runDailyJob`: per ACTIVE sprint, sequential per-team refresh via the step-5 engine with the `CRON_SYNC_USER_EMAIL` service credential (absent/dead → refresh skipped, snapshots still written; per-team errors isolated), then batched per-team metrics → UTC-midnight `SprintSnapshot` upsert; pure `snapshotValues` in `lib/metrics.mjs`. Verified: 23/23 pure fixtures, DB/env-free build, 30/30 live dev+Neon checks (gates, hand-computed rows, PLANNING/filterless skips, degrade path, idempotent re-run, unset-secret 500). Scheduling on Tekion infra is a deploy-time task. See context/features/background-sync-snapshots.md.
 8. Share view + export — SharedView token route (/share/[token], live or frozen, expiry) replacing the base64 URL; port PDF/PNG export. **[DONE 2026-07-12]** — public session-less `/share/[token]` (192-bit app-generated token, `robots: noindex`, generic invalid/expired state; live = current rows, frozen = input snapshot w/ metrics pinned to `capturedAt` via the new optional `asOf` clock threaded through `lib/metrics.mjs` + the MetricGrid/PlannerPanel/IssueRow props); writer-gated `POST/GET …/shares` (filterIds validated ⊆ team+sprint) + creator/admin `DELETE /api/shares/[shareId]`; ShareDialog (live/frozen, expiry presets, manage/revoke, clipboard+toast) + ExportDialog (filter toggles, paged preview, offscreen A4 pages → PDF/PNG) behind new Hero buttons. Deps `html2canvas-pro@2.2.3` (stock html2canvas can't parse the Tailwind-v4 oklch/`color-mix` theme — proven by a headless-Chrome capture spike) + `jspdf@2.5.2`, dynamic-imported (verified absent from the dashboard chunk). No schema change, no migration. Verified: lint; DB/env-free build (27 ƒ Dynamic); 25/25 asOf fixtures; 37/37 SSR smoke on dev+Neon incl. frozen-vs-live divergence, list scoping, revoke/expiry → generic page. Human acceptance (browser share open + real PDF/PNG) pending with the ui-polish eyeball. See context/features/share-view-export.md.
 9. Importer — one-time script that takes the localStorage JSON (sprintTracker_sprintData + config) and writes Sprint/Filter/IssueProgress rows so your current sprints carry over. **[SKIPPED 2026-07-18]** — Naveen no longer has older sprint data in localStorage (current work already lives in `web/` via real syncs), so there is nothing to import; decided with Naveen 2026-07-18. Spec draft kept for reference at context/features/seed.md.
-10. Cutover, then post-v1 — promote web/ to repo root, delete the Vite app; then burndown/trend UI from snapshots, then Gemini (risk call-outs + narrative first). **[DONE 2026-07-18 (cutover half)]** — two-phase `git mv` on `feature/cutover`: the Vite app (src/, server.js, docs/, lockfiles, untracked .env/node_modules/dist) **retired into `legacy/` instead of deleted** (ratified with Naveen 2026-07-18; startable there under Node 20 — verified :3000/:3001 answer) with plaintext-token `.sessions/` deleted; then `web/*` promoted to root (101 renames, history follows via `git log --follow`). Node 22 bump landed with it (`.nvmrc`, `engines >=22.12`, `.yarnrc` shim deleted, fresh install under 22.22.2). Config/docs: root `.gitignore` = web's + re-added `.claude/*` rules, `turbopack.root` pin kept (dual lockfile with `legacy/yarn.lock`), package renames (`sprint-tracker` / `sprint-tracker-legacy`), CLAUDE.md/AGENTS.md/README.md rewritten for the single-app root, `.claude/skills` `web/`-path sweep (+ `verify-web` renamed `verify`, per Naveen), `legacy/**` added to ESLint ignores (the only config-behavior change). Zero app-code changes; no schema change, no migration. Verified at root under Node 22: lint clean; `prisma validate` + `migrate status` up to date; **DB/env-free build green, 27 ƒ Dynamic (same as step 8)**; dev-server smoke on :3002 — unauth 307, login 200, unknown share → generic page, cron bad-bearer 401, `health/db` ok against Neon, minted-admin dashboard SSR with full chrome. **Deployment re-pointing (build from repo root) is a deploy-time task.** See context/features/cutover.md. *Post-v1 clause:* **trend/burndown UI DONE 2026-07-19** — snapshot-fed `TrendPanel` on `/` + `/rollup` with the trailing-7-day projection, plus the §12 velocity swap (`snapshotVelocity` override w/ naive fallback; share/export untouched); no schema change/migration/deps/routes (see context/features/trend-burndown.md). **Gemini (risk call-outs + narrative first) remains the open post-v1 item.**
+10. Cutover, then post-v1 — promote web/ to repo root, delete the Vite app; then burndown/trend UI from snapshots, then Gemini (risk call-outs + narrative first). **[DONE 2026-07-18 (cutover half)]** — two-phase `git mv` on `feature/cutover`: the Vite app (src/, server.js, docs/, lockfiles, untracked .env/node_modules/dist) **retired into `legacy/` instead of deleted** (ratified with Naveen 2026-07-18; startable there under Node 20 — verified :3000/:3001 answer) with plaintext-token `.sessions/` deleted; then `web/*` promoted to root (101 renames, history follows via `git log --follow`). Node 22 bump landed with it (`.nvmrc`, `engines >=22.12`, `.yarnrc` shim deleted, fresh install under 22.22.2). Config/docs: root `.gitignore` = web's + re-added `.claude/*` rules, `turbopack.root` pin kept (dual lockfile with `legacy/yarn.lock`), package renames (`sprint-tracker` / `sprint-tracker-legacy`), CLAUDE.md/AGENTS.md/README.md rewritten for the single-app root, `.claude/skills` `web/`-path sweep (+ `verify-web` renamed `verify`, per Naveen), `legacy/**` added to ESLint ignores (the only config-behavior change). Zero app-code changes; no schema change, no migration. Verified at root under Node 22: lint clean; `prisma validate` + `migrate status` up to date; **DB/env-free build green, 27 ƒ Dynamic (same as step 8)**; dev-server smoke on :3002 — unauth 307, login 200, unknown share → generic page, cron bad-bearer 401, `health/db` ok against Neon, minted-admin dashboard SSR with full chrome. **Deployment re-pointing (build from repo root) is a deploy-time task.** See context/features/cutover.md. *Post-v1 clause:* **trend/burndown UI DONE 2026-07-19** — snapshot-fed `TrendPanel` on `/` + `/rollup` with the trailing-7-day projection, plus the §12 velocity swap (`snapshotVelocity` override w/ naive fallback; share/export untouched); no schema change/migration/deps/routes (see context/features/trend-burndown.md). **AI insights (risk call-outs + narrative) DONE 2026-07-20** — provider-agnostic AI platform (`src/lib/ai/`: neutral `generateJson` + Gemini/Anthropic fetch adapters, env-switched with loud-fail config and a dormant unconfigured state) behind the on-demand "AI Digest" dialog on `/` (`POST …/ai-digest` — **28 ƒ Dynamic**); no schema change, no migration, no new deps (see context/features/ai-insights.md). Remaining post-v1 ideas: roll-up digest, export-embedded narrative, AI Q&A over sprint data, stage suggestions.

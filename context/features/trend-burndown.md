@@ -92,11 +92,24 @@ still-pending Tekion-infra cron scheduling).
   chart draws, guarded on `remaining > 0`), then issues where `health.status ∈ {Blocked, Behind,
   At Risk}` sorted worst-first then points-desc, capped at 6 w/ a "+N more" overflow line;
   blocked rows show `blockedReason` inline (`/` only — the rollup progress read doesn't select
-  it); Jira-linked key chips when `jiraBaseUrl` is passed (`/` only), `teamKey` chips on the
+  it); Jira-linked key chips when `jiraBaseUrl` is passed (both boards since 2026-07-20 — see
+  the alignment note below), `teamKey` chips on the
   roll-up (issues flat-mapped from `perTeam` with the team key attached); all-clear success
   state; stripe tone danger/warn/success by severity. Verified by an 1800px headless-Chrome
   capture of the recreated spike (populated + signal-only states; spike deleted after) and lint;
   the production build is deferred to pre-commit (Naveen's dev server holds :3002/.next).
+- **Risk-panel links + column alignment (iterated 2026-07-20, per Naveen):** the roll-up's key
+  chips are now Jira links too — `getRollupData` returns the same env-derived `jiraBaseUrl` as
+  `getDashboardData` and `rollup/page.jsx` passes it through (the panel already supported the
+  prop). And the ragged rows were per-`li` flexboxes sizing their badge/chip/key columns
+  independently ("Behind" vs "At Risk" widths shifted every title): the `ul` is now a grid
+  (`auto_auto_minmax(0,1fr)_auto`, +1 leading `auto` when `teamKey` chips render) with each row
+  a `col-span-full grid-cols-subgrid`, so all rows share column tracks; signal rows span
+  `col-[2/-1]`, pts right-align via `justify-self-end`, `minmax(0,1fr)` keeps `truncate`
+  working. Verified over the live dev server with a minted admin cookie: linked `browse/GM-*`
+  keys + 5-col track on `/rollup`, 4-col track on both team boards, subgrid/`col-[2/-1]`/track
+  utilities present in the compiled dev CSS (harness deleted; build deferred to pre-commit —
+  the dev server holds :3002/.next).
 - **Chart scaling (iterated 2026-07-19, per Naveen: "way too big"):** the first cut was a
   760×236 viewBox with bare `w-full` — uniform scaling ballooned it past 500px tall on wide
   monitors. Now a flatter **760×190** viewBox with **`max-w-3xl` on the `<svg>`**, capping the

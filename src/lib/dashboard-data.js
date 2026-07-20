@@ -9,6 +9,7 @@
 import { prisma } from "@/lib/db";
 import { Role, SprintState } from "@/generated/prisma/client";
 import { aggregateRollup, combineSnapshotsByDay, computeSprintMetrics } from "@/lib/metrics.mjs";
+import { isAiConfigured } from "@/lib/ai/provider";
 import { TEAM_MANAGER_ROLES, TEAM_WRITER_ROLES } from "@/lib/rbac";
 
 /** The caller's memberships → role map + visible teams (global admin sees all teams). */
@@ -117,6 +118,59 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
     asOf: new Date(),
     metrics: selectedSprint ? computeSprintMetrics(filters, progressByKey, selectedSprint) : null,
     jiraBaseUrl: process.env.JIRA_BASE_URL?.trim().replace(/\/+$/, "") ?? null,
+    // UI affordance only (ai-insights.md decision 3) — the ai-digest route re-checks per request.
+    aiEnabled: isAiConfigured(),
+  };
+}
+
+/**
+ * Lean read model for the AI digest route (ai-insights.md (c)) — the same selects the dashboard
+ * assembly uses, minus membership/selection resolution (the route's RBAC guard already scoped
+ * the team). `null` when the team or sprint doesn't exist.
+ */
+export async function getDigestData(teamId, sprintId) {
+  const [team, sprint] = await Promise.all([
+    prisma.team.findUnique({ where: { id: teamId }, select: { id: true, name: true, key: true } }),
+    prisma.sprint.findUnique({
+      where: { id: sprintId },
+      select: {
+        id: true,
+        name: true,
+        developmentStart: true,
+        developmentEnd: true,
+        releaseDate: true,
+      },
+    }),
+  ]);
+  if (!team || !sprint) return null;
+
+  const filters = await prisma.filter.findMany({
+    where: { teamId, sprintId },
+    orderBy: { sortOrder: "asc" },
+    include: { issues: { orderBy: { jiraKey: "asc" } } },
+  });
+  const progress = await prisma.issueProgress.findMany({
+    where: { teamId, sprintId },
+    select: { jiraKey: true, workflowType: true, stageCompletion: true, blocked: true, blockedReason: true },
+  });
+  const snapshots = await prisma.sprintSnapshot.findMany({
+    where: { teamId, sprintId },
+    orderBy: { capturedOn: "asc" },
+    select: {
+      capturedOn: true,
+      totalPoints: true,
+      completedPoints: true,
+      avgProgress: true,
+      totalIssues: true,
+    },
+  });
+
+  return {
+    team,
+    sprint,
+    filters,
+    progressByKey: Object.fromEntries(progress.map((row) => [row.jiraKey, row])),
+    snapshots,
   };
 }
 
@@ -190,6 +244,7 @@ export async function getRollupData(user, { sprintId } = {}) {
     perTeam,
     combinedSnapshots,
     combined: selectedSprint ? aggregateRollup(perTeam.map((entry) => entry.metrics)) : null,
+    jiraBaseUrl: process.env.JIRA_BASE_URL?.trim().replace(/\/+$/, "") ?? null,
   };
 }
 

@@ -105,6 +105,7 @@ export default async function RollupPage({ searchParams }) {
                   entry.metrics.issues.map((issue) => ({ ...issue, teamKey: entry.team.key })),
                 )}
                 series={trend}
+                jiraBaseUrl={data.jiraBaseUrl}
               />
             </section>
             <TeamSummaryTable

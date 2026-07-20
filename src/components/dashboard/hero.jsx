@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Layers, Link2, ListChecks, TrendingUp } from "lucide-react";
+import { Download, Layers, Link2, ListChecks, Sparkles, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DaysRemainingPill,
@@ -27,6 +27,7 @@ export function Hero({
   onAddFilter,
   onShare,
   onExport,
+  onAiDigest,
 }) {
   if (showWelcome) {
     return (
@@ -87,6 +88,11 @@ export function Hero({
         <Button variant="onDark" size="sm" onClick={onToggleDensity}>
           {density === "dense" ? "Relaxed view" : "Dense view"}
         </Button>
+        {onAiDigest && (
+          <Button variant="onDark" size="sm" onClick={onAiDigest}>
+            <Sparkles /> AI Digest
+          </Button>
+        )}
         {onShare && (
           <Button variant="onDark" size="sm" onClick={onShare}>
             <Link2 /> Share View
