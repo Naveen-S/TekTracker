@@ -56,9 +56,23 @@ function Metric({ label, icon, value, detail, tone }) {
   );
 }
 
-/** `asOf` (optional) pins the velocity clock — frozen shared views pass their capture time. */
-export function MetricGrid({ metrics, sprint, asOf }) {
-  const velocity = getWeeklyVelocity(sprint, metrics.velocityCompletedPoints, metrics.velocityPoints, asOf);
+/**
+ * `asOf` (optional) pins the velocity clock — frozen shared views pass their capture time.
+ * `velocityOverride` (optional) swaps the naive velocity for snapshot-based actuals
+ * (trend-burndown.md decision 5 — `/` and `/rollup` pass `snapshotVelocity(...)` when ≥ 2 daily
+ * snapshots exist); absent → the naive model computes exactly as before, so share/export paths
+ * are untouched. Override `weeksNeeded` may be null: work remains but there was no burn.
+ */
+export function MetricGrid({ metrics, sprint, asOf, velocityOverride }) {
+  const velocity =
+    velocityOverride ??
+    getWeeklyVelocity(sprint, metrics.velocityCompletedPoints, metrics.velocityPoints, asOf);
+  const velocityDetail = [
+    `week ${Math.min(velocity.weeksElapsed, velocity.totalWeeks)}/${velocity.totalWeeks}`,
+    velocity.weeksNeeded === null ? "no burn this week" : `needs ${velocity.weeksNeeded}w more`,
+    velocity.onTrack ? "on pace" : "off pace",
+    ...(velocity.fromSnapshots ? ["from daily snapshots"] : []),
+  ].join(" · ");
   return (
     <section
       className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
@@ -92,7 +106,7 @@ export function MetricGrid({ metrics, sprint, asOf }) {
         label="Weekly velocity"
         icon={Gauge}
         value={`${velocity.velocity} pts/wk`}
-        detail={`week ${Math.min(velocity.weeksElapsed, velocity.totalWeeks)}/${velocity.totalWeeks} · needs ${velocity.weeksNeeded}w more${velocity.onTrack ? " · on pace" : " · off pace"}`}
+        detail={velocityDetail}
         tone={velocity.onTrack ? "success" : "warn"}
       />
       <Metric

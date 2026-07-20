@@ -1,72 +1,73 @@
 # Current Feature
 
-**Cutover (migration step 10)** — full spec: @context/features/cutover.md
+**Trend & burndown UI (post-v1)** — full spec: @context/features/trend-burndown.md
 
-The final master-plan step (1–8 Done; 9 skipped 2026-07-18): promote `web/` to the repo root so
-the Next.js app IS the repository, retire the legacy Vite/Express app into **`legacy/`** (backed
-up, **not deleted** — ratified with Naveen 2026-07-18, amending §16's delete-at-parity plan), and
-land the deferred Node 22 bump (`.nvmrc` + `engines >=22.12`, delete the `web/.yarnrc`
-`ignore-engines` shim). **Zero application-code changes** — file moves + config/docs only; no
-schema change, no migration, no new deps.
+The master-plan step-10 "then" clause ("then burndown/trend UI from snapshots, then Gemini") —
+the next in-order feature now the migration is complete (steps 1–8 + 10 Done, 9 skipped; cutover
+on `main`). Render the trend/burndown view from the daily per-team `SprintSnapshot` rows the
+step-7 cron writes: a shared burndown panel on `/` and `/rollup` with ideal/actual/projection
+lines ("projected by end of sprint", §5/§14.8), plus §12's deferred velocity swap to
+snapshot-based actuals. **No schema change, no migration, no new deps, no new API routes.**
 
 ## Status
 
-**Done 2026-07-18** — the Next.js app now lives at the **repo root**; the Vite prototype is
-backed up (startable, Node 20) in **`legacy/`**; Node 22 is the runtime (`.nvmrc` + `engines`,
-`.yarnrc` shim gone). Two `git mv` phases (54 + 101 renames, history follows), zero app-code
-changes, no schema change/migration. **Verified at root under Node 22.22.2:** lint clean,
-`prisma validate`/`migrate status` up to date, **DB/env-free build green (27 ƒ Dynamic — the
-step-8 list exactly)**, :3002 smoke (auth gate 307, login 200, share generic page, cron 401,
-`health/db` ok on Neon, minted-admin dashboard SSR w/ full chrome), legacy boots on
-:3000/:3001. Commits by Naveen (session shell can't run the Tekion gitleaks hook). As-built
-deviations in @context/features/cutover.md (notably: `verify-web` skill renamed **`verify`**,
-`legacy/**` ESLint-ignored). ⚠️ Pending human acceptance before merge: side-by-side eyeball,
-real-Jira UI sync, share/export, day-in-the-life pass. **Next:** post-v1 — trend/burndown UI
-from `SprintSnapshot` (step-10 "then" clause), then Gemini; deployment re-point to repo root is
-deploy-time.
+**Done 2026-07-19** — pure `buildTrendSeries`/`combineSnapshotsByDay`/`snapshotVelocity` (+
+`formatDateUTC`) in `lib/metrics.mjs`; snapshot reads + request-time `asOf` in
+`lib/dashboard-data.js`; server-safe SVG `TrendPanel` on `/` and `/rollup`; additive
+`velocityOverride` on the velocity card (naive detail **byte-identical** when absent). No schema
+change, no migration, no new deps, no new routes. **Verified:** 31/31 plain-Node fixtures; lint
+clean; `prisma validate`/`migrate status` up to date; **DB/env-free build green (27 ƒ Dynamic —
+unchanged)**; 23/23 SSR smoke on dev+Neon (fabricated 3-team PLANNING sprint w/ gap + partial
+day; share page proves the frozen/export invariant holds); headless-Chrome visual pass over a
+temporary spike page (5 states; one label collision found + fixed); fixture torn down to 0,
+harnesses/spike deleted, dev server stopped. ⚠️ Pending human acceptance: Naveen's eyeball on
+real accrued snapshots (cron scheduling on Tekion infra still pending, so real density is thin).
+**Next:** Gemini (risk call-outs + narrative first) — the last open post-v1 item.
 
 ## Goals
 
-- **(a) Phase 1 — retire:** `git mv` the Vite app (`src/`, `public/`, `index.html`,
-  `vite.config.js`, `server.js`, `setup-auth.js`, `package.json`, both lockfiles,
-  `.env.example`, `docs/`) → `legacy/`; old root `.gitignore` → `legacy/.gitignore` (minus the
-  `.claude/*` rules, which stay at root); plain-`mv` untracked `.env`/`node_modules`/`dist`;
-  **delete `.sessions/`** (plaintext tokens, never backed up); add `legacy/README.md` (what it
-  is, Node 20, `yarn dev:all` → :3000/:3001).
-- **(b) Phase 2 — promote:** `git mv` all of `web/` (incl. dotfiles) → root; delete
-  `web/CLAUDE.md`; root `.gitignore` = web's + re-added `.claude/*` / `!.claude/skills/` /
-  `.DS_Store`; `mv web/.env` → `.env`; delete `web/node_modules` + `web/.next` (the fresh
-  install rebuilds them).
-- **(c) Node 22:** `.nvmrc` (v22.22.2 is installed), `engines.node ">=22.12"`, delete `.yarnrc`,
-  fresh `yarn install` under 22 (must pass with no engine overrides; postinstall regenerates the
-  Prisma client).
-- **(d) Config/docs:** `turbopack.root` comment (pin stays — repo remains dual-lockfile);
-  package names `sprint-tracker` / `sprint-tracker-legacy`; root `CLAUDE.md`/`AGENTS.md`/
-  `README.md` rewrite; `.claude/skills/` `web/`-path sweep; `.env.example` crontab path check;
-  project-overview doc-sync (step 10 DONE, §7 retitled legacy, §16 amendments).
-- **(e)** Two commits (retire → promote) so rename detection + `git log --follow` stay clean.
-- **Acceptance:** at root under Node 22 — lint + `prisma validate`/`migrate status` +
-  **DB/env-free build green (27 ƒ Dynamic)**; dev-server smoke on :3002 (auth gate, dashboard
-  SSR, share page, cron 401); legacy boots from `legacy/` under Node 20 (:3000/:3001);
-  `git log --follow` shows pre-move history; zero load-bearing `web/` refs; `.sessions/` gone.
+- **(a) Pure series builders — `src/lib/metrics.mjs`:** `buildTrendSeries(snapshots, sprint,
+  asOf)` (points + ideal line from the latest total + trailing-7-day projection; <2 snapshots →
+  no projection), `combineSnapshotsByDay(rows)` (roll-up per-day sums, issue-weighted
+  avgProgress, `teamCount` tags), `snapshotVelocity(points, sprint, asOf)` (velocity-card
+  override shape, `null` under the guard), `formatDateUTC`.
+- **(b) Data assembly — `src/lib/dashboard-data.js`:** `getDashboardData` reads the team's
+  snapshots (one ordered query); `getRollupData` reads batched `teamId: { in }` snapshots →
+  `combinedSnapshots`. `getShareData` untouched.
+- **(c) Chart panel — `src/components/dashboard/trend-panel.jsx`:** server-safe (no hooks, no
+  `"use client"` — hero-shell precedent); metric-card styling; stat row (completion %, snapshot
+  velocity, projected finish); inline-SVG burndown (ideal muted, actual teal, projection dashed,
+  `asOf` "today" marker, `<title>` tooltips); empty state "trend data accrues daily…" at 0
+  snapshots. Read the dataviz skill before writing chart markup.
+- **(d) Wiring:** `src/app/page.jsx` → `Dashboard` renders `TrendPanel` under `MetricGrid`;
+  `src/app/rollup/page.jsx` renders it between `MetricGrid` and `TeamSummaryTable`;
+  `src/components/dashboard/metric-grid.jsx` gains optional `velocityOverride` (absent → naive
+  model exactly as today, so share/export paths are byte-stable).
+- **Acceptance:** lint + DB/env-free build green (route list stays 27 ƒ Dynamic); plain-Node
+  fixtures for the pure functions; SSR smoke on dev+Neon (fabricated 2-team sprint w/ ~5 days of
+  snapshot rows incl. a gap + a partial day, minted cookies, teardown to 0); share pages render
+  velocity unchanged; Naveen's eyeball on real accrued data.
 
 ## Notes
 
-- **gitignore semantics are the sneaky part**: leading-`/` rules are relative to the file's own
-  dir — web's file works at root verbatim, but the `.claude/*` allowlist rules must be re-added
-  to the root file by hand or they vanish into `legacy/.gitignore`.
-- **`git mv` won't move untracked files** (`.env`, `node_modules`, `dist`, `.next`) — handle
-  explicitly; verify root `.env` carries DATABASE_URL/secrets/CRON_* after the move (the server
-  fails loudly without them, by design).
-- **Do NOT add `"type": "module"`** to the promoted package.json — the CJS default is why the
-  `.mjs` conventions (workflows/seeding/seed) exist.
-- Stop the running :3002 dev server before phase 2 (its cwd disappears); restart from root
-  after. Close stale app tabs (export-saga lesson).
-- Historical `web/...` paths in context/ docs are **not** rewritten — true when written; a note
-  in project-overview maps them to the post-cutover root.
-- Naveen's pending human acceptance (side-by-side eyeball, real-Jira UI sync, share/export)
-  is recommended **before merge**; legacy stays runnable so cutover doesn't destroy the
-  comparison.
+- **All 8 spec decisions are PROPOSED** (2026-07-19) — flag divergence to Naveen instead of
+  silently changing course.
+- **Hydration-safe dates:** `capturedOn` is UTC midnight; the panel renders server-side on
+  `/rollup` but inside the client Dashboard tree on `/` — format labels with an explicit
+  `timeZone: "UTC"` or hydration mismatches lurk west of UTC.
+- **Never assume contiguous days** (snapshots start 2026-07-09; cron can miss days; partial team
+  coverage is summed as-is with `teamCount`). No zero-filling — a fabricated 0-remaining point
+  reads as "done".
+- **Division guards:** single-snapshot window (Δdays = 0), `rate ≤ 0` → `projectedFinishDate:
+  null` ("no burn this week"), `totalPoints = 0` → empty state, not a degenerate axis.
+- **The MetricGrid change must be prop-additive** — frozen-share numbers must not move (step-8
+  `asOf` invariant); `getWeeklyVelocity` stays exported and untouched.
+- SVG geometry attrs (`points`/`d`/`x`/`y`) are data-driven, not inline styles (ui-port
+  precedent); colors/typography stay Tailwind classes; any missing token goes in `globals.css`
+  `@theme` — **no `tailwind.config.*`**.
+- Read installed Next 16 docs (`node_modules/next/dist/docs/`, AGENTS.md) before touching pages;
+  verify RSC Date-prop serialization against the `TeamSummaryTable` precedent.
+- Cron scheduling on Tekion infra is still pending — the visible empty state is deliberate.
 
 ## History
 
@@ -644,3 +645,76 @@ deploy-time.
   can't fetch its config from the session shell; phase-2 commit pending. **Done** pending
   Naveen's human acceptance + merge. **Next:** post-v1 — trend/burndown UI from snapshots, then
   Gemini (risk call-outs + narrative first).
+- 2026-07-19 — Planning session (no code): drafted @context/features/trend-burndown.md (post-v1,
+  the master-plan step-10 "then" clause — the next in-order feature; cutover commits are on main).
+  Trend/burndown UI from the step-7 `SprintSnapshot` rows: shared server-safe `TrendPanel`
+  (hand-rolled inline SVG, **no new deps**) on `/` and `/rollup` under `MetricGrid`; pure
+  `buildTrendSeries`/`combineSnapshotsByDay`/`snapshotVelocity` in `lib/metrics.mjs` (ideal +
+  actual + trailing-7-day projection, "projected by end of sprint"); reads extend
+  `dashboard-data.js` (batched, no new API routes); §12 velocity swap as an **additive
+  `velocityOverride`** on the velocity card with the naive model kept as fallback so
+  frozen-share/export numbers cannot drift (step-8 asOf invariant). 8 PROPOSED decisions incl.
+  sum-as-is partial-day roll-up points w/ teamCount tags and a visible "trend accrues daily"
+  empty state (cron scheduling on Tekion infra is still pending). No schema change, no
+  migration, no new routes. Not yet started — awaiting start-feature.
+- 2026-07-19 — Picked @context/features/trend-burndown.md as the current feature (post-v1 —
+  trend/burndown UI from `SprintSnapshot`: shared SVG `TrendPanel` on `/` + `/rollup`, pure
+  series/projection builders in `metrics.mjs`, snapshot-based velocity override). Branch
+  `feature/trend-burndown` created.
+- 2026-07-19 — **Implemented trend-burndown (post-v1 item 1 — the step-10 "then" clause).** Read
+  the installed Next 16 server/client-component doc (Date props serialize; the TeamSummaryTable
+  precedent) and the dataviz skill (validator run: teal/gray CVD ΔE 10.7 pass; teal 2.99:1
+  contrast WARN relieved by stat chips + endpoint label + axis ticks; the gray ideal line's
+  chroma-floor "fail" is intentional — reference line, not a series). Added pure
+  `buildTrendSeries` (latest-total ideal, gap-tolerant actuals, trailing-7-day projection w/
+  drawable `projection.line` — zero-crossing / clamped-at-end / flat-no-burn variants),
+  `combineSnapshotsByDay` (per-day sums, issue-weighted avg, partial-day `teamCount` tags),
+  `snapshotVelocity` (card-contract shape off the same `trailingBurn` basis; `weeksNeeded: null`
+  when work remains w/ zero burn), and `formatDateUTC` to `lib/metrics.mjs`; snapshot reads
+  (batched on `/rollup`, no N+1) + request-time `asOf` to `lib/dashboard-data.js`
+  (`getShareData` untouched); server-safe `components/dashboard/trend-panel.jsx` (inline-SVG
+  burndown w/ ideal/actual/projection, today marker, `<title>` tooltips, endpoint direct-label,
+  legend, stat chips + projected-finish badge, visible 0-snapshot "accrues daily" state);
+  additive `velocityOverride` on `MetricGrid` (naive string byte-identical; override appends
+  "from daily snapshots"); wiring in `dashboard.jsx` + `rollup/page.jsx`. No schema change, no
+  migration, **no new deps**, no new routes. Verified: **31/31 plain-Node fixtures**
+  (hand-computed finish `2026-07-14T03:41:32.307Z`, window exclusion, zero/negative-burn +
+  asOf-past-end guards, combine math, card contract); lint clean; migrate status up to date;
+  **DB/env-free build green — 27 ƒ Dynamic unchanged**; **23/23 SSR smoke** on dev+Neon
+  (fabricated 3-team PLANNING sprint, 7 snapshot rows w/ gap + partial day, minted cookie: 4
+  markers/`14 pts left`/`~Jul 14` badge/`45.5 pts/wk` labeled card on `/`; combined
+  `18 pts left`/`56 pts/wk`/`1 of 3 teams` on `/rollup`; 0-snapshot empty state + naive
+  fallback; live share → no panel, naive velocity — the frozen/export invariant); RSC-flight
+  markup doubling on the server-rendered `/rollup` identified and handled in the grep method;
+  **headless-Chrome visual pass** over a temporary `/trend-spike` page (5 states — caught the
+  flat-projection strike-through of the endpoint label; fixed by raising it). Fixture teardown
+  0 leftovers; spike + `.tmp-trend/` harness deleted; dev server stopped (was not running
+  before). As-built deviations in trend-burndown.md (series-prop panel, `asOf` from
+  getDashboardData, no client-clock fallback, join-built velocity detail, roll-up totalTeams
+  semantics, smoke mechanics). Docs synced (§3 VP-trend closed, §5 trend row BUILT, §11 panel
+  note, §12 velocity swap + trend-series bullets, §14.1/§14.8 closed, master-plan step-10
+  post-v1 clause). **Done** — ⚠️ Naveen's eyeball on real accrued snapshot data pending (cron
+  scheduling on Tekion infra is the gate for density). **Next:** Gemini (risk call-outs +
+  narrative first) — the last open post-v1 item.
+- 2026-07-19 — **Iterated trend-burndown: compact chart (per Naveen — "way too big, occupies a
+  lot of real estate").** Root cause: uniform viewBox scaling — 760×236 + `w-full` grew past
+  500px tall on wide monitors. Fix: flatter **760×190** viewBox + **`max-w-3xl`** cap on the
+  `<svg>` (≈190px rendered height on any screen; card still spans the full-bleed column; no
+  `preserveAspectRatio` distortion). Verified via an 1800px headless-Chrome capture of the
+  recreated `/trend-spike` page (both projection states clean; spike deleted after); lint
+  clean. **Build deliberately skipped** — Naveen's dev server holds :3002/.next (export-saga
+  lesson) and the diff is two presentational constants over a green build; re-run `yarn build`
+  before commit. Spec as-built note updated.
+- 2026-07-19 — **Iterated trend-burndown №2: two-up row w/ Risk call-outs (per Naveen — right of
+  the chart wasted real estate; suggested risk call-outs).** The row is now `grid xl:grid-cols-2`
+  (stacks below xl): burndown left, new server-safe
+  `components/dashboard/risk-callouts-panel.jsx` right — the **deterministic forerunner of the
+  §16 Gemini risk-call-outs use case** (no AI, no new data plumbing): trend signals (no-burn /
+  off-pace, guarded on remaining > 0) + worst-first issue list (Blocked → Behind → At Risk,
+  points desc, cap 6 + overflow line), inline blockedReason (`/` only), Jira-linked keys on `/`,
+  teamKey chips on `/rollup` (issues flat-mapped from perTeam), all-clear state, severity stripe.
+  Wired in dashboard.jsx + rollup/page.jsx. Verified: lint clean; 1800px headless-Chrome capture
+  of the recreated spike (populated + signal-only rows; deleted after). Build still deferred to
+  pre-commit (Naveen's dev server holds :3002/.next). Docs synced (§11 note → two-up row; spec
+  as-built). Naveen's first REAL snapshot landed meanwhile (cron run: 91% complete, 6.7 pts
+  left, single-dot state rendering as designed).

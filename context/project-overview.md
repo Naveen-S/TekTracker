@@ -59,8 +59,8 @@ Key relationships:
 > to `legacy/`) has no team, role, or multi-team concept — it is single-user and
 > localStorage-scoped. In `web/` the team/membership model + RBAC landed in step 4 (2026-07-07)
 > and the **multi-team roll-up view (`/rollup`) is BUILT (step 6b, 2026-07-08)** —
-> membership-derived per §9. VP *trend* still needs the trend UI (step 10 post-v1; snapshot data
-> exists since step 7). See §9, §10, §15.
+> membership-derived per §9. VP *trend* is **BUILT (2026-07-19)** — the snapshot-fed burndown
+> panel on `/` and `/rollup` (context/features/trend-burndown.md). See §9, §10, §15.
 
 ---
 
@@ -104,7 +104,7 @@ Key relationships:
 | Export PDF / PNG | **[BUILT]** | Legacy: client-side `html2canvas` + `jsPDF`; include/exclude filters. **`web/` port (step 8, 2026-07-12): `html2canvas-pro` (Tailwind-v4-oklch-safe) + `jsPDF` over re-skinned offscreen A4 pages, dynamic-imported.** |
 | Share view | **[BUILT in `web/` — 2026-07-12, step 8]** | Legacy still encodes the dataset into a base64 URL until cutover. **`web/`: server-persisted `SharedView` → public read-only `/share/[token]`** (192-bit token, live or frozen w/ `asOf`-pinned metrics, expiry, revocation); see context/features/share-view-export.md. |
 | Multi-team / ED roll-up | **[BUILT in `web/` — 2026-07-08]** | Team + membership model and admin APIs came in step 4 (2026-07-07); the roll-up *view* is step 6b: read-only `/rollup` server page (combined `MetricGrid` + per-team table via pure `aggregateRollup`), membership-derived, no Sync — staleness from `lastSyncedAt`. |
-| Trend / burndown / "projected by end of sprint" | **[PARTIAL — data BUILT in `web/` 2026-07-09]** | Daily per-team `SprintSnapshot` rows written by the step-7 cron (`POST /api/cron/daily`); the trend/burndown *UI* is still unbuilt (step 10 post-v1). |
+| Trend / burndown / "projected by end of sprint" | **[BUILT — data 2026-07-09, UI 2026-07-19]** | Daily per-team `SprintSnapshot` rows written by the step-7 cron (`POST /api/cron/daily`); the burndown panel (ideal/actual/projection SVG + snapshot-based velocity) renders on `/` and `/rollup` (context/features/trend-burndown.md). |
 | AI summary (Gemini) | **[GAP]** | Post-v1; use cases ratified 2026-06-10 (see §16). |
 | Admin settings / RBAC | **[PARTIAL]** | Server-side RBAC live in the `web/` domain APIs (step 4, 2026-07-07): `User.isAdmin` + `TeamMembership.role` guards (`lib/rbac.js`) on teams/sprints/filters/progress. No admin UI yet. |
 
@@ -753,6 +753,21 @@ Jira** button. Footer: "Engineering Internal Tool @ Tekion Corp."
 > Entry: a TopBar "Roll-up" link on `/` when the user has ≥2 teams or is admin (the URL renders a
 > harmless 1-team roll-up otherwise). Deliberately **no Sync** here (§14.9 rate-limit storm) —
 > freshness is step 7's cron. See context/features/ed-rollup.md.
+>
+> **[BUILT 2026-07-19 — trend/burndown row, post-v1 item 1]** — a two-up row (`xl:grid-cols-2`,
+> stacking below xl) under the `MetricGrid` on `/` (per-team) and `/rollup` (per-day summed over
+> teams w/ "N of M teams" tooltips). Left: server-safe `TrendPanel`
+> (`components/dashboard/trend-panel.jsx`; hand-rolled inline SVG, **no charting dep**): ideal
+> line (latest total → 0 across the sprint window), teal actual burndown w/ markers + endpoint
+> label, dashed trailing-7-day projection, today marker, legend, stat chips + projected-finish
+> badge; 0 snapshots renders a **visible** "trend data accrues daily" state (deliberate — cron
+> scheduling on Tekion infra is still pending). Right: **`RiskCalloutsPanel`**
+> (`risk-callouts-panel.jsx`, iterated in per Naveen 2026-07-19) — the **deterministic
+> forerunner of the §16 Gemini risk-call-outs use case** (the AI narrative stays post-v1):
+> trend signals (no burn / off pace) + worst issues first (Blocked → Behind → At Risk, points
+> desc, capped w/ overflow line), blocked reasons inline, linked Jira keys on `/`, team-key
+> chips on `/rollup`, all-clear state. Frozen/live shares and exports deliberately show no
+> trend/risk row. See context/features/trend-burndown.md.
 
 ---
 
@@ -769,9 +784,16 @@ Reference implementation: [`src/workflows.js`](src/workflows.js) and
   (atRisk+behind) >20%; `Complete`/`Excellent`/`Healthy`/`Fair` otherwise.
 - **Velocity** (`getWeeklyVelocity`): `completedPoints / weeksElapsed`; projects `weeksNeeded =
   remainingPoints / velocity`. Velocity counts `feature` + `techdebt` only (support excluded). This is
-  a **naive linear** model — replace with snapshot-based actuals once `SprintSnapshot` exists.
-  (Snapshot rows exist as of step 7, 2026-07-09 — the UI still computes the naive model; the swap
-  is step 10.)
+  a **naive linear** model. **The snapshot swap landed 2026-07-19 (trend-burndown):** `/` and
+  `/rollup` pass `snapshotVelocity` (trailing-7-day burn off `SprintSnapshot` rows, shared basis
+  with the chart projection) into the velocity card whenever ≥ 2 daily snapshots exist — the
+  naive model is **deliberately retained** as the fallback and the only model on share/export
+  paths (frozen-share pin, §12 asOf).
+- **Trend series** (`buildTrendSeries` / `combineSnapshotsByDay`, 2026-07-19): pure burndown
+  series off snapshot rows — ideal from the *latest* total (scope grows mid-sprint), actuals per
+  captured day (gaps never zero-filled), projection at the trailing-7-day rate (none with < 2
+  snapshots or past `developmentEnd`); roll-up days are summed as-is over the teams that captured,
+  tagged `teamCount`.
 - **Explicit clock (`asOf`) — `web/` only, step 8 (2026-07-12):** the time-dependent functions
   (`getHealthStatus`, `getWeeklyVelocity`, `computeSprintMetrics`) take an optional `asOf`
   (default: now). Frozen shared views pass their snapshot's `capturedAt` so health/velocity can't
@@ -831,7 +853,7 @@ spec-internal ambiguities to resolve.
    localStorage cannot aggregate N teams. *Fix:* team model + Postgres (§9) + server-rendered roll-ups.
    **[Fixed in `web/` 2026-07-08, step 6b]** — membership-derived `/rollup` server page: per-team
    `computeSprintMetrics` + pure `aggregateRollup` (never merges per-team progress maps, §9);
-   see context/features/ed-rollup.md. VP *trend* remains open until `SprintSnapshot` (step 7, §14.8);
+   see context/features/ed-rollup.md. VP *trend* closed 2026-07-19 (burndown panel, §14.8);
    legacy app retired to `legacy/` at cutover (2026-07-18).
 2. **Stages are manual and Jira sync doesn't touch them.** Metrics are only as good as manual upkeep,
    and the 10-stage lifecycle doesn't map to Jira status. *Fix:* hybrid seed-from-status model (§6).
@@ -856,9 +878,11 @@ spec-internal ambiguities to resolve.
    step 5]** — sync reads `Team.storyPointsFieldId`/`sprintFieldId` (those ids remain the global
    defaults; legacy `customfield_10016` still read as points fallback). Field discovery UI still TODO.
 8. **No history / burndown.** Can't answer "projected by end of sprint" or show a trend — exactly the
-   leadership signal §2.2 demands. *Fix:* `SprintSnapshot` daily job (§9). **[Fixed in `web/` (data
-   side) 2026-07-09, step 7]** — daily per-team snapshots written by `POST /api/cron/daily`
-   (context/features/background-sync-snapshots.md); the trend *UI* is still open (step 10).
+   leadership signal §2.2 demands. *Fix:* `SprintSnapshot` daily job (§9). **[Fixed — data
+   2026-07-09 (step 7), UI 2026-07-19]** — daily per-team snapshots written by `POST /api/cron/daily`
+   (context/features/background-sync-snapshots.md); rendered by the burndown panel on `/` and
+   `/rollup` incl. the projected-finish signal (context/features/trend-burndown.md). Real trend
+   *density* still depends on scheduling the cron on Tekion infra (deploy-time task).
 9. **No caching; sequential Jira calls.** An ED viewing N teams triggers many paginated live calls and
    risks Jira rate limits. *Fix:* background sync into the Issue cache + optional Redis.
    **[Partially addressed in `web/` 2026-07-09, step 7]** — the daily cron refreshes Issue caches in
@@ -952,4 +976,4 @@ The plan — exact next steps, in order
 7. Background job — a cron on your internal infra hitting an internal route: refresh issue caches + write the daily per-team SprintSnapshot for active sprints. **[DONE 2026-07-09]** — secret-gated `POST /api/cron/daily` (`CRON_SECRET` bearer, timingSafeEqual over sha256 digests; first session-less route) → `lib/cron/daily.js` `runDailyJob`: per ACTIVE sprint, sequential per-team refresh via the step-5 engine with the `CRON_SYNC_USER_EMAIL` service credential (absent/dead → refresh skipped, snapshots still written; per-team errors isolated), then batched per-team metrics → UTC-midnight `SprintSnapshot` upsert; pure `snapshotValues` in `lib/metrics.mjs`. Verified: 23/23 pure fixtures, DB/env-free build, 30/30 live dev+Neon checks (gates, hand-computed rows, PLANNING/filterless skips, degrade path, idempotent re-run, unset-secret 500). Scheduling on Tekion infra is a deploy-time task. See context/features/background-sync-snapshots.md.
 8. Share view + export — SharedView token route (/share/[token], live or frozen, expiry) replacing the base64 URL; port PDF/PNG export. **[DONE 2026-07-12]** — public session-less `/share/[token]` (192-bit app-generated token, `robots: noindex`, generic invalid/expired state; live = current rows, frozen = input snapshot w/ metrics pinned to `capturedAt` via the new optional `asOf` clock threaded through `lib/metrics.mjs` + the MetricGrid/PlannerPanel/IssueRow props); writer-gated `POST/GET …/shares` (filterIds validated ⊆ team+sprint) + creator/admin `DELETE /api/shares/[shareId]`; ShareDialog (live/frozen, expiry presets, manage/revoke, clipboard+toast) + ExportDialog (filter toggles, paged preview, offscreen A4 pages → PDF/PNG) behind new Hero buttons. Deps `html2canvas-pro@2.2.3` (stock html2canvas can't parse the Tailwind-v4 oklch/`color-mix` theme — proven by a headless-Chrome capture spike) + `jspdf@2.5.2`, dynamic-imported (verified absent from the dashboard chunk). No schema change, no migration. Verified: lint; DB/env-free build (27 ƒ Dynamic); 25/25 asOf fixtures; 37/37 SSR smoke on dev+Neon incl. frozen-vs-live divergence, list scoping, revoke/expiry → generic page. Human acceptance (browser share open + real PDF/PNG) pending with the ui-polish eyeball. See context/features/share-view-export.md.
 9. Importer — one-time script that takes the localStorage JSON (sprintTracker_sprintData + config) and writes Sprint/Filter/IssueProgress rows so your current sprints carry over. **[SKIPPED 2026-07-18]** — Naveen no longer has older sprint data in localStorage (current work already lives in `web/` via real syncs), so there is nothing to import; decided with Naveen 2026-07-18. Spec draft kept for reference at context/features/seed.md.
-10. Cutover, then post-v1 — promote web/ to repo root, delete the Vite app; then burndown/trend UI from snapshots, then Gemini (risk call-outs + narrative first). **[DONE 2026-07-18 (cutover half)]** — two-phase `git mv` on `feature/cutover`: the Vite app (src/, server.js, docs/, lockfiles, untracked .env/node_modules/dist) **retired into `legacy/` instead of deleted** (ratified with Naveen 2026-07-18; startable there under Node 20 — verified :3000/:3001 answer) with plaintext-token `.sessions/` deleted; then `web/*` promoted to root (101 renames, history follows via `git log --follow`). Node 22 bump landed with it (`.nvmrc`, `engines >=22.12`, `.yarnrc` shim deleted, fresh install under 22.22.2). Config/docs: root `.gitignore` = web's + re-added `.claude/*` rules, `turbopack.root` pin kept (dual lockfile with `legacy/yarn.lock`), package renames (`sprint-tracker` / `sprint-tracker-legacy`), CLAUDE.md/AGENTS.md/README.md rewritten for the single-app root, `.claude/skills` `web/`-path sweep (+ `verify-web` renamed `verify`, per Naveen), `legacy/**` added to ESLint ignores (the only config-behavior change). Zero app-code changes; no schema change, no migration. Verified at root under Node 22: lint clean; `prisma validate` + `migrate status` up to date; **DB/env-free build green, 27 ƒ Dynamic (same as step 8)**; dev-server smoke on :3002 — unauth 307, login 200, unknown share → generic page, cron bad-bearer 401, `health/db` ok against Neon, minted-admin dashboard SSR with full chrome. **Deployment re-pointing (build from repo root) is a deploy-time task; post-v1 items (trend UI, Gemini) remain open.** See context/features/cutover.md.
+10. Cutover, then post-v1 — promote web/ to repo root, delete the Vite app; then burndown/trend UI from snapshots, then Gemini (risk call-outs + narrative first). **[DONE 2026-07-18 (cutover half)]** — two-phase `git mv` on `feature/cutover`: the Vite app (src/, server.js, docs/, lockfiles, untracked .env/node_modules/dist) **retired into `legacy/` instead of deleted** (ratified with Naveen 2026-07-18; startable there under Node 20 — verified :3000/:3001 answer) with plaintext-token `.sessions/` deleted; then `web/*` promoted to root (101 renames, history follows via `git log --follow`). Node 22 bump landed with it (`.nvmrc`, `engines >=22.12`, `.yarnrc` shim deleted, fresh install under 22.22.2). Config/docs: root `.gitignore` = web's + re-added `.claude/*` rules, `turbopack.root` pin kept (dual lockfile with `legacy/yarn.lock`), package renames (`sprint-tracker` / `sprint-tracker-legacy`), CLAUDE.md/AGENTS.md/README.md rewritten for the single-app root, `.claude/skills` `web/`-path sweep (+ `verify-web` renamed `verify`, per Naveen), `legacy/**` added to ESLint ignores (the only config-behavior change). Zero app-code changes; no schema change, no migration. Verified at root under Node 22: lint clean; `prisma validate` + `migrate status` up to date; **DB/env-free build green, 27 ƒ Dynamic (same as step 8)**; dev-server smoke on :3002 — unauth 307, login 200, unknown share → generic page, cron bad-bearer 401, `health/db` ok against Neon, minted-admin dashboard SSR with full chrome. **Deployment re-pointing (build from repo root) is a deploy-time task.** See context/features/cutover.md. *Post-v1 clause:* **trend/burndown UI DONE 2026-07-19** — snapshot-fed `TrendPanel` on `/` + `/rollup` with the trailing-7-day projection, plus the §12 velocity swap (`snapshotVelocity` override w/ naive fallback; share/export untouched); no schema change/migration/deps/routes (see context/features/trend-burndown.md). **Gemini (risk call-outs + narrative first) remains the open post-v1 item.**

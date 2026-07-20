@@ -233,8 +233,177 @@ export function snapshotValues(metrics) {
   };
 }
 
+const round1 = (value) => Math.round(value * 10) / 10;
+
 /**
- * Naive linear velocity + projection (§12) — replace with SprintSnapshot actuals in step 10.
+ * Combine per-team `SprintSnapshot` rows into one per-day series for the roll-up burndown
+ * (trend-burndown.md decisions 6–7). Days with partial team coverage are summed AS-IS and
+ * tagged with `teamCount` — dropping incomplete days would blank the whole chart the moment one
+ * team never syncs. Sums for points/issues, issue-weighted `avgProgress` (the `aggregateRollup`
+ * convention); `capturedOn` stays a UTC-midnight Date. Sorted ascending.
+ */
+export function combineSnapshotsByDay(snapshotRows) {
+  const byDay = new Map();
+  for (const row of snapshotRows) {
+    const key = new Date(row.capturedOn).toISOString().slice(0, 10);
+    const day = byDay.get(key) ?? {
+      capturedOn: new Date(`${key}T00:00:00.000Z`),
+      totalPoints: 0,
+      completedPoints: 0,
+      totalIssues: 0,
+      weightedProgress: 0,
+      teamCount: 0,
+    };
+    day.totalPoints += row.totalPoints;
+    day.completedPoints += row.completedPoints;
+    day.totalIssues += row.totalIssues;
+    day.weightedProgress += row.avgProgress * row.totalIssues;
+    day.teamCount += 1;
+    byDay.set(key, day);
+  }
+  return [...byDay.values()]
+    .sort((a, b) => a.capturedOn - b.capturedOn)
+    .map(({ weightedProgress, ...day }) => ({
+      ...day,
+      avgProgress: day.totalIssues > 0 ? Math.round(weightedProgress / day.totalIssues) : 0,
+    }));
+}
+
+/**
+ * The trailing burn rate over the last 7 days of snapshot points (whole series when the window
+ * holds fewer than 2 points) — the shared basis for the chart projection and the snapshot
+ * velocity (trend-burndown.md decision 4). Returns null when a rate can't be derived.
+ */
+function trailingBurn(points) {
+  if (points.length < 2) return null;
+  const last = points[points.length - 1];
+  const windowStart = last.date.getTime() - 7 * DAY_MS;
+  let window = points.filter((point) => point.date.getTime() >= windowStart);
+  if (window.length < 2) window = points;
+  const first = window[0];
+  const basisDays = (last.date - first.date) / DAY_MS;
+  if (basisDays <= 0) return null;
+  return {
+    ratePerDay: (last.completedPoints - first.completedPoints) / basisDays,
+    basisDays,
+    last,
+  };
+}
+
+/**
+ * Burndown series off one team's (or the roll-up's combined) `SprintSnapshot` rows
+ * (trend-burndown.md (a)): `points` (remaining-points actuals, ascending), `ideal` (latest
+ * total → 0 across the sprint window — the latest total because scope grows mid-sprint), and
+ * `projection` (trailing-7-day linear burn, decision 4). No projection with < 2 snapshots or
+ * once `asOf` is past `developmentEnd` (CLOSED/overrun sprints — the window is over).
+ * `projection.line` is the drawable dashed segment: to the zero-crossing when finishing inside
+ * the window, clamped at `developmentEnd` (or flat, when there is no burn) otherwise.
+ * Storage-free; Date-or-ISO tolerant like the rest of this module.
+ */
+export function buildTrendSeries(snapshots, sprint, asOf) {
+  const points = (snapshots ?? [])
+    .map((row) => ({
+      date: new Date(row.capturedOn),
+      totalPoints: row.totalPoints,
+      completedPoints: row.completedPoints,
+      remainingPoints: Math.max(0, round1(row.totalPoints - row.completedPoints)),
+      avgProgress: row.avgProgress,
+      totalIssues: row.totalIssues,
+      ...(row.teamCount !== undefined ? { teamCount: row.teamCount } : {}),
+    }))
+    .sort((a, b) => a.date - b.date);
+
+  if (points.length === 0) return { points, ideal: null, projection: null };
+
+  const startDate = new Date(sprint.developmentStart);
+  const endDate = new Date(sprint.developmentEnd);
+  const latestTotal = points[points.length - 1].totalPoints;
+  const ideal = {
+    start: { date: startDate, remaining: latestTotal },
+    end: { date: endDate, remaining: 0 },
+  };
+
+  const today = asOf ? new Date(asOf) : new Date();
+  const burn = today > endDate ? null : trailingBurn(points);
+  if (!burn) return { points, ideal, projection: null };
+
+  const { ratePerDay, basisDays, last } = burn;
+  const remaining = last.remainingPoints;
+  let projectedFinishDate = null;
+  let line;
+  if (ratePerDay > 0) {
+    projectedFinishDate = new Date(last.date.getTime() + (remaining / ratePerDay) * DAY_MS);
+    const lineEndDate = projectedFinishDate <= endDate ? projectedFinishDate : endDate;
+    const lineEndRemaining =
+      projectedFinishDate <= endDate
+        ? 0
+        : round1(remaining - ratePerDay * ((endDate - last.date) / DAY_MS));
+    line = [
+      { date: last.date, remaining },
+      { date: lineEndDate, remaining: lineEndRemaining },
+    ];
+  } else {
+    // No (or negative) burn: an honest flat dashed line to sprint end.
+    line = [
+      { date: last.date, remaining },
+      { date: endDate, remaining },
+    ];
+  }
+
+  return {
+    points,
+    ideal,
+    projection: {
+      ratePerDay,
+      ptsPerWeek: round1(ratePerDay * 7),
+      basisDays,
+      projectedFinishDate,
+      onTrack: projectedFinishDate !== null && projectedFinishDate <= endDate,
+      line,
+    },
+  };
+}
+
+/**
+ * Snapshot-based weekly velocity in the shape the MetricGrid velocity card consumes from
+ * `getWeeklyVelocity` (trend-burndown.md decision 5 — the §12 swap). Derived from the same
+ * trailing-7-day burn as the chart projection so the two never disagree. `null` under the
+ * < 2-snapshot guard → the card falls back to the naive model. `weeksNeeded` is `null` (not 0)
+ * when there is work left but no burn — the card renders that honestly instead of "on pace".
+ */
+export function snapshotVelocity(points, sprint, asOf) {
+  const burn = trailingBurn(points ?? []);
+  if (!burn) return null;
+
+  const start = new Date(sprint.developmentStart);
+  const end = new Date(sprint.developmentEnd);
+  const today = asOf ? new Date(asOf) : new Date();
+  const totalWeeks = Math.ceil((end - start) / DAY_MS / 7);
+  const weeksElapsed = Math.max(1, Math.ceil(Math.max(0, today - start) / (DAY_MS * 7)));
+
+  const velocity = round1(burn.ratePerDay * 7);
+  const remaining = burn.last.remainingPoints;
+  const weeksNeeded =
+    velocity > 0 ? Math.ceil(remaining / velocity) : remaining > 0 ? null : 0;
+
+  return {
+    velocity,
+    weeksElapsed,
+    totalWeeks,
+    weeksNeeded,
+    onTrack: weeksNeeded !== null && weeksNeeded <= totalWeeks - weeksElapsed,
+    projectedFinishDate:
+      burn.ratePerDay > 0
+        ? new Date(burn.last.date.getTime() + (remaining / burn.ratePerDay) * DAY_MS)
+        : null,
+    fromSnapshots: true,
+  };
+}
+
+/**
+ * Naive linear velocity + projection (§12) — superseded on `/` and `/rollup` by
+ * `snapshotVelocity` when ≥ 2 snapshots exist (trend-burndown.md decision 5); deliberately
+ * retained as the fallback and the only model on share/export paths (frozen-share pin).
  * Optional `asOf` is the explicit clock (frozen shares, decision 6).
  */
 export function getWeeklyVelocity(sprint, completedPoints, points, asOf) {
@@ -270,5 +439,19 @@ export function formatDate(value) {
     month: "short",
     day: "numeric",
     year: "numeric",
+  });
+}
+
+/**
+ * UTC-pinned date label for `SprintSnapshot.capturedOn` (UTC midnights, step-7 decision 6).
+ * The trend panel renders server-side on `/rollup` but hydrates inside the client tree on `/` —
+ * local-tz formatting would shift the day west of UTC and mismatch on hydration.
+ */
+export function formatDateUTC(value, { year = true } = {}) {
+  return new Date(value).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(year ? { year: "numeric" } : {}),
+    timeZone: "UTC",
   });
 }

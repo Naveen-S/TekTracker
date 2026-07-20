@@ -8,7 +8,12 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { getRollupData } from "@/lib/dashboard-data";
-import { formatDate, getDaysRemaining } from "@/lib/metrics.mjs";
+import {
+  buildTrendSeries,
+  formatDate,
+  getDaysRemaining,
+  snapshotVelocity,
+} from "@/lib/metrics.mjs";
 import {
   DaysRemainingPill,
   HeroCopy,
@@ -17,6 +22,8 @@ import {
   HeroTitle,
 } from "@/components/ui/hero-shell";
 import { MetricGrid } from "@/components/dashboard/metric-grid";
+import { TrendPanel } from "@/components/dashboard/trend-panel";
+import { RiskCalloutsPanel } from "@/components/dashboard/risk-callouts-panel";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { RollupTopBar } from "@/components/rollup/rollup-top-bar";
 import { TeamSummaryTable } from "@/components/rollup/team-summary-table";
@@ -33,10 +40,13 @@ export default async function RollupPage({ searchParams }) {
   const data = await getRollupData(user, {
     sprintId: typeof sprint === "string" ? sprint : undefined,
   });
-  const { teams, sprints, selectedSprint, perTeam, combined } = data;
+  const { teams, sprints, selectedSprint, perTeam, combinedSnapshots, combined } = data;
   // Request-time "as of" for the server-rendered staleness labels — deterministic, no client clock.
   const asOf = new Date();
   const daysRemaining = selectedSprint ? getDaysRemaining(selectedSprint) : null;
+  // Combined burndown over the per-day summed snapshots (trend-burndown.md decisions 6–7).
+  const trend = selectedSprint ? buildTrendSeries(combinedSnapshots, selectedSprint, asOf) : null;
+  const velocityOverride = trend ? snapshotVelocity(trend.points, selectedSprint, asOf) : null;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -78,7 +88,25 @@ export default async function RollupPage({ searchParams }) {
               </div>
             </HeroShell>
 
-            <MetricGrid metrics={combined} sprint={selectedSprint} />
+            <MetricGrid
+              metrics={combined}
+              sprint={selectedSprint}
+              velocityOverride={velocityOverride}
+            />
+            <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+              <TrendPanel
+                series={trend}
+                sprint={selectedSprint}
+                asOf={asOf}
+                totalTeams={perTeam.length}
+              />
+              <RiskCalloutsPanel
+                issues={perTeam.flatMap((entry) =>
+                  entry.metrics.issues.map((issue) => ({ ...issue, teamKey: entry.team.key })),
+                )}
+                series={trend}
+              />
+            </section>
             <TeamSummaryTable
               perTeam={perTeam}
               selectedSprint={selectedSprint}

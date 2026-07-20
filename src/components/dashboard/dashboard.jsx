@@ -10,12 +10,15 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { WORKFLOWS } from "@/lib/workflows.mjs";
 import { apiFetch } from "@/lib/api-client";
+import { buildTrendSeries, snapshotVelocity } from "@/lib/metrics.mjs";
 import { useLocalPref } from "@/lib/use-local-pref";
 import { PageLoader } from "@/components/ui/spinner";
 import { Toast, useToast } from "@/components/ui/toast";
 import { TopBar } from "./top-bar";
 import { Hero } from "./hero";
 import { MetricGrid } from "./metric-grid";
+import { TrendPanel } from "./trend-panel";
+import { RiskCalloutsPanel } from "./risk-callouts-panel";
 import { FilterPanel } from "./filter-panel";
 import { PlannerPanel } from "./planner-panel";
 import { AddFilterDialog } from "./add-filter-dialog";
@@ -51,6 +54,8 @@ export function Dashboard({
   selectedSprint,
   filters,
   progressByKey,
+  snapshots,
+  asOf,
   metrics,
   jiraBaseUrl,
 }) {
@@ -200,6 +205,13 @@ export function Dashboard({
 
   const showWelcome = Boolean(selectedTeam && selectedSprint && filters.length === 0);
 
+  // Burndown series + snapshot-based velocity (trend-burndown.md) — pure derivations of server
+  // props; `asOf` comes from the server so SSR and hydration agree on the geometry.
+  const trend = selectedSprint ? buildTrendSeries(snapshots ?? [], selectedSprint, asOf) : null;
+  const velocityOverride = trend
+    ? snapshotVelocity(trend.points, selectedSprint, asOf)
+    : null;
+
   return (
     <div className="flex min-h-screen flex-col">
       <TopBar
@@ -257,7 +269,20 @@ export function Dashboard({
 
             {!showWelcome && metrics && (
               <>
-                <MetricGrid metrics={metrics} sprint={selectedSprint} />
+                <MetricGrid
+                  metrics={metrics}
+                  sprint={selectedSprint}
+                  velocityOverride={velocityOverride}
+                />
+                <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                  <TrendPanel series={trend} sprint={selectedSprint} asOf={asOf} />
+                  <RiskCalloutsPanel
+                    issues={metrics.issues}
+                    progressByKey={progressByKey}
+                    series={trend}
+                    jiraBaseUrl={jiraBaseUrl}
+                  />
+                </section>
                 <section
                   className={`grid flex-1 grid-cols-1 items-start gap-5 transition-[grid-template-columns] duration-300 ease-out ${collapsed ? "xl:grid-cols-[56px_1fr]" : "xl:grid-cols-[300px_1fr]"}`}
                 >

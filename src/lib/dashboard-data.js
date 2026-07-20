@@ -8,7 +8,7 @@
  */
 import { prisma } from "@/lib/db";
 import { Role, SprintState } from "@/generated/prisma/client";
-import { aggregateRollup, computeSprintMetrics } from "@/lib/metrics.mjs";
+import { aggregateRollup, combineSnapshotsByDay, computeSprintMetrics } from "@/lib/metrics.mjs";
 import { TEAM_MANAGER_ROLES, TEAM_WRITER_ROLES } from "@/lib/rbac";
 
 /** The caller's memberships → role map + visible teams (global admin sees all teams). */
@@ -70,6 +70,7 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
 
   let filters = [];
   let progressByKey = {};
+  let snapshots = [];
   if (selectedTeam && selectedSprint) {
     filters = await prisma.filter.findMany({
       where: { teamId: selectedTeam.id, sprintId: selectedSprint.id },
@@ -81,6 +82,18 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
       select: { jiraKey: true, workflowType: true, stageCompletion: true, blocked: true, blockedReason: true },
     });
     progressByKey = Object.fromEntries(progress.map((row) => [row.jiraKey, row]));
+    // Daily step-7 cron rows powering the trend/burndown panel (trend-burndown.md (b)).
+    snapshots = await prisma.sprintSnapshot.findMany({
+      where: { teamId: selectedTeam.id, sprintId: selectedSprint.id },
+      orderBy: { capturedOn: "asc" },
+      select: {
+        capturedOn: true,
+        totalPoints: true,
+        completedPoints: true,
+        avgProgress: true,
+        totalIssues: true,
+      },
+    });
   }
 
   // UI affordances only — every mutation is re-checked server-side by the step-4/5 routes.
@@ -98,6 +111,10 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
     selectedSprint,
     filters,
     progressByKey,
+    snapshots,
+    // Request-time clock for the trend panel's "today" marker + projection — passed down so the
+    // SSR render and the client hydration draw identical geometry (no client-side new Date()).
+    asOf: new Date(),
     metrics: selectedSprint ? computeSprintMetrics(filters, progressByKey, selectedSprint) : null,
     jiraBaseUrl: process.env.JIRA_BASE_URL?.trim().replace(/\/+$/, "") ?? null,
   };
@@ -117,6 +134,7 @@ export async function getRollupData(user, { sprintId } = {}) {
   const { sprints, selectedSprint } = await getSprintSelection(sprintId);
 
   let perTeam = [];
+  let combinedSnapshots = [];
   if (selectedSprint && teams.length > 0) {
     const teamIds = teams.map((team) => team.id);
     const filters = await prisma.filter.findMany({
@@ -128,6 +146,20 @@ export async function getRollupData(user, { sprintId } = {}) {
       where: { teamId: { in: teamIds }, sprintId: selectedSprint.id },
       select: { teamId: true, jiraKey: true, workflowType: true, stageCompletion: true, blocked: true },
     });
+    // One batched read (no per-team N+1), combined per day by the pure helper (decisions 6–7).
+    const snapshotRows = await prisma.sprintSnapshot.findMany({
+      where: { teamId: { in: teamIds }, sprintId: selectedSprint.id },
+      orderBy: { capturedOn: "asc" },
+      select: {
+        teamId: true,
+        capturedOn: true,
+        totalPoints: true,
+        completedPoints: true,
+        avgProgress: true,
+        totalIssues: true,
+      },
+    });
+    combinedSnapshots = combineSnapshotsByDay(snapshotRows);
 
     perTeam = teams.map((team) => {
       const teamFilters = filters.filter((filter) => filter.teamId === team.id);
@@ -156,6 +188,7 @@ export async function getRollupData(user, { sprintId } = {}) {
     sprints,
     selectedSprint,
     perTeam,
+    combinedSnapshots,
     combined: selectedSprint ? aggregateRollup(perTeam.map((entry) => entry.metrics)) : null,
   };
 }
