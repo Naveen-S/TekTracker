@@ -59,13 +59,25 @@ export function getHealthStatus(completionPercent, isBlocked, sprint, asOf) {
   return { status: "Behind", tone: "danger", icon: "↓" };
 }
 
-/** The owning workflow + checklist for an issue: its progress row, else all-false in the filter's workflow. */
+/**
+ * The owning workflow + checklist for an issue: its progress row, else all-false in the filter's
+ * workflow. `blockedReason`/`riskComment` (risk-comments-rollup-digest.md) are display-only
+ * annotations passed through here — never inputs to `calculateWeightedCompletion`/health scoring
+ * below — so they ride the same per-team resolution and never require merging progress maps
+ * across teams (§9): each caller resolves them from its OWN team's `progressByKey`.
+ */
 export function resolveProgress(jiraKey, filterWorkflowType, progressByKey) {
   const progress = progressByKey[jiraKey];
   const workflowType = progress?.workflowType ?? filterWorkflowType;
   const stageCompletion =
     progress?.stageCompletion ?? new Array(WORKFLOWS[workflowType].stages.length).fill(false);
-  return { workflowType, stageCompletion, blocked: progress?.blocked ?? false };
+  return {
+    workflowType,
+    stageCompletion,
+    blocked: progress?.blocked ?? false,
+    blockedReason: progress?.blockedReason ?? null,
+    riskComment: progress?.riskComment ?? null,
+  };
 }
 
 /**
@@ -76,11 +88,8 @@ export function resolveProgress(jiraKey, filterWorkflowType, progressByKey) {
 export function computeSprintMetrics(filters, progressByKey, sprint, asOf) {
   const issues = filters.flatMap((filter) =>
     (filter.issues ?? []).map((issue) => {
-      const { workflowType, stageCompletion, blocked } = resolveProgress(
-        issue.jiraKey,
-        filter.workflowType,
-        progressByKey,
-      );
+      const { workflowType, stageCompletion, blocked, blockedReason, riskComment } =
+        resolveProgress(issue.jiraKey, filter.workflowType, progressByKey);
       const percent = calculateWeightedCompletion(stageCompletion, WORKFLOWS[workflowType].weights);
       return {
         ...issue,
@@ -91,6 +100,8 @@ export function computeSprintMetrics(filters, progressByKey, sprint, asOf) {
         percent,
         completedStages: stageCompletion.filter(Boolean).length,
         blocked,
+        blockedReason,
+        riskComment,
         health: getHealthStatus(percent, blocked, sprint, asOf),
       };
     }),

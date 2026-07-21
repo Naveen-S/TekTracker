@@ -1,69 +1,81 @@
 # Current Feature
 
-**AI insights (post-v1 item 2)** — full spec: @context/features/ai-insights.md
+**Risk comments + roll-up risks dialog + roll-up AI digest** — full spec:
+@context/features/risk-comments-rollup-digest.md
 
-The last open post-v1 item from the master plan (step 10's "then Gemini — risk call-outs +
-narrative first"), reframed per Naveen (2026-07-20) as a **provider-agnostic AI platform**: all
-AI specifics behind a neutral `generateJson` contract in `src/lib/ai/` (the `lib/jira/` isolation
-precedent), provider switched by `AI_PROVIDER` env — downtime/cost switching is an env flip, zero
-code changes. Gemini is the first adapter; an Anthropic adapter ships alongside to prove the
-abstraction. Product surface: an on-demand **"AI Digest" dialog** on `/` (Hero button) generating
-headline + leadership narrative + ranked risk call-outs, with Copy for the EM's weekly update
-upward (§2.2/§2.3, §16 use cases 1–2). **No schema change, no migration, no new deps, one new
-API route.**
+The natural successor to ai-insights (whose Out-of-scope №1 parked the roll-up digest as a fast
+follow), per Naveen's three asks (2026-07-20): (1) board-level **risk comments** on the
+RiskCalloutsPanel — known/agreed risks (e.g. a planned late QA handoff) annotated so they reach
+ED/VP as managed context; (2) `/rollup` shows **every** risk via a "View all risks" dialog (team
+chips, blocked reasons, comments); (3) a **roll-up AI digest** — portfolio prompt with per-team
+comparison, commented risks narrated as known/agreed. **First schema change since
+add-user-isadmin**: `IssueProgress.riskComment String?` + one migration. One new route
+(28 → 29 ƒ Dynamic), no new deps.
 
 ## Status
 
-**Done 2026-07-20** — provider-agnostic platform (`src/lib/ai/`: `provider.js` w/ lazy config +
-`generateJson` (zod gate + one repair retry), `errors.js`, fetch-only Gemini + Anthropic
-adapters); pure `digest.mjs` + `schemas/ai.js` contract; `POST …/ai-digest` (TEAM_ALL_ROLES,
-503/502 mappings, 400 empty-board guard); `ai-digest-dialog.jsx` + Hero button behind
-server-provided `aiEnabled`; `.env.example` AI block. **No schema change, no migration, no new
-deps, one new route.** Verified: 39/39 plain-Node fixtures; lint; `prisma validate`/`migrate
-status` up to date; **DB/env-free build green — 28 ƒ Dynamic**; **25/25 smoke on dev+Neon w/
-contract-faithful mock providers** — incl. **the swap proof** (flip `AI_PROVIDER`
-gemini→anthropic → identical normalized digest, zero code changes), repair retry, 502/503/500
-states, sanitize-over-HTTP, share page clean; fixture torn down to 0, `.env` restored
-byte-identical. ⚠️ Pending human acceptance: Naveen sets a real provider key, reads a real
-digest, flips providers once. **Next:** roll-up digest (fast follow) or the remaining §16 AI
-use cases (Q&A, stage suggestions) / export-embedded narrative.
+**Done 2026-07-21.** Schema: `IssueProgress.riskComment String?` + migration
+`20260720065659_add_issueprogress_riskcomment` (first schema change since `add_user_isadmin`).
+Write path: progress PUT persists `riskComment` independent of blocked (never auto-cleared).
+Board UI: `metrics.mjs` centrally attaches `blockedReason`/`riskComment` to every issue (never a
+scoring input); `risk-callouts-panel.jsx` renders a "Known" badge + per-row edit affordance for
+writers; new `risk-comment-dialog.jsx`. Roll-up: `getRollupData` carries the same fields per
+team (never merged across teams); new `rollup-risk-section.jsx` ("View all risks" dialog + "View
+all (N)" chip, replacing the inaccurate "see the matrix below" line) and `rollup-digest-button.jsx`
+→ new flat `POST /api/rollup/ai-digest` (403 zero-membership / 404 sprint-mismatch / 400
+empty-portfolio guards); `AiDigestDialog` generalized via `endpoint`/`body`/`intro`. **Found +
+fixed one platform bug along the way:** both AI Digest routes (team + roll-up) were truncating
+live Gemini responses mid-JSON (`gemini-3.5-flash` spends ~1900 of the 2048-token budget on
+invisible "thinking" tokens) — fixed by passing `maxOutputTokens: 4096` at both call sites.
+Verified: lint clean; `prisma validate`/`migrate status` up to date (**3 migrations**);
+**DB/env-free build green — 29 ƒ Dynamic** (`.env` genuinely moved away, not just shell-unset);
+**20/20 plain-Node fixtures**; **41/41 SSR/API smoke** on dev+Neon (colliding-jiraKey two-team
+fixture proving no cross-team merge, PUT mechanics, survives-a-simulated-resync, board + roll-up
+SSR, the roll-up digest route's full gate matrix, **one real live generation** narrating a
+commented risk as "managed, known context", a regression check on the existing team digest
+route, and a share-page check confirming no leakage). Fixture torn down to 0, harness deleted.
+**Next:** export-embedded AI narrative, AI Q&A over sprint data, or stage suggestions — the
+remaining open post-v1 ideas.
 
 ## Goals
 
-- **(a) AI platform — `src/lib/ai/`:** `provider.js` (lazy `getAiConfig()` + `isAiConfigured()`,
-  `generateJson({ system, prompt, schema, maxOutputTokens })` dispatch, parse → zod → one repair
-  retry, `AiNotConfiguredError`/`AiProviderError`); thin fetch-only `adapters/gemini.js` +
-  `adapters/anthropic.js` (all endpoints/headers/model defaults isolated there).
-- **(b) Digest builder:** pure `src/lib/ai/digest.mjs` (`buildDigestInput` — worst-N mirror of
-  the risk panel, compact payload, never raw Jira dumps — plus `buildDigestPrompt`);
-  `src/lib/schemas/ai.js` (zod digest contract + flat JSON-schema rendering).
-- **(c) Route:** `POST /api/teams/[teamId]/sprints/[sprintId]/ai-digest` — force-dynamic,
-  `requireTeamRole(TEAM_ALL_ROLES)`, reuses `dashboard-data.js` assembly, returns
-  `{ digest, generatedAt, provider, model }`; provider errors → 502, unconfigured → 503.
-- **(d) UI:** `components/dashboard/ai-digest-dialog.jsx` (Generate/Regenerate, rendered digest,
-  Copy → clipboard + toast, inline errors); Hero "AI Digest" button (Sparkles, onDark);
-  Dashboard wiring gated on server-provided `aiEnabled`.
-- **(e) Env/docs:** `.env.example` AI block (`AI_PROVIDER`, both keys, `AI_MODEL`).
-- **Acceptance:** lint + DB/env-free build (28 ƒ Dynamic); plain-Node digest fixtures;
-  mock-provider round-trip proving the gemini↔anthropic swap; SSR/API smoke (RBAC, dormant
-  state, share pages unchanged); live Gemini smoke; Naveen reads a real digest + flips provider.
+- **(a) Schema:** `riskComment String?` on `IssueProgress` (`prisma/schema.prisma`), migration
+  `add_issueprogress_riskcomment`, §9 synced byte-consistent in the same change.
+- **(b) Write path:** optional `riskComment` in `src/lib/schemas/progress.js` (trim, max 500,
+  nullish; "at least one of stage/blocked/riskComment") + persistence in the progress PUT route —
+  independent of blocked, never auto-cleared, empty → null.
+- **(c) Board UI:** `getDashboardData` selects `riskComment`; `risk-callouts-panel.jsx` renders
+  comment + "Known" badge + optional `onEditComment` per-row affordance; new
+  `risk-comment-dialog.jsx`; `dashboard.jsx` wiring when `can.write`.
+- **(d) Roll-up risks:** `getRollupData` selects `blockedReason`+`riskComment` (attached per
+  team — never merge maps, §9) + returns `aiEnabled`; new client
+  `components/rollup/rollup-risk-section.jsx` (panel + "View all risks (N)" dialog, read-only)
+  replacing the direct panel render in `src/app/rollup/page.jsx`.
+- **(e) Roll-up AI digest:** pure `buildRollupDigestInput`/`buildRollupDigestPrompt` in
+  `digest.mjs` (+ `riskComment` into the team digest); flat `POST /api/rollup/ai-digest`
+  (requireUser → `getRollupData` → 403/404/400 guards, 503/502 mappings); `AiDigestDialog`
+  generalized (`endpoint`/`body`/intro); new `rollup-digest-button.jsx` in the roll-up hero.
+- **Acceptance:** lint; `prisma validate` + `migrate status` (**3 migrations**); DB/env-free
+  build **29 ƒ Dynamic**; plain-Node fixtures (roll-up input/prompt, comment pass-through,
+  progress schema); SSR/API smoke (PUT gates, survives-sync, both panels, all-risks dialog,
+  digest route gates + swap proof, share/export clean); live roll-up digest; Naveen's e2e.
 
 ## Notes
 
-- **All decisions except №1 are PROPOSED** (spec) — flag divergence to Naveen instead of
-  silently changing course.
-- **No env reads at module load** anywhere in `lib/ai/` — the build must pass with every `AI_*`
-  var unset (that's also the supported dormant state: no Hero button, route → 503).
-- **Anthropic adapter:** consult the `claude-api` skill — the Messages API drifted from training
-  data (structured outputs = `output_config.format`; sampling params rejected; prefills 400).
-  **Gemini adapter:** verify the current REST shape + model ids via docs at implementation time.
-- **Prompt-injection surface:** issue titles/blockedReason are Jira-authored free text — mark as
-  data in the system prompt; render output as plain React text; link only jiraKeys that exist in
-  the digest input (drop hallucinated ones).
-- **Never log/echo secrets or raw provider payloads** — curated error messages only.
-- Gemini's responseSchema supports a JSON-Schema subset — the contract stays flat; zod in the
-  neutral layer is the real gate.
-- Read the installed Next 16 docs for the new route (async `params`).
+- **All design decisions are PROPOSED** (asks themselves ratified) — flag divergence, don't
+  silently change course.
+- **prisma-change discipline:** named migration via `yarn db:migrate` (never `db push`), §9 and
+  schema.prisma in the same change, client regenerated, build stays DB/env-free.
+- **Comments are annotations, never metric inputs** — nothing in `metrics.mjs` reads
+  `riskComment`; §12 numbers cannot shift.
+- **§9 keying:** attach comment/reason inside each team's own progress map before flat-mapping —
+  never merge across teams (same jiraKey may exist in two teams).
+- **`riskComment` joins the injection surface** — data-not-instructions framing in both prompts;
+  plain React text out; `sanitizeDigest` unchanged.
+- **Share/export stay comment- and digest-free** (frozen-artifact exclusion precedent).
+- Unlike `blockedReason`, the comment is **not** cleared on unblock — only an explicit write
+  (empty string) clears it.
+- Read the installed Next 16 docs before the new route/client-leaf work.
 
 ## History
 
@@ -782,6 +794,58 @@ use cases (Q&A, stage suggestions) / export-embedded narrative.
   same digest contract (team attribution in text); `AiDigestDialog` generalized via an
   `endpoint` prop; share/export stay comment- and digest-free. Sequencing: branches off the
   uncommitted `feature/ai-insights`. Not yet started — awaiting start-feature.
+- 2026-07-20 — Picked @context/features/risk-comments-rollup-digest.md as the current feature
+  (risk comments on the risk panel + roll-up all-risks dialog + roll-up AI digest; first schema
+  change since add-user-isadmin). Branch `feature/risk-comments-rollup-digest` created off
+  `feature/ai-insights`. ai-insights remains **Done** (uncommitted diff rides along).
+- 2026-07-21 — **Implemented risk-comments-rollup-digest (Naveen's three asks: risk comments,
+  roll-up all-risks dialog, roll-up AI digest).** Added `IssueProgress.riskComment String?` +
+  migration `20260720065659_add_issueprogress_riskcomment` (§9 synced same change) — the first
+  schema change since `add_user_isadmin` (2026-06-15). Extended `progressWriteSchema` +
+  the progress PUT route (`riskComment` independent of blocked, undefined→keep,
+  empty/whitespace→clear to null, never auto-cleared by block/unblock). Centralized
+  `blockedReason`/`riskComment` pass-through in `lib/metrics.mjs`'s `resolveProgress`/
+  `computeSprintMetrics` (annotation only, never a scoring input) so every caller — `/`,
+  `/rollup`, both AI digest builders — gets them automatically and per-team-correctly with no
+  extra plumbing; `risk-callouts-panel.jsx` dropped its old `progressByKey` prop in favor of
+  reading the fields directly off each issue, gained a "Known" badge, an optional per-row
+  `onEditComment` affordance, an `onViewAll` header chip, and exported `sortRiskyIssues`/
+  `IssueKey`. New `risk-comment-dialog.jsx` (board, writer-gated) and
+  `components/rollup/rollup-risk-section.jsx` (roll-up, read-only "View all risks" dialog listing
+  every risky issue across teams — replacing the roll-up's inaccurate "see the matrix below"
+  line) wired into `dashboard.jsx`/`rollup/page.jsx`. `getRollupData` now selects
+  `blockedReason`/`riskComment` + returns `aiEnabled`. Roll-up digest: `digest.mjs` grew shared
+  `velocityPayload`/`trendPayload`/`riskIssuePayload` helpers plus
+  `buildRollupDigestInput`/`buildRollupDigestPrompt` (per-team summary lines + cross-team
+  worst-N risks, capped at 12; `riskComment`/"known" flows into the team digest's prompt too);
+  new flat `POST /api/rollup/ai-digest` (`requireUser` → `getRollupData` → 403 zero-membership /
+  404 sprint-mismatch / 400 empty-portfolio); `AiDigestDialog` generalized to
+  `endpoint`/`body`/`intro` props (both call sites updated); new
+  `components/rollup/rollup-digest-button.jsx` in the roll-up hero. **Found + fixed one platform
+  bug outside the original scope, flagged rather than silently patched:** live-smoke against real
+  Gemini (`gemini-3.5-flash`) truncated mid-JSON (`finishReason: MAX_TOKENS`) on BOTH the new
+  roll-up route and the existing, unmodified team route — the model spends part of
+  `maxOutputTokens` on invisible "thinking" tokens; fixed by passing `maxOutputTokens: 4096` at
+  both `generateJson` call sites (no change to `lib/ai/provider.js` or the adapters). No other
+  schema change, no new deps. Verified: lint clean; `prisma validate`/`migrate status` up to date
+  (3 migrations); **DB/env-free build green — 29 ƒ Dynamic** (`.env` genuinely moved away for the
+  check, not just shell-unset — exactly the new `/api/rollup/ai-digest` route added); **20/20
+  plain-Node fixtures** (metrics pass-through, cross-team worst-N ordering, prompt determinism,
+  sanitize, progress-schema rules); **41/41 SSR/API smoke** on dev+Neon against a fabricated
+  3-team fixture with a **colliding `jiraKey` seeded in two teams with different comments**
+  (proving no cross-team progress-map merge): PUT mechanics incl. create-on-first-write/403/404/
+  400/empty-clear, a simulated Issue-cache replace leaving the comment intact, board SSR (Known
+  badge, edit affordance present for writer/absent for VIEWER), roll-up SSR (both teams' distinct
+  comments visible, "view all risks" wording, correct "View all (N)" count), the roll-up digest
+  route's full gate matrix, **one real live generation** (the model correctly narrated the
+  commented risk as managed/known context), a regression check that the team digest route still
+  works post-refactor, and a share-page check confirming no comments/digest leak onto share
+  pages. Fixture torn down to 0 leftovers, temporary harness deleted; a stale dev server (running
+  since before today's migration, holding an outdated Prisma client) was found and restarted
+  cleanly mid-verification — unrelated to app code. **Done.** ⚠️ Pending human acceptance:
+  Naveen adds a comment to a real issue, confirms it on `/rollup` (panel + dialog), and judges a
+  real roll-up digest's narrative quality. **Next:** export-embedded AI narrative, AI Q&A over
+  sprint data, or stage suggestions.
 - 2026-07-20 — **Risk-panel iteration (per Naveen; rides on the ai-insights branch):** the
   `/rollup` Risk call-outs now link Jira keys (`getRollupData` returns the env-derived
   `jiraBaseUrl`; the panel already took the prop) and the ragged rows are fixed — the list is a

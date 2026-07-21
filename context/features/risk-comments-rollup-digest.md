@@ -36,7 +36,107 @@ precedent) or lands after Naveen commits/merges it.
 
 ## Status
 
-Planned 2026-07-20.
+**Done 2026-07-21.** All three asks implemented as specced, with one platform-level bug found
+and fixed along the way (see As-built note below).
+
+Implemented: (a) schema — `IssueProgress.riskComment String?` +
+migration `20260720065659_add_issueprogress_riskcomment` (§9 synced same change); (b) write path
+— `progressWriteSchema` gains `riskComment` (independent of blocked, "at least one of
+stage/blocked/riskComment" guard) + the progress PUT route persists it (undefined → keep,
+empty/whitespace → clear to null, never auto-cleared by block/unblock); (c) board UI —
+`resolveProgress`/`computeSprintMetrics` in `metrics.mjs` now carry `blockedReason`/`riskComment`
+per issue (annotation only, never a scoring input), `risk-callouts-panel.jsx` renders a "Known"
+badge + inline comment + optional per-row edit affordance, new `risk-comment-dialog.jsx`,
+`dashboard.jsx` wiring gated on `can.write`; (d) roll-up risks — `getRollupData`'s progress
+select adds `blockedReason`/`riskComment` (attached per-team automatically via the shared
+`computeSprintMetrics`, never merged across teams), new `sortRiskyIssues`/`IssueKey` exports off
+`risk-callouts-panel.jsx`, new `rollup-risk-section.jsx` (panel + "View all risks" dialog + a
+"View all (N)" header chip, replacing the inaccurate "see the matrix below" overflow line),
+wired into `rollup/page.jsx`; (e) roll-up AI digest — pure `buildRollupDigestInput`/
+`buildRollupDigestPrompt` in `digest.mjs` (shared `velocityPayload`/`trendPayload`/
+`riskIssuePayload` helpers now back both builders), `riskComment`/"known" flag flow into the
+team digest too, flat `POST /api/rollup/ai-digest` (`requireUser` → `getRollupData` → 403 zero
+membership / 404 sprint mismatch / 400 empty portfolio), `AiDigestDialog` generalized to
+`endpoint`/`body`/`intro` props, new `rollup-digest-button.jsx` in the roll-up hero (gated on
+`aiEnabled` + non-empty combined metrics). No schema change beyond the one column; no new deps.
+
+**Verified:** `yarn lint` clean; `prisma validate` + `migrate status` up to date (**3
+migrations**); **DB/env-free production build green — 29 ƒ Dynamic** (`.env` genuinely moved
+away and restored, not just shell-unset — exactly the new `/api/rollup/ai-digest` route added);
+**20/20 plain-Node fixtures** (11 for metrics/digest pass-through + cross-team worst-N ordering +
+prompt determinism + sanitize, 9 for the progress-schema riskComment rules); **41/41 SSR/API
+smoke** on dev+Neon against a fabricated 3-team fixture with a **colliding `jiraKey` ("DUP-1")
+seeded in two teams with different comments** (proving no cross-team progress-map merge): PUT
+mechanics (create-on-first-write, viewer 403, unknown-key 404, >500-char 400, empty-payload 400,
+block/unblock leaves the comment untouched, empty string clears to null), a simulated Issue-cache
+replace leaving the comment intact, board SSR (comment text, Known badge, edit affordance
+present for writer / absent for VIEWER), roll-up SSR (both teams' distinct DUP-1 comments
+visible, "view all risks" overflow wording replacing the old text, correct "View all (N)" count),
+the roll-up digest route's full gate matrix (401/403/404/400), **one real live generation**
+against the configured Gemini provider (headline/narrative/callouts + provider/model
+attribution, and the model correctly narrated the commented risk as "managed, known context"),
+a regression check that the existing team-level `/ai-digest` route still works after the shared
+`digest.mjs` refactor, and a share-page check confirming no risk comments or AI Digest button
+leak onto the frozen/live share surface. Fixture torn down to 0 leftover rows; temporary harness
+deleted.
+
+⚠️ **Pending human acceptance (Naveen):** add a comment to a real at-risk issue on `/`, confirm
+it renders on `/rollup` (panel + "View all risks" dialog), generate a real roll-up digest and
+judge whether commented risks read as "known/agreed" rather than alarming.
+
+## As-built notes (vs. the spec)
+
+- **Bug found and fixed (outside the original file list, same root cause both places):** the
+  live-smoke roll-up digest call against the real Gemini provider (`gemini-3.5-flash`) came back
+  `finishReason: MAX_TOKENS` with unparseable truncated JSON — the model spent ~1900 of the
+  2048-token `maxOutputTokens` budget on invisible "thinking" tokens before writing the visible
+  answer, and the portfolio prompt (comparing multiple teams) is long enough to need more of the
+  remaining budget than the single-team digest. Fix: pass `maxOutputTokens: 4096` explicitly at
+  both digest call sites — the new roll-up route AND the **existing, unmodified** team route
+  (`.../ai-digest/route.js`), since a follow-up regression check proved the team route hit the
+  identical truncation on the same live fixture. Both are one-line, additive uses of
+  `generateJson`'s existing optional parameter — no change to `lib/ai/provider.js` or the
+  adapters. Flagged here rather than silently fixed because it touches a file outside this
+  feature's original scope list.
+- **Centralized `blockedReason`/`riskComment` in `metrics.mjs`, not in `dashboard-data.js` per
+  issue-object assembly (spec decision 4 implied the latter).** `resolveProgress` now returns
+  both fields and `computeSprintMetrics` attaches them to every issue object it builds — since
+  `/`, `/rollup`, and the digest builders all already run their own `computeSprintMetrics` (or
+  `aggregateRollup` over per-team results), this one change makes every caller carry the fields
+  automatically and per-team-correctly with zero extra plumbing, and it's what let
+  `RiskCalloutsPanel` drop its old `progressByKey` prop entirely in favor of reading
+  `issue.blockedReason`/`issue.riskComment` directly. Simpler than threading a second map through
+  every caller, and the fields are documented as scoring-inert passthrough (never read by
+  `calculateWeightedCompletion`/`getHealthStatus`).
+- **`RiskCalloutsPanel` gained an `onViewAll` prop and a header "View all (N)" chip**, and its
+  overflow line now branches between the original "see the matrix below" (when `onViewAll` is
+  absent, i.e. on `/`) and a clickable "view all risks" trigger (when present, i.e. on
+  `/rollup`) — the spec's decision 5 described a wrapper-level affordance; doing it as a panel
+  prop instead avoids overlaying a second header on top of the panel's own blocked/behind/at-risk
+  summary line.
+- **Exported `sortRiskyIssues` and `IssueKey` from `risk-callouts-panel.jsx`** (not originally
+  scoped) so the new "View all risks" dialog (`rollup-risk-section.jsx`) renders the identical
+  worst-first ordering and Jira-key-link treatment as the panel, instead of re-deriving either.
+- **`digest.mjs` refactored to share `velocityPayload`/`trendPayload`/`riskIssuePayload` helpers**
+  between the team and roll-up builders (not explicitly scoped, but the two builders' payload
+  shapes are otherwise near-duplicates) — keeps the team digest's prompt payload byte-identical
+  to before while avoiding drift between the two builders going forward.
+- **Dropped the now-redundant `progressByKey` parameter from `buildDigestInput`** — since
+  `metrics.issues` already carries `blockedReason`/`riskComment` (see above), the function reads
+  them directly off each issue instead of a second lookup map; the team route's call site updated
+  to match.
+- **`RollupDigestButton` gates on `combined.totalIssues > 0`** (not just `aiEnabled`), mirroring
+  the team Hero's `!showWelcome` guard — avoids offering a button that would just 400.
+- **tsx quirk encountered during smoke authoring (tooling note, not app-related):** this
+  environment's `tsx` (4.22.4) collapses named exports from plain `.js` files (no
+  `"type":"module"`) down to a single `default` object when imported via `import * as` — `.mjs`
+  files are unaffected. Worked around by inlining the few `.js`-sourced constants a debug script
+  needed rather than importing them. Not a code change; noted in case a future session hits the
+  same friction writing a harness.
+- **Dev server needed a restart mid-verification**: the `:3002` dev server had been running since
+  before today's schema migration + client regeneration, so it 500'd on the first real
+  `riskComment` write (stale generated Prisma client missing the new column in its runtime DMMF).
+  Killed and restarted cleanly; unrelated to app code.
 
 ## Decisions
 

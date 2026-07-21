@@ -23,6 +23,7 @@ import { FilterPanel } from "./filter-panel";
 import { PlannerPanel } from "./planner-panel";
 import { AddFilterDialog } from "./add-filter-dialog";
 import { SprintConfigDialog } from "./sprint-config-dialog";
+import { RiskCommentDialog } from "./risk-comment-dialog";
 import { AiDigestDialog } from "./ai-digest-dialog";
 import { ShareDialog } from "./share-dialog";
 import { ExportDialog } from "./export-dialog";
@@ -69,6 +70,7 @@ export function Dashboard({
   const [showShare, setShowShare] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showAiDigest, setShowAiDigest] = useState(false);
+  const [editingRiskIssue, setEditingRiskIssue] = useState(null);
   const [sprintDialogMode, setSprintDialogMode] = useState(null); // null | "create" | "edit"
   const [syncing, setSyncing] = useState(false);
   // busy covers the whole round-trip — the API call AND the router.refresh() re-render — so the
@@ -165,6 +167,23 @@ export function Dashboard({
         body: { blocked },
       }),
     );
+
+  const handleSaveRiskComment = (jiraKey, riskComment) =>
+    startMutation(async () => {
+      try {
+        await apiFetch(`${base}/progress/${encodeURIComponent(jiraKey)}`, {
+          method: "PUT",
+          body: { riskComment },
+        });
+        setEditingRiskIssue(null);
+        startMutation(() => {
+          router.refresh();
+          showToast(riskComment ? "Risk comment saved" : "Risk comment removed");
+        });
+      } catch (error) {
+        setAlert({ title: "Could not save risk comment", body: error.message, tone: "error" });
+      }
+    });
 
   const handleRemoveFilter = (filterId) =>
     run("Could not remove filter", () => apiFetch(`${base}/filters/${filterId}`, { method: "DELETE" }));
@@ -282,9 +301,9 @@ export function Dashboard({
                   <TrendPanel series={trend} sprint={selectedSprint} asOf={asOf} />
                   <RiskCalloutsPanel
                     issues={metrics.issues}
-                    progressByKey={progressByKey}
                     series={trend}
                     jiraBaseUrl={jiraBaseUrl}
+                    onEditComment={can.write ? (issue) => setEditingRiskIssue(issue) : null}
                   />
                 </section>
                 <section
@@ -331,9 +350,18 @@ export function Dashboard({
           existingCount={filters.length}
         />
       )}
+      {editingRiskIssue && base && (
+        <RiskCommentDialog
+          issue={editingRiskIssue}
+          busy={busy}
+          onSave={(comment) => handleSaveRiskComment(editingRiskIssue.jiraKey, comment)}
+          onRemove={() => handleSaveRiskComment(editingRiskIssue.jiraKey, "")}
+          onClose={() => setEditingRiskIssue(null)}
+        />
+      )}
       {showAiDigest && base && (
         <AiDigestDialog
-          base={base}
+          endpoint={`${base}/ai-digest`}
           jiraBaseUrl={jiraBaseUrl}
           onClose={() => setShowAiDigest(false)}
           showToast={showToast}

@@ -80,7 +80,14 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
     });
     const progress = await prisma.issueProgress.findMany({
       where: { teamId: selectedTeam.id, sprintId: selectedSprint.id },
-      select: { jiraKey: true, workflowType: true, stageCompletion: true, blocked: true, blockedReason: true },
+      select: {
+        jiraKey: true,
+        workflowType: true,
+        stageCompletion: true,
+        blocked: true,
+        blockedReason: true,
+        riskComment: true,
+      },
     });
     progressByKey = Object.fromEntries(progress.map((row) => [row.jiraKey, row]));
     // Daily step-7 cron rows powering the trend/burndown panel (trend-burndown.md (b)).
@@ -151,7 +158,14 @@ export async function getDigestData(teamId, sprintId) {
   });
   const progress = await prisma.issueProgress.findMany({
     where: { teamId, sprintId },
-    select: { jiraKey: true, workflowType: true, stageCompletion: true, blocked: true, blockedReason: true },
+    select: {
+      jiraKey: true,
+      workflowType: true,
+      stageCompletion: true,
+      blocked: true,
+      blockedReason: true,
+      riskComment: true,
+    },
   });
   const snapshots = await prisma.sprintSnapshot.findMany({
     where: { teamId, sprintId },
@@ -196,9 +210,20 @@ export async function getRollupData(user, { sprintId } = {}) {
       orderBy: { sortOrder: "asc" },
       include: { issues: { orderBy: { jiraKey: "asc" } } },
     });
+    // blockedReason + riskComment (risk-comments-rollup-digest.md decision 4) travel through so
+    // the roll-up's RiskCalloutsPanel + all-risks dialog can render them — attached per team below,
+    // NEVER merged across teams (§9: the same jiraKey may hold different progress in two teams).
     const progress = await prisma.issueProgress.findMany({
       where: { teamId: { in: teamIds }, sprintId: selectedSprint.id },
-      select: { teamId: true, jiraKey: true, workflowType: true, stageCompletion: true, blocked: true },
+      select: {
+        teamId: true,
+        jiraKey: true,
+        workflowType: true,
+        stageCompletion: true,
+        blocked: true,
+        blockedReason: true,
+        riskComment: true,
+      },
     });
     // One batched read (no per-team N+1), combined per day by the pure helper (decisions 6–7).
     const snapshotRows = await prisma.sprintSnapshot.findMany({
@@ -245,6 +270,9 @@ export async function getRollupData(user, { sprintId } = {}) {
     combinedSnapshots,
     combined: selectedSprint ? aggregateRollup(perTeam.map((entry) => entry.metrics)) : null,
     jiraBaseUrl: process.env.JIRA_BASE_URL?.trim().replace(/\/+$/, "") ?? null,
+    // UI affordance only (ai-insights.md decision 3 precedent) — the rollup ai-digest route
+    // re-checks per request.
+    aiEnabled: isAiConfigured(),
   };
 }
 

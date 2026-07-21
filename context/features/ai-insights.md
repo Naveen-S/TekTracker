@@ -291,6 +291,9 @@ Decision 1 is **ratified with Naveen 2026-07-20**; the rest are **PROPOSED** wit
 
 - **Roll-up (`/rollup`) digest** — fast follow: same `digest.mjs` builder over `aggregateRollup`
   inputs + one membership-derived route. Parked to keep v1 to one route/one dialog.
+  **→ BUILT 2026-07-21**, see context/features/risk-comments-rollup-digest.md (decisions 6–8):
+  `buildRollupDigestInput`/`buildRollupDigestPrompt` added to `digest.mjs`, flat
+  `POST /api/rollup/ai-digest`, `AiDigestDialog` generalized via `endpoint`/`body`/`intro` props.
 - **Narrative in PDF export / share pages** — the §14.10 "narrative for exports" idea; needs a
   decision about non-reproducible content in frozen artifacts. Post-v1 follow-up.
 - **The other two §16 use cases** — Q&A over sprint data, stage suggestions.

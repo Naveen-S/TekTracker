@@ -10,6 +10,9 @@
  *   status-seeding, so `seededFromStatus` stays null (that's Sync's job, step 5). No cached issue
  *   matches → 404.
  * - Every write attributes `updatedById` to the caller.
+ * - `riskComment` (risk-comments-rollup-digest.md decision 2) is independent of blocked/
+ *   blockedReason — undefined leaves it untouched, an empty/whitespace string clears it to null,
+ *   and it survives unblock/re-block (unlike blockedReason, never auto-cleared).
  */
 import { prisma } from "@/lib/db";
 import { requireTeamRole, NotFoundError, TEAM_WRITER_ROLES } from "@/lib/rbac";
@@ -73,7 +76,12 @@ export async function PUT(request, { params }) {
           : (existing?.blockedReason ?? null)
         : null;
 
-      const fields = { stageCompletion, blocked, blockedReason, updatedById: user.id };
+      const riskComment =
+        data.riskComment !== undefined
+          ? data.riskComment || null // empty/whitespace ("" after zod .trim()) clears it
+          : (existing?.riskComment ?? null);
+
+      const fields = { stageCompletion, blocked, blockedReason, riskComment, updatedById: user.id };
       if (existing) {
         return tx.issueProgress.update({ where, data: fields });
       }

@@ -69,3 +69,12 @@ export const digestContract = {
 };
 
 /** @typedef {z.infer<typeof digestZodSchema>} SprintDigest */
+
+/**
+ * Body for `POST /api/rollup/ai-digest` (risk-comments-rollup-digest.md decision 6) — the
+ * roll-up is membership-derived, not team-scoped, so the sprint travels in the body instead of
+ * the URL path.
+ */
+export const rollupDigestBodySchema = z.object({
+  sprintId: z.string().trim().min(1),
+});

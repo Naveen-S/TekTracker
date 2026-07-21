@@ -23,10 +23,11 @@ import {
 } from "@/components/ui/hero-shell";
 import { MetricGrid } from "@/components/dashboard/metric-grid";
 import { TrendPanel } from "@/components/dashboard/trend-panel";
-import { RiskCalloutsPanel } from "@/components/dashboard/risk-callouts-panel";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { RollupTopBar } from "@/components/rollup/rollup-top-bar";
 import { TeamSummaryTable } from "@/components/rollup/team-summary-table";
+import { RollupRiskSection } from "@/components/rollup/rollup-risk-section";
+import { RollupDigestButton } from "@/components/rollup/rollup-digest-button";
 
 export const dynamic = "force-dynamic";
 
@@ -71,21 +72,26 @@ export default async function RollupPage({ searchParams }) {
           />
         ) : (
           <>
-            <HeroShell className="px-5 py-6 md:px-8 md:py-7">
-              <HeroEyebrow>
-                {selectedSprint.name} · {formatDate(selectedSprint.developmentStart)} –{" "}
-                {formatDate(selectedSprint.developmentEnd)}
-                {selectedSprint.releaseDate
-                  ? ` · release ${formatDate(selectedSprint.releaseDate)}`
-                  : ""}
-              </HeroEyebrow>
-              <HeroTitle>
-                Multi-team roll-up — {perTeam.length} {perTeam.length === 1 ? "team" : "teams"}
-              </HeroTitle>
-              <div className="mt-2 flex flex-wrap items-center gap-2.5">
-                <HeroCopy>Read-only portfolio view across every team you belong to.</HeroCopy>
-                <DaysRemainingPill days={daysRemaining} />
+            <HeroShell className="flex flex-wrap items-center justify-between gap-4 px-5 py-6 md:px-8 md:py-7">
+              <div>
+                <HeroEyebrow>
+                  {selectedSprint.name} · {formatDate(selectedSprint.developmentStart)} –{" "}
+                  {formatDate(selectedSprint.developmentEnd)}
+                  {selectedSprint.releaseDate
+                    ? ` · release ${formatDate(selectedSprint.releaseDate)}`
+                    : ""}
+                </HeroEyebrow>
+                <HeroTitle>
+                  Multi-team roll-up — {perTeam.length} {perTeam.length === 1 ? "team" : "teams"}
+                </HeroTitle>
+                <div className="mt-2 flex flex-wrap items-center gap-2.5">
+                  <HeroCopy>Read-only portfolio view across every team you belong to.</HeroCopy>
+                  <DaysRemainingPill days={daysRemaining} />
+                </div>
               </div>
+              {data.aiEnabled && combined && combined.totalIssues > 0 && (
+                <RollupDigestButton sprintId={selectedSprint.id} jiraBaseUrl={data.jiraBaseUrl} />
+              )}
             </HeroShell>
 
             <MetricGrid
@@ -100,7 +106,7 @@ export default async function RollupPage({ searchParams }) {
                 asOf={asOf}
                 totalTeams={perTeam.length}
               />
-              <RiskCalloutsPanel
+              <RollupRiskSection
                 issues={perTeam.flatMap((entry) =>
                   entry.metrics.issues.map((issue) => ({ ...issue, teamKey: entry.team.key })),
                 )}

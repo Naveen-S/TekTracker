@@ -233,6 +233,7 @@ model IssueProgress {
   stageCompletion  Boolean[]                       // length = workflow stage count
   blocked          Boolean  @default(false)
   blockedReason    String?
+  riskComment      String?                         // known/agreed-risk note (presence = acknowledged); never a metric input
   seededFromStatus String?                         // last Jira status used to seed stages (hybrid model)
   updatedById      String?
   updatedBy        User?    @relation("ProgressUpdatedBy", fields: [updatedById], references: [id])

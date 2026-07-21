@@ -1,11 +1,16 @@
 "use client";
 
 /**
- * AI Digest dialog (ai-insights.md (d)) — on-demand generation via POST …/ai-digest, following
- * the ShareDialog mechanics (Hero button → dialog → action → clipboard + toast). Generation is
- * only ever user-initiated (decision 4 — the v1 cost control); nothing is persisted. Digest text
+ * AI Digest dialog (ai-insights.md (d)) — on-demand generation via POST, following the
+ * ShareDialog mechanics (Hero button → dialog → action → clipboard + toast). Generation is only
+ * ever user-initiated (decision 4 — the v1 cost control); nothing is persisted. Digest text
  * renders as plain React text nodes (escaped) — never HTML; only Jira keys the server already
  * validated against the board data become links.
+ *
+ * Generalized (risk-comments-rollup-digest.md decision 8) to take a full `endpoint` + optional
+ * `body` instead of a team `base`, so `/rollup`'s portfolio digest (a flat route with a JSON
+ * body, not a team/sprint URL) reuses this component rather than forking it. `intro` lets each
+ * caller word the pre-generation copy for its own audience.
  */
 import { useState } from "react";
 import { Copy, RefreshCw, Sparkles } from "lucide-react";
@@ -50,7 +55,19 @@ function JiraKeyChip({ jiraKey, jiraBaseUrl }) {
   );
 }
 
-export function AiDigestDialog({ base, jiraBaseUrl, onClose, showToast }) {
+const DEFAULT_INTRO =
+  "Generate a leadership-ready sprint digest — headline, narrative, and risk call-outs — " +
+  "written from this board's current metrics, trend, and worst-health issues. Copy it into " +
+  "your weekly update.";
+
+export function AiDigestDialog({
+  endpoint,
+  body,
+  jiraBaseUrl,
+  onClose,
+  showToast,
+  intro = DEFAULT_INTRO,
+}) {
   const [result, setResult] = useState(null); // { digest, generatedAt, provider, model }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -59,7 +76,7 @@ export function AiDigestDialog({ base, jiraBaseUrl, onClose, showToast }) {
     setError("");
     setBusy(true);
     try {
-      setResult(await apiFetch(`${base}/ai-digest`, { method: "POST" }));
+      setResult(await apiFetch(endpoint, { method: "POST", body }));
     } catch (generateError) {
       setError(generateError.message);
     } finally {
@@ -81,13 +98,7 @@ export function AiDigestDialog({ base, jiraBaseUrl, onClose, showToast }) {
   return (
     <Dialog open title="AI Digest" onClose={busy ? undefined : onClose}>
       <div className="flex flex-col gap-4">
-        {!digest && !busy && (
-          <p className="text-sm text-muted-foreground">
-            Generate a leadership-ready sprint digest — headline, narrative, and risk call-outs —
-            written from this board&apos;s current metrics, trend, and worst-health issues. Copy it
-            into your weekly update.
-          </p>
-        )}
+        {!digest && !busy && <p className="text-sm text-muted-foreground">{intro}</p>}
 
         {busy && (
           <div className="flex items-center gap-2.5 rounded-md border border-border-subtle px-3 py-3 text-sm text-muted-foreground">

@@ -47,10 +47,14 @@ export async function POST(_request, { params }) {
       snapshotVelocity(series.points, sprint, asOf) ??
       getWeeklyVelocity(sprint, metrics.velocityCompletedPoints, metrics.velocityPoints);
 
-    const input = buildDigestInput({ team, sprint, metrics, series, velocity, progressByKey, asOf });
+    const input = buildDigestInput({ team, sprint, metrics, series, velocity, asOf });
     const { system, prompt } = buildDigestPrompt(input);
+    // Bumped from the generateJson default (2048) — risk-comments-rollup-digest.md live smoke
+    // found "thinking" models (e.g. gemini-3.5-flash) spend part of maxOutputTokens on invisible
+    // reasoning before the visible answer; 2048 truncated mid-JSON (finishReason: MAX_TOKENS) on
+    // a real sprint fixture even for a single team. 4096 completes reliably.
     const digest = sanitizeDigest(
-      await generateJson({ system, prompt, schema: digestContract }),
+      await generateJson({ system, prompt, schema: digestContract, maxOutputTokens: 4096 }),
       input,
     );
 
