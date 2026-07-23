@@ -300,3 +300,156 @@ model SprintSnapshot {
   @@unique([sprintId, teamId, capturedOn])
   @@index([sprintId])
 }
+
+// ─────────────────────────────────────────────────────────────
+// Bug report dashboards (gm-bug-report.md)
+// ─────────────────────────────────────────────────────────────
+
+/// A configurable bug-report dashboard (e.g. "GM", "Honda") rendered at /bugs/[slug].
+/// ORG-LEVEL, not team-scoped (decision 18): its categories deliberately cut across teams.
+/// This is the first read path in the app that is NOT sprint-scoped — no sprint, no stages, no
+/// per-issue lifecycle; the unit is counts across (category × scope × band).
+model BugReport {
+  id                   String   @id @default(cuid())
+  name                 String                          // "GM Daily Bug Report"
+  slug                 String   @unique                // URL segment, e.g. "gm"
+  description          String?
+  ownerName            String?                         // hero byline, e.g. "Naveen S"
+  targetDate           DateTime?                       // optional hero countdown
+  targetLabel          String?
+  /// Unmatched statuses land in this category (decision 9 — Naveen: Engineering Team).
+  /// Null = they fall into the derived `__unattributed__` residual row instead.
+  fallbackCategoryId   String?
+  isActive             Boolean  @default(true)
+  lastRefreshedAt      DateTime?
+  lastRefreshedByEmail String?
+  lastRefreshError     String?                         // set when a refresh aborted (decision 17)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  scopes     BugReportScope[]
+  bands      BugReportBand[]
+  categories BugReportCategory[]
+  issues     BugReportIssue[]
+  snapshots  BugReportSnapshot[]
+}
+
+/// One universe of bugs — the column GROUP (e.g. "External", "Internal"). Class is decided by
+/// WHICH universe a bug lives in (verified 2026-07-21: external = a different Jira project
+/// entirely), never by issue type. Source is a saved Jira filter id OR raw JQL (decision 5).
+model BugReportScope {
+  id           String           @id @default(cuid())
+  reportId     String
+  report       BugReport        @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  name         String                                  // "External" / "Internal"
+  sortOrder    Int              @default(0)
+  sourceType   FilterSourceType
+  jql          String?
+  jiraFilterId String?
+  resolvedJql  String?                                 // last JQL resolved from jiraFilterId
+  resolvedAt   DateTime?                               // …and when (surfaces Jira-side edits)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  slaTargets BugSlaTarget[]
+  issues     BugReportIssue[]
+
+  @@unique([reportId, name])
+  @@index([reportId, sortOrder])
+}
+
+/// SLA days per Jira PRIORITY NAME within a scope (decision 6 — reversal: SLA is app-computed,
+/// not a Jira filter). Breached when `jiraCreatedAt + days < asOf`. Keyed by priority name, NOT
+/// by band: bands are display columns, SLA is per real priority. No row ⇒ never breached.
+model BugSlaTarget {
+  id           String         @id @default(cuid())
+  scopeId      String
+  scope        BugReportScope @relation(fields: [scopeId], references: [id], onDelete: Cascade)
+  priorityName String                                  // "P1 - High"
+  days         Int
+
+  @@unique([scopeId, priorityName])
+}
+
+/// A priority band — the display COLUMN within each scope (P0 / P1 / P2+). Membership is a
+/// configured set of Jira priority names; exactly one band is the catch-all (decision 11).
+/// Never parse priority strings — map them (the StatusStageMapping precedent).
+model BugReportBand {
+  id            String    @id @default(cuid())
+  reportId      String
+  report        BugReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  label         String                                 // "P0" / "P1" / "P2+"
+  sortOrder     Int       @default(0)
+  priorityNames String[]                               // ["P1 - High"]
+  isCatchAll    Boolean   @default(false)              // absorbs unlisted priorities
+
+  @@unique([reportId, label])
+  @@index([reportId, sortOrder])
+}
+
+/// A matrix ROW — an ordered list of Jira statuses (decision 8: "QA Team → status = Testing").
+/// First match wins by sortOrder so rows always partition and the arithmetic always reconciles;
+/// a status listed in two categories is rejected at save time, never silently resolved.
+model BugReportCategory {
+  id          String    @id @default(cuid())
+  reportId    String
+  report      BugReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  name        String                                   // "Engineering Team"
+  sortOrder   Int       @default(0)
+  statuses    String[]                                 // ["Backlog", "Dev In Progress"]
+  accentColor String?
+
+  @@unique([reportId, name])
+  @@index([reportId, sortOrder])
+}
+
+/// Replace-on-refresh mirror of a scope's universe. RAW JIRA FACTS ONLY (decision 12): band,
+/// category and SLA breach are pure functions of (issue, config, asOf) computed at READ time, so
+/// editing config in /admin re-renders instantly with no Jira refresh, and this stays a dumb
+/// mirror. Deliberately no categoryId/bandId/slaBreached columns.
+model BugReportIssue {
+  id             String         @id @default(cuid())
+  reportId       String
+  report         BugReport      @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  scopeId        String
+  scope          BugReportScope @relation(fields: [scopeId], references: [id], onDelete: Cascade)
+  jiraKey        String
+  title          String
+  issueType      String
+  jiraStatus     String                                // drives category resolution
+  statusCategory String?                               // "To Do" / "In Progress" / "Done"
+  priority       String?                               // drives band + SLA resolution
+  assigneeName   String?
+  reporterName   String?
+  components     String?                               // comma-joined
+  labels         String?                               // comma-joined
+  jiraCreatedAt  DateTime?                             // drives SLA breach + aging
+  jiraUpdatedAt  DateTime?
+  lastSyncedAt   DateTime       @default(now())
+
+  @@unique([scopeId, jiraKey])
+  @@index([reportId])
+}
+
+/// Daily history of the CLASSIFIED matrix — one row per (report, day, row, scope, band).
+/// Self-describing (decision 15): every dimension carries both a key and the label as it read on
+/// that day, so renaming or deleting a category/scope/band never rewrites or orphans history.
+/// Derived rows use the sentinel keys `__total__` and `__unattributed__` — keeping the unique
+/// constraint NULL-free (the bootstrap-seed Postgres NULL-unique lesson).
+model BugReportSnapshot {
+  id            String    @id @default(cuid())
+  reportId      String
+  report        BugReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  capturedOn    DateTime                                // UTC midnight — one set of rows per day
+  rowKey        String                                  // categoryId | "__total__" | "__unattributed__"
+  rowLabel      String
+  scopeKey      String                                  // scopeId
+  scopeLabel    String
+  bandKey       String                                  // bandId | "__all__" (the scope Total column)
+  bandLabel     String
+  count         Int
+  breachedCount Int
+
+  @@unique([reportId, capturedOn, rowKey, scopeKey, bandKey])
+  @@index([reportId, capturedOn])
+}

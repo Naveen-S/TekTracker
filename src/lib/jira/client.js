@@ -131,10 +131,14 @@ const SEARCH_MAX_ISSUES = 2000; // safety cap — a sprint track is a few hundre
  * Fetch ALL issues for a JQL via the paginated POST /rest/api/3/search/jql endpoint
  * (`nextPageToken`/`isLast` — the OLD /search endpoint is deprecated; request shape matches the
  * legacy proxy, server.js:288-301).
- * @param {{ auth: { baseUrl: string, email: string, token: string }, jql: string, fields: string[] }} args
+ * `maxIssues` overrides the sprint-sized safety cap for callers with legitimately larger universes
+ * (gm-bug-report.md (d) — a bug backlog is bigger than a sprint track). It NEVER truncates: going
+ * over throws, because a silently short result would understate a leadership number.
+ *
+ * @param {{ auth: { baseUrl: string, email: string, token: string }, jql: string, fields: string[], maxIssues?: number }} args
  * @returns {Promise<Array<{ key: string, fields: Record<string, unknown> }>>}
  */
-export async function searchIssues({ auth, jql, fields }) {
+export async function searchIssues({ auth, jql, fields, maxIssues = SEARCH_MAX_ISSUES }) {
   const issues = [];
   let nextPageToken = null;
 
@@ -162,9 +166,9 @@ export async function searchIssues({ auth, jql, fields }) {
     const page = parsed.data;
     issues.push(...page.issues);
 
-    if (issues.length > SEARCH_MAX_ISSUES) {
+    if (issues.length > maxIssues) {
       throw new JiraApiError(
-        `JQL returned more than ${SEARCH_MAX_ISSUES} issues — narrow the filter's JQL`,
+        `JQL returned more than ${maxIssues} issues — narrow the filter's JQL`,
       );
     }
     if ((page.isLast ?? true) || !page.nextPageToken) {

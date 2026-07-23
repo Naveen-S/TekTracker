@@ -7,6 +7,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { AdminPanel } from "@/components/admin/admin-panel";
+import { getBugReportData } from "@/lib/bug-report-data";
 
 export const dynamic = "force-dynamic";
 
@@ -36,5 +37,18 @@ export default async function AdminPage() {
     prisma.sprint.findMany({ orderBy: { developmentStart: "desc" } }),
   ]);
 
-  return <AdminPanel teams={teams} sprints={sprints} />;
+  // Bug-report config (gm-bug-report.md (h)). The vocabularies come from the cached issues, so the
+  // status/priority pickers offer what the data actually contains instead of free text.
+  const bugData = await getBugReportData(undefined, new Date());
+
+  return (
+    <AdminPanel
+      teams={teams}
+      sprints={sprints}
+      bugReports={bugData?.reports ?? []}
+      bugConfig={bugData?.report ?? null}
+      bugStatusVocabulary={bugData?.statusVocabulary ?? []}
+      bugPriorityVocabulary={bugData?.priorityVocabulary ?? []}
+    />
+  );
 }

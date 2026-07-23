@@ -12,7 +12,7 @@ import { Select } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api-client";
 import { initials } from "@/lib/utils";
 
-export function RollupTopBar({ user, sprints, selectedSprint }) {
+export function RollupTopBar({ user, sprints, selectedSprint, hasBugReport }) {
   const router = useRouter();
 
   const handleLogout = async () => {
@@ -53,6 +53,11 @@ export function RollupTopBar({ user, sprints, selectedSprint }) {
         <Button variant="ghost" size="sm" asChild>
           <Link href="/">My board</Link>
         </Button>
+        {hasBugReport && (
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/bugs">Bugs</Link>
+          </Button>
+        )}
         <div
           className="flex size-8 items-center justify-center rounded-full bg-ink text-xs font-bold text-white"
           title={`${user.displayName} · ${user.email}`}

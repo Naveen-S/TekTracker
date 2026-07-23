@@ -22,6 +22,7 @@ import { prisma } from "@/lib/db";
 import { syncTeamSprint } from "@/lib/sync/engine";
 import { getJiraAuthForUser, fetchMyself } from "@/lib/jira/client";
 import { computeSprintMetrics, snapshotValues } from "@/lib/metrics.mjs";
+import { refreshBugReport, resolveRefreshAuth } from "@/lib/bug-report/refresh";
 import { SprintState } from "@/generated/prisma/client";
 
 /** Normalize an instant to its UTC midnight — one canonical `capturedOn` per day (decision 6). */
@@ -138,11 +139,51 @@ export async function runDailyJob({ capturedOn } = {}) {
     sprintSummaries.push(await runSprint(sprint, day, refresh.user ?? null));
   }
 
+  const bugReports = await runBugReports(day);
+
   return {
     capturedOn: day,
     refresh: refresh.user
       ? { user: { email: refresh.user.email, displayName: refresh.user.displayName } }
       : { skipped: refresh.skipped },
     sprints: sprintSummaries,
+    bugReports,
   };
+}
+
+/**
+ * Refresh + snapshot every active bug report (gm-bug-report.md (e)). Errors are isolated per
+ * report — a broken filter on the GM report must never cost Honda its daily data point, and it
+ * must never cost the sprint snapshots either (this runs last, after they are safely written).
+ * The refresh itself already aborts before writing on failure, so a failed report simply keeps
+ * yesterday's cache.
+ */
+async function runBugReports(capturedOn) {
+  const reports = await prisma.bugReport.findMany({
+    where: { isActive: true },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
+  if (reports.length === 0) return [];
+
+  const summaries = [];
+  for (const report of reports) {
+    try {
+      const { auth, email } = await resolveRefreshAuth(null);
+      const result = await refreshBugReport(report.id, {
+        auth,
+        refreshedByEmail: email,
+        asOf: capturedOn,
+      });
+      summaries.push({
+        id: report.id,
+        name: report.name,
+        totalIssues: result.totalIssues,
+        snapshotRows: result.snapshotRows,
+      });
+    } catch (error) {
+      summaries.push({ id: report.id, name: report.name, error: error.message });
+    }
+  }
+  return summaries;
 }

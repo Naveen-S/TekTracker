@@ -12,6 +12,11 @@ import { aggregateRollup, combineSnapshotsByDay, computeSprintMetrics } from "@/
 import { isAiConfigured } from "@/lib/ai/provider";
 import { TEAM_MANAGER_ROLES, TEAM_WRITER_ROLES } from "@/lib/rbac";
 
+/** Whether any bug-report dashboard exists — drives the TopBar "Bugs" link (gm-bug-report.md (f)). */
+async function hasActiveBugReport() {
+  return (await prisma.bugReport.count({ where: { isActive: true } })) > 0;
+}
+
 /** The caller's memberships → role map + visible teams (global admin sees all teams). */
 async function getMembershipContext(user) {
   const memberships = await prisma.teamMembership.findMany({
@@ -127,6 +132,7 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
     jiraBaseUrl: process.env.JIRA_BASE_URL?.trim().replace(/\/+$/, "") ?? null,
     // UI affordance only (ai-insights.md decision 3) — the ai-digest route re-checks per request.
     aiEnabled: isAiConfigured(),
+    hasBugReport: await hasActiveBugReport(),
   };
 }
 
@@ -273,6 +279,7 @@ export async function getRollupData(user, { sprintId } = {}) {
     // UI affordance only (ai-insights.md decision 3 precedent) — the rollup ai-digest route
     // re-checks per request.
     aiEnabled: isAiConfigured(),
+    hasBugReport: await hasActiveBugReport(),
   };
 }
 

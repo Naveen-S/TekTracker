@@ -17,6 +17,7 @@ import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { PageLoader } from "@/components/ui/spinner";
 import { apiFetch } from "@/lib/api-client";
+import { BugReportConfig } from "@/components/admin/bug-report-config";
 import { formatDate } from "@/lib/metrics.mjs";
 
 const ROLES = ["ADMIN", "ED", "TPM", "EM", "LEAD", "MEMBER", "VIEWER"];
@@ -162,7 +163,14 @@ function TeamCard({ team, run, busy }) {
   );
 }
 
-export function AdminPanel({ teams, sprints }) {
+export function AdminPanel({
+  teams,
+  sprints,
+  bugReports = [],
+  bugConfig = null,
+  bugStatusVocabulary = [],
+  bugPriorityVocabulary = [],
+}) {
   const router = useRouter();
   // busy spans the API call AND the router.refresh() re-render, so forms stay disabled until
   // the lists actually reflect the change (React 19 transition; post-await updates re-wrapped).
@@ -348,6 +356,13 @@ export function AdminPanel({ teams, sprints }) {
           </Button>
         </form>
       </SectionCard>
+
+      <BugReportConfig
+        reports={bugReports}
+        config={bugConfig}
+        statusVocabulary={bugStatusVocabulary}
+        priorityVocabulary={bugPriorityVocabulary}
+      />
 
       <PageLoader show={busy} label="Working…" />
     </main>

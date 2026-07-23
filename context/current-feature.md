@@ -1,81 +1,108 @@
 # Current Feature
 
-**Risk comments + roll-up risks dialog + roll-up AI digest** — full spec:
-@context/features/risk-comments-rollup-digest.md
+**Bug Report dashboards — config-driven bug matrix + executive dashboard** — full spec:
+@context/features/gm-bug-report.md
 
-The natural successor to ai-insights (whose Out-of-scope №1 parked the roll-up digest as a fast
-follow), per Naveen's three asks (2026-07-20): (1) board-level **risk comments** on the
-RiskCalloutsPanel — known/agreed risks (e.g. a planned late QA handoff) annotated so they reach
-ED/VP as managed context; (2) `/rollup` shows **every** risk via a "View all risks" dialog (team
-chips, blocked reasons, comments); (3) a **roll-up AI digest** — portfolio prompt with per-team
-comparison, commented risks narrated as known/agreed. **First schema change since
-add-user-isadmin**: `IssueProgress.riskComment String?` + one migration. One new route
-(28 → 29 ƒ Dynamic), no new deps.
+Automate the hand-built **daily GM bug report** (category × External/Internal × P0/P1/P2+ matrix
+with SLA-breach overlays) as a leadership dashboard at **`/bugs`**, built **multi-report from day
+one** so "the same dashboard for Project = Honda" is admin config, not code. Requested by Naveen
+2026-07-21; post-v1 (the master plan is complete), sequenced ahead of the remaining open AI ideas.
+
+**The first read path in the app that is NOT sprint-scoped** — no sprint, no stages, no per-issue
+lifecycle; its unit is *counts across dimensions*. New config + cache + snapshot models and a pure
+aggregation module, reusing only the Jira client, the cron shell, and the UI kit.
 
 ## Status
 
-**Done 2026-07-21.** Schema: `IssueProgress.riskComment String?` + migration
-`20260720065659_add_issueprogress_riskcomment` (first schema change since `add_user_isadmin`).
-Write path: progress PUT persists `riskComment` independent of blocked (never auto-cleared).
-Board UI: `metrics.mjs` centrally attaches `blockedReason`/`riskComment` to every issue (never a
-scoring input); `risk-callouts-panel.jsx` renders a "Known" badge + per-row edit affordance for
-writers; new `risk-comment-dialog.jsx`. Roll-up: `getRollupData` carries the same fields per
-team (never merged across teams); new `rollup-risk-section.jsx` ("View all risks" dialog + "View
-all (N)" chip, replacing the inaccurate "see the matrix below" line) and `rollup-digest-button.jsx`
-→ new flat `POST /api/rollup/ai-digest` (403 zero-membership / 404 sprint-mismatch / 400
-empty-portfolio guards); `AiDigestDialog` generalized via `endpoint`/`body`/`intro`. **Found +
-fixed one platform bug along the way:** both AI Digest routes (team + roll-up) were truncating
-live Gemini responses mid-JSON (`gemini-3.5-flash` spends ~1900 of the 2048-token budget on
-invisible "thinking" tokens) — fixed by passing `maxOutputTokens: 4096` at both call sites.
-Verified: lint clean; `prisma validate`/`migrate status` up to date (**3 migrations**);
-**DB/env-free build green — 29 ƒ Dynamic** (`.env` genuinely moved away, not just shell-unset);
-**20/20 plain-Node fixtures**; **41/41 SSR/API smoke** on dev+Neon (colliding-jiraKey two-team
-fixture proving no cross-team merge, PUT mechanics, survives-a-simulated-resync, board + roll-up
-SSR, the roll-up digest route's full gate matrix, **one real live generation** narrating a
-commented risk as "managed, known context", a regression check on the existing team digest
-route, and a share-page check confirming no leakage). Fixture torn down to 0, harness deleted.
-**Next:** export-embedded AI narrative, AI Q&A over sprint data, or stage suggestions — the
-remaining open post-v1 ideas.
+**Done 2026-07-21.** Branch `feature/gm-bug-report`. 7 models + migration
+`20260721190833_add_bug_report_models`; pure `lib/bug-report/matrix.mjs`; `lib/bug-report/refresh.js`
+(abort-before-write); 4 routes + cron extension; `lib/bug-report-data.js` + `/bugs` + `/bugs/[slug]`;
+10 panels across 6 component files; admin config surface with vocabulary pickers.
+
+**Verified:** lint clean; `prisma validate` + `migrate status` up to date (**4 migrations**);
+**DB/env-free build green — 35 ƒ Dynamic**; **80/80 plain-Node fixtures** (incl. a ground-truth case
+built from live filter 68840); **49/49 SSR/API smoke on dev + Neon against the REAL filters
+68840/68841** — live two-scope refresh (**External 58 · Internal 173 · 231 total**, Internal proving
+>100-issue pagination), matrix arithmetic reconciling, idempotent same-day re-run, **failure
+isolation** (broken filter → cache + snapshots untouched, `lastRefreshError` set), full panel SSR,
+and **an SLA edit moving breaches 81 → 0 with no Jira refresh**; runtime smoke re-run post-build;
+**headless-Chrome visual pass at 1440/1800px** on real data. **Two real bugs found and fixed**
+(both Prisma 5s transaction-timeout defects: the config save and the per-cell snapshot upserts) plus
+a linter-caught `Date.now()`-in-render violation of the feature's own `asOf` discipline. Fixture torn
+down to 0 rows across all 7 tables; harnesses + spike page deleted.
+
+⚠️ **Pending human acceptance (Naveen):** create the production report in `/admin` with the real
+filters + category→status mapping + SLA days, then confirm the matrix matches the manual report
+(`P2 + P3 + P4 == manual P2+`).
+
+**Next:** export/share for `/bugs`, export-embedded AI narrative, AI Q&A over sprint data, or stage
+suggestions.
 
 ## Goals
 
-- **(a) Schema:** `riskComment String?` on `IssueProgress` (`prisma/schema.prisma`), migration
-  `add_issueprogress_riskcomment`, §9 synced byte-consistent in the same change.
-- **(b) Write path:** optional `riskComment` in `src/lib/schemas/progress.js` (trim, max 500,
-  nullish; "at least one of stage/blocked/riskComment") + persistence in the progress PUT route —
-  independent of blocked, never auto-cleared, empty → null.
-- **(c) Board UI:** `getDashboardData` selects `riskComment`; `risk-callouts-panel.jsx` renders
-  comment + "Known" badge + optional `onEditComment` per-row affordance; new
-  `risk-comment-dialog.jsx`; `dashboard.jsx` wiring when `can.write`.
-- **(d) Roll-up risks:** `getRollupData` selects `blockedReason`+`riskComment` (attached per
-  team — never merge maps, §9) + returns `aiEnabled`; new client
-  `components/rollup/rollup-risk-section.jsx` (panel + "View all risks (N)" dialog, read-only)
-  replacing the direct panel render in `src/app/rollup/page.jsx`.
-- **(e) Roll-up AI digest:** pure `buildRollupDigestInput`/`buildRollupDigestPrompt` in
-  `digest.mjs` (+ `riskComment` into the team digest); flat `POST /api/rollup/ai-digest`
-  (requireUser → `getRollupData` → 403/404/400 guards, 503/502 mappings); `AiDigestDialog`
-  generalized (`endpoint`/`body`/intro); new `rollup-digest-button.jsx` in the roll-up hero.
-- **Acceptance:** lint; `prisma validate` + `migrate status` (**3 migrations**); DB/env-free
-  build **29 ƒ Dynamic**; plain-Node fixtures (roll-up input/prompt, comment pass-through,
-  progress schema); SSR/API smoke (PUT gates, survives-sync, both panels, all-risks dialog,
-  digest route gates + swap proof, share/export clean); live roll-up digest; Naveen's e2e.
+- **(a) Schema + migration** — `BugReport`, `BugReportScope`, `BugReportBand`, `BugSlaTarget`,
+  `BugReportCategory`, `BugReportIssue` (cache), `BugReportSnapshot` (history) in
+  `prisma/schema.prisma`; migration `add_bug_report_models`; §9 synced byte-consistent same change.
+- **(b) Pure classification/aggregation** — `src/lib/bug-report/matrix.mjs`: `resolveBand`,
+  `resolveCategory`, `isBreached`, `buildMatrix`, `snapshotRows`, `diffMatrix`, `agingBuckets`,
+  `cellJql`, `validateConfig`. Plain-Node testable, no Prisma/fetch.
+- **(c) Refresh pipeline** — `src/lib/bug-report/refresh.js`: per scope resolve JQL → paginated
+  fetch → transactional cache replace → classify → upsert today's snapshot rows; abort before any
+  write on scope failure.
+- **(d) Jira client** — `searchIssues` gains optional `maxIssues`; bug-report-specific field list
+  (adds created/updated/components/labels/reporter). Never truncate — throw loudly.
+- **(e) Routes** — `GET|POST /api/bug-reports`, `GET|PATCH|DELETE /api/bug-reports/[reportId]`,
+  `PUT /api/bug-reports/[reportId]/config` (whole document, transactional, admin),
+  `POST /api/bug-reports/[reportId]/refresh` (any authenticated); `src/lib/schemas/bug-report.js`;
+  `src/lib/cron/daily.js` extension with per-report error isolation.
+- **(f) Read path + pages** — `src/lib/bug-report-data.js` (`getBugReportData`, `listBugReports`,
+  `getBugReportConfig`); `src/app/bugs/page.jsx` + `src/app/bugs/[slug]/page.jsx`; TopBar links.
+- **(g) Dashboard panels** — `src/components/bugs/`: hero, KPI cards, **the matrix**, trend,
+  priority, category, aging, breach call-outs, ticket table, reference links.
+- **(h) Admin config surface** — `src/components/admin/bug-report-config.jsx`: report fields +
+  fallback picker, scopes w/ "Resolve & preview", SLA-days grid, bands, ordered categories with
+  live validation, "Duplicate report", manual Refresh. Status/priority inputs are **pickers over
+  the observed vocabulary, not free text**.
+- **Acceptance:** lint; `prisma validate` + `migrate status` (**4 migrations**); DB/env-free build
+  **35 ƒ Dynamic**; plain-Node fixtures incl. one built from the real live distribution; SSR/API
+  smoke on dev+Neon w/ mock Jira; a real two-scope run against filters `68840`/`68841` through the
+  config UI; visual pass at 1440/1800px.
 
 ## Notes
 
-- **All design decisions are PROPOSED** (asks themselves ratified) — flag divergence, don't
-  silently change course.
+- **Two decisions were ratified then REVERSED (2026-07-21) — the reversals are authoritative.**
+  (6) SLA breach is **app-computed from configurable days per (scope, priority)**, not a Jira
+  filter — `created + days < now`, keyed by Jira **priority name** (bands are display columns).
+  (9) Unmatched statuses fall back to a **configurable fallback category** (Engineering Team), not
+  a residual row; `__unattributed__` renders only when no fallback is configured.
+- **Nothing is hardcoded.** Universes, category→status mapping, SLA days, bands are all admin
+  config; the app ships with an **empty config** + a "no report configured yet" state.
+- **The cache stores raw Jira facts only; ALL classification is read-time** (band, category,
+  breach are pure functions of `(issue, config, asOf)`). Config edits re-render **instantly, with
+  no Jira refresh** — and the pipeline stays a dumb mirror. No `categoryId`/`bandId`/`slaBreached`
+  columns on the cache.
+- **Never hardcode a universe**: `project = GM` is the *Internal* scope only; External lives in
+  `project = "Tekion Engineering" AND type = "Tap Ticket" AND component = DR_GM`. **Never parse
+  priority strings** — map names to bands via config.
+- **Priority→band is NOT an AI task** (decision 11): finite, stable, auditable mapping; AI
+  narrates these numbers, never computes them.
+- **Five bands by default — P0 · P1 · P2 · P3 · P4** (Naveen 2026-07-21, revised from grouped
+  `P0/P1/P2+`): more intuitive for charts. Matrix is ~13 columns (frozen first column + h-scroll).
+  **At most one** catch-all band, **zero is the default** → unmatched priorities land in a derived
+  `__unbanded__` column rendered only when non-empty. Parity vs the manual report is
+  `P2 + P3 + P4 == manual P2+`.
+- **Read the installed docs first** — Next 16.2.9 (`node_modules/next/dist/docs/`, async
+  `params`/`searchParams`), Prisma 7.8.0 (migration + `String[]` scalar lists), Tailwind v4
+  (`@theme`, no `tailwind.config.*`). All three differ from training data.
 - **prisma-change discipline:** named migration via `yarn db:migrate` (never `db push`), §9 and
   schema.prisma in the same change, client regenerated, build stays DB/env-free.
-- **Comments are annotations, never metric inputs** — nothing in `metrics.mjs` reads
-  `riskComment`; §12 numbers cannot shift.
-- **§9 keying:** attach comment/reason inside each team's own progress map before flat-mapping —
-  never merge across teams (same jiraKey may exist in two teams).
-- **`riskComment` joins the injection surface** — data-not-instructions framing in both prompts;
-  plain React text out; `sanitizeDigest` unchanged.
-- **Share/export stay comment- and digest-free** (frozen-artifact exclusion precedent).
-- Unlike `blockedReason`, the comment is **not** cleared on unblock — only an explicit write
-  (empty string) clears it.
-- Read the installed Next 16 docs before the new route/client-leaf work.
+- **A failed scope aborts before any write** (decision 17) — last-good data keeps rendering behind
+  an error banner. A zeroed row on a leadership dashboard is a lie.
+- **Charts hand-rolled inline SVG, no charting dep** (TrendPanel precedent; keeps panels server
+  components and the html2canvas-pro export path viable). Consult the `dataviz` skill first.
+- **Metrics purity:** nothing here reads/writes `metrics.mjs`, `IssueProgress`, or sprint data —
+  §12 numbers cannot move.
+- Test filters: External `68840` (57 issues), Internal `68841` (>100, paginated).
 
 ## History
 
@@ -855,3 +882,191 @@ remaining open post-v1 ideas.
   track on `/rollup`, 4-col on both team boards, subgrid utilities in compiled CSS; harness
   deleted). Build deferred to pre-commit (dev server holds :3002/.next). Docs synced (§11 note,
   trend-burndown.md as-built).
+- 2026-07-21 — Planning session (no code): drafted @context/features/gm-bug-report.md — automate
+  the manual **daily GM bug report** (category × External/Internal × P0/P1/P2+ matrix with
+  SLA-breach overlays) as a config-driven executive dashboard at **`/bugs`**, modelled on the
+  `gm-security-vulnerabilities-tracker` PDF. **Probed live Jira first and killed two assumptions:**
+  `project = GM` yields ~3 bugs in 60 days (30/30 recent open issues are component `DR_GM`, 26
+  Tech Story) against a report counting 221 — so the universe is the GM *program*, not the project
+  key; and `issuetype in ("Internal Bug","Support Bug")` returns **zero** in GM, so external-vs-
+  internal is not issue-type-driven. Conclusion: never hardcode a universe — it is all config.
+  Seven decisions **ratified with Naveen**: rows configurable / columns fixed; new top-level
+  `/bugs` route (not a `/rollup` tab — the roll-up is sprint-scoped and this is not); cached +
+  daily cron + manual Refresh; full exec dashboard in v1; **every filter is a saved Jira filter
+  ID** entered in `/admin` and resolved via the existing `fetchFilter`; **SLA breach is a
+  configured filter**, breach = `cell ∩ breachedSet` (no SLA math in our code); snapshot every
+  cell daily. Nine more PROPOSED, notably: cells as **local set intersections** (~6+N Jira calls,
+  not 36 count queries); `Total` = the universe set and `Wrong Component / Status` = universe −
+  ∪(categories), so the hygiene row self-maintains and the arithmetic always reconciles;
+  first-match-wins category assignment with overlaps surfaced not hidden; two-layer storage
+  (`BugReportIssue` cache vs `BugReportSnapshot` history, the `Issue`/`SprintSnapshot` precedent);
+  self-describing snapshot rows so renaming a category never orphans history; **service
+  credential for both cron and manual refresh** (a deliberate departure from step-5's per-caller
+  rule — one shared org artifact must not flip-flop per viewer); a failed filter **aborts before
+  writing** rather than silently zeroing a row; hand-rolled inline SVG, no charting dep.
+  **First non-sprint-scoped read path in the app** — 3 new models + 2 enums, one migration
+  (4 total), ~6 new routes (29 → expected 35 ƒ Dynamic), new `lib/bug-report/{matrix.mjs,
+  refresh.js}`, cron extension, admin config surface, 10 dashboard panels. Flagged as the largest
+  feature to date; panel set may land incrementally. Acceptance turns on **one real run against
+  Naveen's live filter IDs matching the manual report cell-for-cell** — fixtures only prove the
+  arithmetic. Not yet started — awaiting start-feature.
+- 2026-07-21 — **Spec revised same day after Naveen supplied the real universes + reversed two
+  ratified decisions.** (1) **Two universes, not one:** Internal = `project = GM`, External =
+  `project = "Tekion Engineering" AND type = "Tap Ticket" AND component = DR_GM` — so class is
+  *which project the bug lives in*, and the two are disjoint. **Probed both live and the External
+  one reconciles EXACTLY with the manual table**: 59 issues (no next page), P1 **28**, P2 25 + P3
+  1 + P4 5 = **31** — matching 28/31/59, which also proves `P2+` = P2+P3+P4. Status-driven
+  categories confirmed too: live `Backlog + Dev To Do + Dev In Progress + Blocked + Pending RCA`
+  = **21** = the manual Engineering Team external count. (2) **Categories are ordered status
+  lists** (`QA → Testing`, `Product → PM Backlog`), configurable in admin, Naveen supplying the
+  exact mapping. (3) **REVERSAL of decision 9:** unmatched statuses fall back to a configurable
+  **fallback category** (Engineering Team), not the `Wrong Component / Status` residual row —
+  which is why the Engineering=21 match works, and why that row is all dashes in his table.
+  (4) **REVERSAL of decision 6:** SLA breach is **no longer a Jira filter** — admin configures SLA
+  **days per priority per scope** (P0–P4 × External/Internal) and breach = `created + days < now`.
+  (5) **Multi-report promoted from Out-of-scope to a v1 requirement** ("tomorrow I should be able
+  to get a similar dashboard for Project = Honda") → `/bugs/[slug]`, configurable scopes/bands/
+  categories, and a "Duplicate report" action. (6) The security-tracker PDF is **visual reference
+  only** — its program-specific panels (release plans, 1.0/2.0 bifurcation, timeline, Slack feed)
+  are dropped. Design consequences: the key-set-intersection pipeline **collapses to ~1 paginated
+  fetch per scope** (status/priority/created ride on issues we already fetch); the cache now
+  stores **raw Jira facts only** with band/category/breach classified **at read time**, so admin
+  config edits re-render instantly without a Jira refresh; bands become a configurable
+  priority-name→band map with a catch-all. **Pushed back on one ask:** Naveen floated doing
+  priority bucketing "programmatically or using AI tools" — recommended the config map, *not* AI,
+  since priority→band is finite, stable and auditable and an LLM would add nondeterminism to a
+  number leadership reads daily (AI belongs in the narrative over these numbers, never in
+  producing them). Spec rewritten: 7 models, 4 API routes + 2 pages (29 → expected 35 ƒ Dynamic),
+  18 decisions with the two reversals flagged authoritative. Still awaiting start-feature.
+- 2026-07-21 — Naveen restated that **everything** must be admin-configurable (category→status
+  mapping, SLA days, and both universe filters) — already decision 1 + scope (h); spec annotated
+  to say the app ships with an **empty config** and a "no report configured yet" state, so no
+  filter id, status, or SLA value is ever a build-time constant. He supplied two **test filters**:
+  External `68840`, Internal `68841`. Probed both live — they resolve and are visible: **68840 →
+  57 issues** (no next page; P0 0 · P1 **28** · P2+ 29) and **68841 → >100** (paginated, total
+  unknown from one page; first page P0 18 · P1 37 · P2 42 · P3 3). Recorded in the spec as dev/
+  smoke inputs, with the note that 68840 returns **57 vs the 59** my hand-written JQL returned —
+  the configured filter is the source of truth and drift from the pasted manual table is expected.
+  Also captured the **observed status vocabulary** across both scopes (Support Clarification, PM
+  Backlog, Backlog, Pending RCA, Testing, Dev To Do, Dev In Progress, Code Review, Blocked, OEM
+  Review, Awaiting ED Acceptance) — `OEM Review` appears in neither the manual table nor any
+  category, i.e. exactly what the fallback category absorbs. Two spec additions off the back of
+  it: (1) the admin category/SLA editors are **pickers over the observed vocabulary, not free
+  text** (a typo'd status would silently drain issues into the fallback and nobody would notice);
+  (2) a new acceptance check — a real two-scope run against 68840/68841 **through the config UI**,
+  exercising filter-ID resolution and >100-issue pagination. Still awaiting start-feature.
+- 2026-07-21 — Picked @context/features/gm-bug-report.md as the current feature (Bug Report
+  dashboards — config-driven category × scope × band bug matrix + executive dashboard at `/bugs`,
+  multi-report from day one). Branch `feature/gm-bug-report` created off `main` (583d8f5).
+  risk-comments-rollup-digest remains **Done**.
+- 2026-07-21 — **Implemented gm-bug-report (config-driven bug matrix + executive dashboard at
+  `/bugs`).** Read the installed Next 16 / Prisma 7 patterns and the house route/RBAC precedents
+  first, and ran the **dataviz** skill's validator before any chart code (teal `#00a892` + blue
+  `#3b82f6`: CVD ΔE 19.9 protan / 20.9 normal — PASS; the lone contrast WARN discharged by direct
+  labels + the matrix as table view; `#ef4444` reserved for SLA breach). Added **7 models** +
+  migration `20260721190833_add_bug_report_models` (§9 synced byte-consistent, ER diagram +
+  rationale bullet) — the largest schema change since `init` and the **first non-sprint-scoped read
+  path in the app**. Pure `lib/bug-report/matrix.mjs` (`resolveBand`/`resolveCategory`/`isBreached`/
+  `buildMatrix`/`snapshotRows`/`diffMatrix`/`agingBuckets`/`daysOverSla`/`cellJql`/`validateConfig`/
+  `DEFAULT_BANDS`); `lib/bug-report/refresh.js` (resolve → fetch-all → **abort before the first
+  write** → transactional cache replace → snapshot; `resolveRefreshAuth` prefers the service
+  credential so the headline number can't differ per viewer); `searchIssues` gained optional
+  `maxIssues` (never truncates — throws); 4 routes (`/api/bug-reports`, `/[reportId]`,
+  `/[reportId]/config` as ONE transactional document, `/[reportId]/refresh` open to any
+  authenticated user) + `schemas/bug-report.js` + a cron extension with per-report error isolation;
+  `lib/bug-report-data.js` + `/bugs` + `/bugs/[slug]`; 10 panels across 6 files (matrix, KPI cards,
+  charts, lists, page body, client actions leaf); `admin/bug-report-config.jsx` whose status/priority
+  inputs are **pickers over the observed vocabulary, not free text** (a typo'd status would
+  otherwise drain issues into the fallback silently). TopBar "Bugs" link on `/` and `/rollup`.
+  **Found and fixed two real bugs during verification, both Prisma's 5s interactive-transaction
+  timeout (P2028):** the config save (~20 sequential round-trips, 6.8s — fixed by moving the
+  read-back outside the transaction and budgeting 30s) and `writeSnapshot` (one upsert per cell,
+  ~70 cells, 5.7s, failing the refresh *after* the cache had been replaced — replaced with
+  `deleteMany + createMany`, 2 statements, still atomic and one-set-per-day). The installed
+  `react-hooks/purity` rule also caught `Date.now()` in `BugTicketTable`'s render — a genuine
+  violation of this feature's own `asOf` discipline, fixed by threading the request-time clock.
+  Verified: lint; `prisma validate` + `migrate status` (**4 migrations**); **DB/env-free build green
+  — 35 ƒ Dynamic** (`.env` genuinely moved away and restored); **80/80 plain-Node fixtures**;
+  **49/49 SSR/API smoke on dev+Neon against the REAL filters 68840/68841** (RBAC gates, config
+  validation rejecting a duplicated status and two catch-alls, live refresh **External 58 · Internal
+  173 · 231 total · 60 snapshot rows** with pagination proven, matrix partition checks, idempotent
+  re-run, failure isolation leaving cache **and** snapshots untouched, full panel SSR with
+  drill-down hrefs, and an **SLA edit moving breaches 81 → 0 with no Jira refresh** — proving
+  read-time classification); post-build runtime smoke; **headless-Chrome visual pass at 1440/1800px**
+  on real data (13 columns fit, no page overflow). A stale dev server holding a pre-migration Prisma
+  client was found and restarted mid-verification. As-built deviations recorded in the spec (panel
+  files consolidated 10 → 6; snapshot upsert → delete+createMany; scope edits without an id
+  cascade-drop that scope's cache; SLA days capped at 3650). Fixture torn down to **0 rows across
+  all 7 tables**, harnesses + temporary spike page deleted. Docs synced (§5 row, §8 line, §9 Prisma
+  block + ER diagram + rationale, §11 note, RBAC row, §16 amendment incl. **both reversals**, master
+  plan step-10 clause). **Done** — ⚠️ Naveen's production-config run is the acceptance that matters.
+  **Next:** export/share for `/bugs`, export-embedded AI narrative, AI Q&A, or stage suggestions.
+- 2026-07-22 — **Fixed trend-chart clipping + dead space (per Naveen: "UI is chopping").** Two
+  defects in `BugTrendPanel`, both invisible to the SSR assertions and only visible once a second
+  capture existed: (1) the endpoint value label is drawn above the last point, so when that point
+  IS the series max it sat at `PAD.top − 10` and had its glyph tops sheared off by the viewBox
+  (Naveen's screenshot showed "233" cut in half) — clamped to `Math.max(…, 12)` with `PAD.top`
+  raised to 24; (2) the `max-w-3xl` cap inherited from the sprint TrendPanel left ~a third of the
+  card empty whenever the two-up row collapses to full width below `xl` — dropped the cap and
+  widened the viewBox to **1000×190** so the chart fills its card at any width while staying
+  ~200px tall at 1200px. Re-verified against **Naveen's real `gm` report** (233 issues, 2 capture
+  days — he had configured it himself in `/admin`): label renders whole, chart spans the card, and
+  the newly-available deltas render correctly (`233 ▲2`, `98 ▲6`, per-cell `▲2`/`▼1` in the
+  matrix). Lint clean; **DB/env-free build green — 35 ƒ Dynamic**; spike page removed, dev server
+  restored. Presentation-only change — no schema, route, or data-path impact.
+- 2026-07-22 — **Fixed malformed drill-down JQL (per Naveen: "hyperlink on those issue count is
+  not accurate").** `cellJql` inlined each scope's `resolvedJql` in parentheses, but **saved Jira
+  filters end with `ORDER BY …`** (68840 → `ORDER BY assignee DESC`, 68841 → `ORDER BY created
+  DESC`) and `ORDER BY` is only legal at the very end of a query — so every cell link emitted
+  `(… ORDER BY assignee DESC) AND status IN (…)`, a **syntax error**, not a narrower search. This
+  was invisible to the earlier smoke, which asserted the links were *well-formed URLs*, never that
+  Jira accepted the JQL. Two fixes in `matrix.mjs`: a saved-filter scope is now referenced as
+  **`filter = <id>`** (always valid, and stays correct if the filter is edited in Jira), and
+  raw-JQL scopes get a trailing top-level `ORDER BY` stripped via a new quote-aware `stripOrderBy`
+  (a status named "Order by date" survives). **Verified against live Jira on Naveen's real `gm`
+  report: 20/20 cells match the dashboard exactly** — all 5 bands × 2 scopes, both scope totals,
+  and every category row including the fallback (`status NOT IN (others)`, independently confirmed).
+  The first pass showed 3 Internal cells off by +1; a refresh resolved them, confirming plain cache
+  staleness (by design) rather than a composition bug. Fixtures grew to **85/85** with 7 new
+  `cellJql` cases (filter-id precedence, ORDER BY stripping incl. case-insensitivity and the
+  quoted-literal edge). Lint clean; **DB/env-free build green — 35 ƒ Dynamic**; harnesses deleted,
+  dev server restored.
+- 2026-07-22 — **Made drill-down links self-describing (per Naveen: "the links are not considering
+  project space, type, status and component").** The previous fix referenced each universe as
+  `filter = <id>`, which yields the correct COUNT but is **opaque**: Jira's navigator can't show
+  the criteria, and a viewer without access to that saved filter gets an error. Since
+  `stripOrderBy` had already made inlining safe, `scopeClause` now **inlines the resolved JQL**, so
+  a cell link carries the full universe — `project in ("Tekion Engineering") and type in ("Tap
+  Ticket") and status not in (…) and "Program[Select List (multiple choices)]" = GM and component =
+  DR_GM` — plus the cell's own `status IN (…) AND priority IN (…)`. It also pins each link to
+  exactly the JQL that produced the cached numbers, so links can't diverge from cells when a filter
+  is edited in Jira between refreshes; `filter = <id>` remains only as the fallback for a
+  saved-filter scope never yet resolved (before the first refresh), where inlining nothing would
+  widen the search to the whole instance. **Re-verified against live Jira: 20/20 cells match**
+  (first pass showed 2 External mismatches — a refresh confirmed the scope had genuinely dropped
+  62 → 61, i.e. staleness again, not composition). Fixtures **87/87** (4 new cellJql cases: inlining
+  precedence, unresolved-filter fallback, no-source case). Lint clean; **DB/env-free build green —
+  35 ƒ Dynamic**. Note: the production build clobbers `.next` and leaves the dev server 404ing —
+  cleared `.next` and restarted (the repo's known same-`.next` hazard).
+- 2026-07-22 — **Fixed the drill-down universe being dropped for every cell (per Naveen: "the href
+  generation logic … doesn't filter by project, type, status and component" — links were a bare
+  `priority IN (…)`).** Root cause: `buildMatrix` returns **trimmed** scope objects
+  (`{ id, name, bands }`, no source fields) and `bugs-page.jsx` fed those into `cellJql`, so
+  `scopeClause` found no `resolvedJql` and emitted nothing. **A verification gap of mine:** the
+  earlier live-Jira checks passed the *full* `report.scopes` object, a path the real render never
+  takes — they proved counts, never the actual hrefs. Fixed by resolving the full scope by id
+  inside `getBugReportData`'s `cellJql` closure. Re-verified by parsing the hrefs out of the
+  **rendered `/bugs` HTML**: **39/39 carry their scope's full universe**, 0 bare; added a fixture
+  reproducing the trimmed-scope drop + fix (**90/90**). Lint clean; **DB/env-free build green — 35 ƒ
+  Dynamic**; `.next` cleared + dev server restarted (build-clobbers-.next hazard again).
+- 2026-07-22 — **Added a distinct drill-down for breached cells (per Naveen: "I don't see the href
+  for the breached items").** The red `(m)` count was inside the cell's single anchor, so clicking
+  it opened all open items, not the breached subset. Added `cellBreachedJql` (`matrix.mjs`): the
+  cell JQL AND an OR of `(priority = P AND created < -{days}d)` over the column's SLA-targeted
+  priorities (per-priority day thresholds, so it can't be one clause; `null` when the column has
+  no SLA target). `bug-matrix.jsx` now renders count and `(m)` as **sibling** links (nested `<a>`
+  is invalid) — count → full cell, `(m)` → breached subset — wired via a new `buildBreachHref` +
+  `cellBreachedJql` closure in `getBugReportData`. **Verified live: 20/20 breach counts match the
+  composed JQL exactly**; the rendered `/bugs` HTML emits **32 distinct breach links** (`created <
+  -Nd`) alongside 39 open-cell links. Fixtures **94/94** (4 new: per-priority term, no-SLA-target
+  → null, scope-total OR, empty-SLA → null). Lint clean; **DB/env-free build green — 35 ƒ Dynamic**.

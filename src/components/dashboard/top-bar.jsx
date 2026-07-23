@@ -20,6 +20,7 @@ export function TopBar({
   busy,
   canWrite,
   canManage,
+  hasBugReport,
   onLogout,
 }) {
   return (
@@ -77,6 +78,11 @@ export function TopBar({
         {(teams.length >= 2 || user.isAdmin) && (
           <Button variant="ghost" size="sm" asChild>
             <Link href="/rollup">Roll-up</Link>
+          </Button>
+        )}
+        {hasBugReport && (
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/bugs">Bugs</Link>
           </Button>
         )}
         {user.isAdmin && (

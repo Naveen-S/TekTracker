@@ -51,7 +51,12 @@ export default async function RollupPage({ searchParams }) {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <RollupTopBar user={data.user} sprints={sprints} selectedSprint={selectedSprint} />
+      <RollupTopBar
+        user={data.user}
+        sprints={sprints}
+        selectedSprint={selectedSprint}
+        hasBugReport={data.hasBugReport}
+      />
 
       <main className="flex w-full flex-1 flex-col gap-5 p-4 md:p-6">
         {teams.length === 0 ? (

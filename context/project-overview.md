@@ -107,7 +107,8 @@ Key relationships:
 | Trend / burndown / "projected by end of sprint" | **[BUILT — data 2026-07-09, UI 2026-07-19]** | Daily per-team `SprintSnapshot` rows written by the step-7 cron (`POST /api/cron/daily`); the burndown panel (ideal/actual/projection SVG + snapshot-based velocity) renders on `/` and `/rollup` (context/features/trend-burndown.md). |
 | AI summary (pluggable provider) | **[BUILT in part — 2026-07-20, extended 2026-07-21]** | Provider-agnostic platform (`src/lib/ai/` — Gemini + Anthropic fetch adapters, switched by `AI_PROVIDER` env; §16 amendment) behind the on-demand **"AI Digest"** dialog on `/` — §16 use cases 1–2 (risk call-outs + leadership narrative). **Roll-up digest BUILT 2026-07-21**: `POST /api/rollup/ai-digest` + `AiDigestDialog` reused on `/rollup` — a portfolio prompt comparing every team, with known/agreed risk comments (below) narrated as managed context. Q&A + stage suggestions still open. See context/features/ai-insights.md and context/features/risk-comments-rollup-digest.md. |
 | Risk call-out comments + roll-up all-risks dialog | **[BUILT — 2026-07-21]** | `IssueProgress.riskComment` lets a Lead/EM annotate a called-out risk as known/agreed (e.g. a planned late QA hand-off) so it reaches ED/VP as managed context, not a fresh alarm — editable from the risk panel on `/` (writer roles), read-only everywhere else. `/rollup`'s risk panel now shows every team's comments/blocked reasons and a "View all risks" dialog listing every risky issue across teams (replacing an inaccurate "see the matrix below" line). See context/features/risk-comments-rollup-digest.md. |
-| Admin settings / RBAC | **[PARTIAL]** | Server-side RBAC live in the `web/` domain APIs (step 4, 2026-07-07): `User.isAdmin` + `TeamMembership.role` guards (`lib/rbac.js`) on teams/sprints/filters/progress. No admin UI yet. |
+| Bug report dashboards (`/bugs`) | **[BUILT — 2026-07-21]** | Config-driven bug matrix + executive dashboard: rows = categories (ordered Jira **status** lists with a fallback category), columns = scope (External/Internal, each its own Jira universe) × priority band (P0–P4), cells = open count with an SLA-breach overlay. **Everything is admin config** — universes (saved filter id or JQL), category→status mapping, SLA days per (scope, priority), bands — so a second dashboard (e.g. Honda) is configuration, not code. Cached + nightly cron + manual Refresh; classification is read-time so config edits apply instantly. See context/features/gm-bug-report.md. |
+| Admin settings / RBAC | **[PARTIAL]** | Server-side RBAC live in the `web/` domain APIs (step 4, 2026-07-07): `User.isAdmin` + `TeamMembership.role` guards (`lib/rbac.js`) on teams/sprints/filters/progress. Admin UI exists for teams/members/sprints (step 6a) and **bug-report config (2026-07-21)**; broader settings UI still absent. |
 
 ---
 
@@ -202,7 +203,8 @@ Next.js 16 (App Router) — single deployable
   ├─ Jira Cloud REST v3 client            ← per-user token OR Atlassian OAuth (see §13)
   ├─ Background sync (cron/queue)          ← refresh issue snapshots; write daily SprintSnapshot
   ├─ Redis (optional)                      ← hot reads / rate-limit smoothing for ED multi-team views
-  └─ AI provider (pluggable)               ← AI Digest narrative (BUILT 2026-07-20: lib/ai/, Gemini/Anthropic)
+  ├─ AI provider (pluggable)               ← AI Digest narrative (BUILT 2026-07-20: lib/ai/, Gemini/Anthropic)
+  └─ Bug report read path (non-sprint)     ← BUILT 2026-07-21: BugReport* models + /bugs (gm-bug-report.md)
 ```
 
 > **[BUILT in `web/` 2026-07-09, step 7]** — the "Background sync (cron/queue)" line: an external
@@ -535,6 +537,150 @@ model SprintSnapshot {
   @@unique([sprintId, teamId, capturedOn])
   @@index([sprintId])
 }
+
+// ─────────────────────────────────────────────────────────────
+// Bug report dashboards (gm-bug-report.md, 2026-07-21)
+// ─────────────────────────────────────────────────────────────
+
+/// A configurable bug-report dashboard (e.g. "GM", "Honda") rendered at /bugs/[slug].
+/// ORG-LEVEL, not team-scoped: its categories deliberately cut across teams. The first read
+/// path in the app that is NOT sprint-scoped — the unit is counts across (category x scope x band).
+model BugReport {
+  id                   String   @id @default(cuid())
+  name                 String
+  slug                 String   @unique
+  description          String?
+  ownerName            String?
+  targetDate           DateTime?
+  targetLabel          String?
+  /// Unmatched statuses land here; null = they fall into the derived `__unattributed__` row.
+  fallbackCategoryId   String?
+  isActive             Boolean  @default(true)
+  lastRefreshedAt      DateTime?
+  lastRefreshedByEmail String?
+  lastRefreshError     String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  scopes     BugReportScope[]
+  bands      BugReportBand[]
+  categories BugReportCategory[]
+  issues     BugReportIssue[]
+  snapshots  BugReportSnapshot[]
+}
+
+/// One universe of bugs = the column GROUP (e.g. "External", "Internal"). Class is decided by
+/// WHICH universe a bug lives in (external is a different Jira project), never by issue type.
+model BugReportScope {
+  id           String           @id @default(cuid())
+  reportId     String
+  report       BugReport        @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  name         String
+  sortOrder    Int              @default(0)
+  sourceType   FilterSourceType
+  jql          String?
+  jiraFilterId String?
+  resolvedJql  String?                         // last JQL resolved from jiraFilterId
+  resolvedAt   DateTime?                       // ...and when (surfaces Jira-side edits)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  slaTargets BugSlaTarget[]
+  issues     BugReportIssue[]
+
+  @@unique([reportId, name])
+  @@index([reportId, sortOrder])
+}
+
+/// SLA days per Jira PRIORITY NAME within a scope. Breached when `jiraCreatedAt + days < asOf`.
+/// App-computed, NOT a Jira filter. No row for a priority ⇒ never breached.
+model BugSlaTarget {
+  id           String         @id @default(cuid())
+  scopeId      String
+  scope        BugReportScope @relation(fields: [scopeId], references: [id], onDelete: Cascade)
+  priorityName String
+  days         Int
+
+  @@unique([scopeId, priorityName])
+}
+
+/// A priority band = the display COLUMN within each scope (P0..P4 by default). Membership is a
+/// configured set of Jira priority names; at most one band is the catch-all. Never parse strings.
+model BugReportBand {
+  id            String    @id @default(cuid())
+  reportId      String
+  report        BugReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  label         String
+  sortOrder     Int       @default(0)
+  priorityNames String[]
+  isCatchAll    Boolean   @default(false)
+
+  @@unique([reportId, label])
+  @@index([reportId, sortOrder])
+}
+
+/// A matrix ROW = an ordered list of Jira statuses ("QA Team -> status = Testing"). First match
+/// wins by sortOrder so rows always partition; a status in two categories is rejected at save.
+model BugReportCategory {
+  id          String    @id @default(cuid())
+  reportId    String
+  report      BugReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  name        String
+  sortOrder   Int       @default(0)
+  statuses    String[]
+  accentColor String?
+
+  @@unique([reportId, name])
+  @@index([reportId, sortOrder])
+}
+
+/// Replace-on-refresh mirror of a scope's universe. RAW JIRA FACTS ONLY: band, category and SLA
+/// breach are pure functions of (issue, config, asOf) computed at READ time, so admin config
+/// edits re-render instantly with no Jira refresh and this stays a dumb mirror.
+model BugReportIssue {
+  id             String         @id @default(cuid())
+  reportId       String
+  report         BugReport      @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  scopeId        String
+  scope          BugReportScope @relation(fields: [scopeId], references: [id], onDelete: Cascade)
+  jiraKey        String
+  title          String
+  issueType      String
+  jiraStatus     String                        // drives category resolution
+  statusCategory String?
+  priority       String?                       // drives band + SLA resolution
+  assigneeName   String?
+  reporterName   String?
+  components     String?
+  labels         String?
+  jiraCreatedAt  DateTime?                     // drives SLA breach + ageing
+  jiraUpdatedAt  DateTime?
+  lastSyncedAt   DateTime       @default(now())
+
+  @@unique([scopeId, jiraKey])
+  @@index([reportId])
+}
+
+/// Daily history of the CLASSIFIED matrix. Self-describing: every dimension carries a key AND the
+/// label as it read that day, so renaming/deleting a category, scope or band never orphans
+/// history. Derived rows use the sentinels `__total__` / `__unattributed__` (NULL-free unique key).
+model BugReportSnapshot {
+  id            String    @id @default(cuid())
+  reportId      String
+  report        BugReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  capturedOn    DateTime                        // UTC midnight — one set of rows per day
+  rowKey        String                          // categoryId | "__total__" | "__unattributed__"
+  rowLabel      String
+  scopeKey      String
+  scopeLabel    String
+  bandKey       String                          // bandId | "__all__" (the scope Total column)
+  bandLabel     String
+  count         Int
+  breachedCount Int
+
+  @@unique([reportId, capturedOn, rowKey, scopeKey, bandKey])
+  @@index([reportId, capturedOn])
+}
 ```
 
 ### Entity-relationship diagram
@@ -564,6 +710,14 @@ erDiagram
     SPRINT ||--o{ SPRINT_SNAPSHOT : "scopes"
 
     FILTER ||--o{ ISSUE : "caches"
+
+    BUG_REPORT ||--o{ BUG_REPORT_SCOPE : "has"
+    BUG_REPORT ||--o{ BUG_REPORT_BAND : "has"
+    BUG_REPORT ||--o{ BUG_REPORT_CATEGORY : "has"
+    BUG_REPORT ||--o{ BUG_REPORT_ISSUE : "caches"
+    BUG_REPORT ||--o{ BUG_REPORT_SNAPSHOT : "history"
+    BUG_REPORT_SCOPE ||--o{ BUG_SLA_TARGET : "SLA days by priority"
+    BUG_REPORT_SCOPE ||--o{ BUG_REPORT_ISSUE : "universe of""
 
     USER {
         string id PK
@@ -652,6 +806,59 @@ erDiagram
         float totalPoints
         float completedPoints
     }
+    BUG_REPORT {
+        string id PK
+        string slug UK
+        string name
+        string fallbackCategoryId
+        bool isActive
+    }
+    BUG_REPORT_SCOPE {
+        string id PK
+        string reportId FK
+        string name
+        FilterSourceType sourceType
+        string jiraFilterId
+    }
+    BUG_SLA_TARGET {
+        string id PK
+        string scopeId FK
+        string priorityName
+        int days
+    }
+    BUG_REPORT_BAND {
+        string id PK
+        string reportId FK
+        string label
+        string_arr priorityNames
+        bool isCatchAll
+    }
+    BUG_REPORT_CATEGORY {
+        string id PK
+        string reportId FK
+        string name
+        string_arr statuses
+        int sortOrder
+    }
+    BUG_REPORT_ISSUE {
+        string id PK
+        string reportId FK
+        string scopeId FK
+        string jiraKey
+        string jiraStatus
+        string priority
+        datetime jiraCreatedAt
+    }
+    BUG_REPORT_SNAPSHOT {
+        string id PK
+        string reportId FK
+        datetime capturedOn
+        string rowKey
+        string scopeKey
+        string bandKey
+        int count
+        int breachedCount
+    }
 ```
 
 > **Note — `Issue` ↔ `IssueProgress` are intentionally decoupled.** There is no FK between them; the
@@ -688,6 +895,15 @@ erDiagram
 - **SharedView** replaces URL-encoded state with a short token + optional live rendering + expiry.
 - **SprintSnapshot** is what makes leadership trend/burndown possible — write one row per day per
   team per active sprint from the background sync job.
+- **The `BugReport*` cluster (added 2026-07-21) is deliberately unlinked from `Team` and `Sprint`.**
+  A bug report has no sprint, no stages and no per-issue lifecycle — its unit is *counts across
+  (category × scope × band)* — so it is org-level and joins nothing in the sprint spine. It repeats
+  the proven **cache vs history** split (`BugReportIssue` mirrors Jira like `Issue`;
+  `BugReportSnapshot` accrues daily like `SprintSnapshot`), with one deliberate difference: the
+  cache stores **raw Jira facts only** and band/category/SLA-breach are computed at READ time from
+  current config, so an admin config edit re-renders the dashboard instantly with no Jira refresh.
+  Snapshot rows are self-describing (key + label per dimension) so renaming or deleting a category
+  never orphans history.
 
 ---
 
@@ -790,6 +1006,18 @@ Jira** button. Footer: "Engineering Internal Tool @ Tekion Corp."
 > (`rollup-digest-button.jsx` → `POST /api/rollup/ai-digest`) generating a portfolio digest that
 > compares every team and narrates commented risks as known/agreed. See
 > context/features/risk-comments-rollup-digest.md.
+
+> **[BUILT 2026-07-21 — `/bugs`, the bug-report dashboard]** — a new top-level route (plus
+> `/bugs/[slug]` for multi-report) reusing the shared ink `HeroShell`, MetricGrid card treatment
+> and matrix idiom: hero (owner, staleness, refreshed-by, report switcher + Refresh, error banner
+> when the last refresh aborted) · 5 KPI cards with previous-capture deltas · **the matrix**
+> (frozen first column, ~13 columns = 2 scopes × 5 bands + scope totals + grand total, `n (m)`
+> with breach in the danger tone, every cell a composed Jira drill-down) · a two-up row (SVG trend
+> + SLA breach call-outs) · a three-up row (priority mix / category mix / ageing) · oldest-bugs
+> table · reference chips. Charts are **hand-rolled inline SVG — no charting dependency** (the
+> TrendPanel precedent), palette validated with the dataviz validator (teal/blue CVD ΔE 19.9).
+> TopBar gains a "Bugs" link on `/` and `/rollup` when a report exists. See
+> context/features/gm-bug-report.md.
 
 ---
 
@@ -985,6 +1213,24 @@ All previously open decisions are now resolved:
   the team and roll-up digests. All three BUILT 2026-07-21; see
   context/features/risk-comments-rollup-digest.md. Remaining open AI ideas: Q&A, stage
   suggestions, export-embedded narrative.)*
+- **Bug report dashboards (ratified 2026-07-21 with Naveen).** A config-driven bug matrix +
+  executive dashboard at `/bugs`, automating the hand-built daily GM bug report. Ratified:
+  (1) rows/columns/cells are all **admin configuration — nothing is hardcoded**, and the app ships
+  with an empty config; (2) a **new top-level route**, not a `/rollup` tab (the roll-up is
+  sprint-scoped, this is not); (3) **cached + daily cron + manual Refresh**, not live-on-open;
+  (4) full executive dashboard in v1, with the `gm-security-vulnerabilities-tracker` PDF as a
+  **visual reference only**; (5) each scope universe is a **saved Jira filter id or raw JQL**;
+  (6) **SLA breach is app-computed** from configurable days per (scope, priority) —
+  `created + days < now` — *(this REVERSED an earlier same-day ratification that SLA would be a
+  Jira filter; the computed model is authoritative)*; (7) **snapshot every cell daily**;
+  (8) categories are ordered **Jira status lists**, and unmatched statuses fall back to a
+  **configurable fallback category** (Engineering Team) — *(this REVERSED the earlier residual-row
+  design; the residual row now renders only when no fallback is configured)*; (9) **five bands by
+  default (P0–P4)** rather than a grouped `P2+`, "so charts and graphs are more intuitive";
+  (10) **multi-report from day one** so "the same dashboard for Project = Honda" is configuration,
+  not code. Explicitly NOT an AI task: priority→band and status→category are finite, auditable
+  mappings — AI narrates these numbers, it never computes them. See
+  context/features/gm-bug-report.md.
 
 ---
 
@@ -1016,4 +1262,4 @@ The plan — exact next steps, in order
 7. Background job — a cron on your internal infra hitting an internal route: refresh issue caches + write the daily per-team SprintSnapshot for active sprints. **[DONE 2026-07-09]** — secret-gated `POST /api/cron/daily` (`CRON_SECRET` bearer, timingSafeEqual over sha256 digests; first session-less route) → `lib/cron/daily.js` `runDailyJob`: per ACTIVE sprint, sequential per-team refresh via the step-5 engine with the `CRON_SYNC_USER_EMAIL` service credential (absent/dead → refresh skipped, snapshots still written; per-team errors isolated), then batched per-team metrics → UTC-midnight `SprintSnapshot` upsert; pure `snapshotValues` in `lib/metrics.mjs`. Verified: 23/23 pure fixtures, DB/env-free build, 30/30 live dev+Neon checks (gates, hand-computed rows, PLANNING/filterless skips, degrade path, idempotent re-run, unset-secret 500). Scheduling on Tekion infra is a deploy-time task. See context/features/background-sync-snapshots.md.
 8. Share view + export — SharedView token route (/share/[token], live or frozen, expiry) replacing the base64 URL; port PDF/PNG export. **[DONE 2026-07-12]** — public session-less `/share/[token]` (192-bit app-generated token, `robots: noindex`, generic invalid/expired state; live = current rows, frozen = input snapshot w/ metrics pinned to `capturedAt` via the new optional `asOf` clock threaded through `lib/metrics.mjs` + the MetricGrid/PlannerPanel/IssueRow props); writer-gated `POST/GET …/shares` (filterIds validated ⊆ team+sprint) + creator/admin `DELETE /api/shares/[shareId]`; ShareDialog (live/frozen, expiry presets, manage/revoke, clipboard+toast) + ExportDialog (filter toggles, paged preview, offscreen A4 pages → PDF/PNG) behind new Hero buttons. Deps `html2canvas-pro@2.2.3` (stock html2canvas can't parse the Tailwind-v4 oklch/`color-mix` theme — proven by a headless-Chrome capture spike) + `jspdf@2.5.2`, dynamic-imported (verified absent from the dashboard chunk). No schema change, no migration. Verified: lint; DB/env-free build (27 ƒ Dynamic); 25/25 asOf fixtures; 37/37 SSR smoke on dev+Neon incl. frozen-vs-live divergence, list scoping, revoke/expiry → generic page. Human acceptance (browser share open + real PDF/PNG) pending with the ui-polish eyeball. See context/features/share-view-export.md.
 9. Importer — one-time script that takes the localStorage JSON (sprintTracker_sprintData + config) and writes Sprint/Filter/IssueProgress rows so your current sprints carry over. **[SKIPPED 2026-07-18]** — Naveen no longer has older sprint data in localStorage (current work already lives in `web/` via real syncs), so there is nothing to import; decided with Naveen 2026-07-18. Spec draft kept for reference at context/features/seed.md.
-10. Cutover, then post-v1 — promote web/ to repo root, delete the Vite app; then burndown/trend UI from snapshots, then Gemini (risk call-outs + narrative first). **[DONE 2026-07-18 (cutover half)]** — two-phase `git mv` on `feature/cutover`: the Vite app (src/, server.js, docs/, lockfiles, untracked .env/node_modules/dist) **retired into `legacy/` instead of deleted** (ratified with Naveen 2026-07-18; startable there under Node 20 — verified :3000/:3001 answer) with plaintext-token `.sessions/` deleted; then `web/*` promoted to root (101 renames, history follows via `git log --follow`). Node 22 bump landed with it (`.nvmrc`, `engines >=22.12`, `.yarnrc` shim deleted, fresh install under 22.22.2). Config/docs: root `.gitignore` = web's + re-added `.claude/*` rules, `turbopack.root` pin kept (dual lockfile with `legacy/yarn.lock`), package renames (`sprint-tracker` / `sprint-tracker-legacy`), CLAUDE.md/AGENTS.md/README.md rewritten for the single-app root, `.claude/skills` `web/`-path sweep (+ `verify-web` renamed `verify`, per Naveen), `legacy/**` added to ESLint ignores (the only config-behavior change). Zero app-code changes; no schema change, no migration. Verified at root under Node 22: lint clean; `prisma validate` + `migrate status` up to date; **DB/env-free build green, 27 ƒ Dynamic (same as step 8)**; dev-server smoke on :3002 — unauth 307, login 200, unknown share → generic page, cron bad-bearer 401, `health/db` ok against Neon, minted-admin dashboard SSR with full chrome. **Deployment re-pointing (build from repo root) is a deploy-time task.** See context/features/cutover.md. *Post-v1 clause:* **trend/burndown UI DONE 2026-07-19** — snapshot-fed `TrendPanel` on `/` + `/rollup` with the trailing-7-day projection, plus the §12 velocity swap (`snapshotVelocity` override w/ naive fallback; share/export untouched); no schema change/migration/deps/routes (see context/features/trend-burndown.md). **AI insights (risk call-outs + narrative) DONE 2026-07-20** — provider-agnostic AI platform (`src/lib/ai/`: neutral `generateJson` + Gemini/Anthropic fetch adapters, env-switched with loud-fail config and a dormant unconfigured state) behind the on-demand "AI Digest" dialog on `/` (`POST …/ai-digest` — **28 ƒ Dynamic**); no schema change, no migration, no new deps (see context/features/ai-insights.md). **Risk comments + roll-up all-risks dialog + roll-up AI Digest DONE 2026-07-21** — `IssueProgress.riskComment` (one additive migration — the first schema change since `add_user_isadmin`) lets a known/agreed risk be communicated to leadership as managed context; `/rollup`'s risk panel now surfaces every team's comments/blocked reasons plus a "View all risks" dialog listing every risky issue across teams; the roll-up hero gained an AI Digest button (`POST /api/rollup/ai-digest` — **29 ƒ Dynamic**) generating a portfolio digest that compares teams and narrates commented risks as known/agreed (see context/features/risk-comments-rollup-digest.md). Remaining post-v1 ideas: export-embedded narrative, AI Q&A over sprint data, stage suggestions.
+10. Cutover, then post-v1 — promote web/ to repo root, delete the Vite app; then burndown/trend UI from snapshots, then Gemini (risk call-outs + narrative first). **[DONE 2026-07-18 (cutover half)]** — two-phase `git mv` on `feature/cutover`: the Vite app (src/, server.js, docs/, lockfiles, untracked .env/node_modules/dist) **retired into `legacy/` instead of deleted** (ratified with Naveen 2026-07-18; startable there under Node 20 — verified :3000/:3001 answer) with plaintext-token `.sessions/` deleted; then `web/*` promoted to root (101 renames, history follows via `git log --follow`). Node 22 bump landed with it (`.nvmrc`, `engines >=22.12`, `.yarnrc` shim deleted, fresh install under 22.22.2). Config/docs: root `.gitignore` = web's + re-added `.claude/*` rules, `turbopack.root` pin kept (dual lockfile with `legacy/yarn.lock`), package renames (`sprint-tracker` / `sprint-tracker-legacy`), CLAUDE.md/AGENTS.md/README.md rewritten for the single-app root, `.claude/skills` `web/`-path sweep (+ `verify-web` renamed `verify`, per Naveen), `legacy/**` added to ESLint ignores (the only config-behavior change). Zero app-code changes; no schema change, no migration. Verified at root under Node 22: lint clean; `prisma validate` + `migrate status` up to date; **DB/env-free build green, 27 ƒ Dynamic (same as step 8)**; dev-server smoke on :3002 — unauth 307, login 200, unknown share → generic page, cron bad-bearer 401, `health/db` ok against Neon, minted-admin dashboard SSR with full chrome. **Deployment re-pointing (build from repo root) is a deploy-time task.** See context/features/cutover.md. *Post-v1 clause:* **trend/burndown UI DONE 2026-07-19** — snapshot-fed `TrendPanel` on `/` + `/rollup` with the trailing-7-day projection, plus the §12 velocity swap (`snapshotVelocity` override w/ naive fallback; share/export untouched); no schema change/migration/deps/routes (see context/features/trend-burndown.md). **AI insights (risk call-outs + narrative) DONE 2026-07-20** — provider-agnostic AI platform (`src/lib/ai/`: neutral `generateJson` + Gemini/Anthropic fetch adapters, env-switched with loud-fail config and a dormant unconfigured state) behind the on-demand "AI Digest" dialog on `/` (`POST …/ai-digest` — **28 ƒ Dynamic**); no schema change, no migration, no new deps (see context/features/ai-insights.md). **Risk comments + roll-up all-risks dialog + roll-up AI Digest DONE 2026-07-21** — `IssueProgress.riskComment` (one additive migration — the first schema change since `add_user_isadmin`) lets a known/agreed risk be communicated to leadership as managed context; `/rollup`'s risk panel now surfaces every team's comments/blocked reasons plus a "View all risks" dialog listing every risky issue across teams; the roll-up hero gained an AI Digest button (`POST /api/rollup/ai-digest` — **29 ƒ Dynamic**) generating a portfolio digest that compares teams and narrates commented risks as known/agreed (see context/features/risk-comments-rollup-digest.md). **Bug report dashboards DONE 2026-07-21** — the config-driven bug matrix + executive dashboard at `/bugs` (+ `/bugs/[slug]`): 7 new models + one migration (the largest schema change since `init`), 4 new API routes + 2 pages (**29 → 35 ƒ Dynamic**), and the **first non-sprint-scoped read path in the app**. Everything about a report is admin config — scope universes (saved filter id or JQL), category→status mapping with a fallback category, SLA days per (scope, priority), and P0–P4 bands — so a second dashboard (Honda) is configuration, not code; classification is read-time so config edits apply with no Jira refresh (see context/features/gm-bug-report.md). Remaining post-v1 ideas: export-embedded narrative, AI Q&A over sprint data, stage suggestions, and PDF/share for `/bugs`.

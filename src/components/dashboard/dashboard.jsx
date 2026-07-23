@@ -61,6 +61,7 @@ export function Dashboard({
   metrics,
   jiraBaseUrl,
   aiEnabled,
+  hasBugReport,
 }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -249,6 +250,7 @@ export function Dashboard({
         busy={busy}
         canWrite={can.write && Boolean(base)}
         canManage={can.manage && Boolean(base)}
+        hasBugReport={hasBugReport}
         onLogout={handleLogout}
       />
 
