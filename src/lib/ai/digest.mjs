@@ -94,7 +94,10 @@ function riskIssuePayload(issue, { includeTeamKey = false } = {}) {
 }
 
 export function buildDigestInput({ team, sprint, metrics, series, velocity, asOf }) {
-  const risky = sortRisky(metrics.issues);
+  // Risk narration + progress + health follow the DELIVERY lens (roadmap + tech debt), matching the
+  // on-screen risk panel + Sprint Health card (two-lens model, sprint-phases-delivery-lens.md);
+  // totalIssues/totalPoints/completedPoints stay all-work as the scope/workload context.
+  const risky = sortRisky(metrics.deliveryIssues);
   const riskIssues = risky.slice(0, DIGEST_MAX_ISSUES).map((issue) => riskIssuePayload(issue));
 
   return {
@@ -110,9 +113,9 @@ export function buildDigestInput({ team, sprint, metrics, series, velocity, asOf
       totalIssues: metrics.totalIssues,
       totalPoints: round1(metrics.points),
       completedPoints: round1(metrics.completedPoints),
-      avgProgressPct: metrics.avgProgress,
+      avgProgressPct: metrics.deliveryAvgProgress,
       sprintHealth: metrics.sprintHealth.status,
-      healthCounts: metrics.healthCounts,
+      healthCounts: metrics.deliveryHealthCounts,
     },
     velocity: velocityPayload(velocity),
     trend: trendPayload(series),
@@ -127,7 +130,7 @@ export function buildDigestInput({ team, sprint, metrics, series, velocity, asOf
  * PER TEAM (so the model can compare teams), combined §12 metrics (`aggregateRollup` output),
  * combined trend/velocity, and the worst-N risks ACROSS every team (same worst-first ordering,
  * now carrying `teamKey`). Progress is resolved per-team by the caller (§9 — never merge maps);
- * this function only reads the already-resolved `metrics.issues` on each `perTeam` entry.
+ * this function only reads the already-resolved `metrics.deliveryIssues` on each `perTeam` entry.
  *
  * @param {{
  *   sprint: { name: string, developmentStart: Date|string, developmentEnd: Date|string,
@@ -148,14 +151,15 @@ export function buildRollupDigestInput({ sprint, perTeam, combined, series, velo
     totalIssues: metrics.totalIssues,
     totalPoints: round1(metrics.points),
     completedPoints: round1(metrics.completedPoints),
-    avgProgressPct: metrics.avgProgress,
+    avgProgressPct: metrics.deliveryAvgProgress,
     sprintHealth: metrics.sprintHealth.status,
-    blockedCount: metrics.healthCounts.blocked,
+    blockedCount: metrics.deliveryHealthCounts.blocked,
     lastSyncedAt: lastSyncedAt ? new Date(lastSyncedAt).toISOString() : null,
   }));
 
+  // Cross-team worst-N risks follow the delivery lens too (matches the roll-up risk panel).
   const allIssues = perTeam.flatMap(({ team, metrics }) =>
-    metrics.issues.map((issue) => ({ ...issue, teamKey: team.key })),
+    metrics.deliveryIssues.map((issue) => ({ ...issue, teamKey: team.key })),
   );
   const risky = sortRisky(allIssues);
   const riskIssues = risky
@@ -176,9 +180,9 @@ export function buildRollupDigestInput({ sprint, perTeam, combined, series, velo
       totalIssues: combined.totalIssues,
       totalPoints: round1(combined.points),
       completedPoints: round1(combined.completedPoints),
-      avgProgressPct: combined.avgProgress,
+      avgProgressPct: combined.deliveryAvgProgress,
       sprintHealth: combined.sprintHealth.status,
-      healthCounts: combined.healthCounts,
+      healthCounts: combined.deliveryHealthCounts,
     },
     velocity: velocityPayload(velocity),
     trend: trendPayload(series),

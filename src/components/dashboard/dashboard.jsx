@@ -13,6 +13,7 @@ import { apiFetch } from "@/lib/api-client";
 import { buildTrendSeries, snapshotVelocity } from "@/lib/metrics.mjs";
 import { useLocalPref } from "@/lib/use-local-pref";
 import { PageLoader } from "@/components/ui/spinner";
+import { AppShell } from "@/components/ui/app-shell";
 import { Toast, useToast } from "@/components/ui/toast";
 import { TopBar } from "./top-bar";
 import { Hero } from "./hero";
@@ -30,7 +31,6 @@ import { ExportDialog } from "./export-dialog";
 import { AlertDialog } from "./alert-dialog";
 import { EmptyState } from "./empty-state";
 
-const DENSITY_KEY = "sprintTracker_viewDensity";
 const COLLAPSED_KEY = "sprintTracker_filtersPanelCollapsed";
 
 /** One-line sync outcome for the success toast (errors keep the full alert modal). */
@@ -79,11 +79,12 @@ export function Dashboard({
   // updates must be re-wrapped in startMutation to stay inside the transition (React 19).
   const [busy, startMutation] = useTransition();
 
-  // The two ephemeral localStorage prefs (§17, decision 8) — SSR-safe via useSyncExternalStore.
-  const [density, setDensity] = useLocalPref(DENSITY_KEY, "dense");
+  // The filters-panel collapse pref (§17, decision 8) — SSR-safe via useSyncExternalStore.
+  // Matrix rows render at fixed "dense" spacing now that the density toggle is retired; the value
+  // still rides into share snapshots (SharedView.viewDensity) and the matrix padding.
+  const density = "dense";
   const [collapsedPref, setCollapsedPref] = useLocalPref(COLLAPSED_KEY, "false");
   const collapsed = collapsedPref === "true";
-  const toggleDensity = () => setDensity(density === "dense" ? "relaxed" : "dense");
   const toggleCollapsed = () => setCollapsedPref(String(!collapsed));
 
   const base =
@@ -236,7 +237,8 @@ export function Dashboard({
     : null;
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <AppShell user={user} hasBugReport={hasBugReport}>
+      <div className="flex min-h-screen flex-col">
       <TopBar
         user={user}
         teams={teams}
@@ -281,10 +283,9 @@ export function Dashboard({
           <>
             <Hero
               showWelcome={showWelcome}
+              completion={metrics ? metrics.deliveryAvgProgress : null}
               sprint={selectedSprint}
               team={selectedTeam}
-              density={density}
-              onToggleDensity={toggleDensity}
               onConfigureSprint={can.configureSprint ? () => setSprintDialogMode("edit") : null}
               onAddFilter={can.manage ? () => setShowAddFilter(true) : null}
               onShare={can.write && base ? () => setShowShare(true) : null}
@@ -302,7 +303,7 @@ export function Dashboard({
                 <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
                   <TrendPanel series={trend} sprint={selectedSprint} asOf={asOf} />
                   <RiskCalloutsPanel
-                    issues={metrics.issues}
+                    issues={metrics.deliveryIssues}
                     series={trend}
                     jiraBaseUrl={jiraBaseUrl}
                     onEditComment={can.write ? (issue) => setEditingRiskIssue(issue) : null}
@@ -398,6 +399,7 @@ export function Dashboard({
         />
       )}
       <PageLoader show={busy || syncing} label={syncing ? "Syncing Jira…" : "Updating…"} />
-    </div>
+      </div>
+    </AppShell>
   );
 }

@@ -1,4 +1,5 @@
 import { SCOPE_TOTAL_BAND_KEY, TOTAL_ROW_KEY } from "@/lib/bug-report/matrix.mjs";
+import { smoothAreaPath, smoothLinePath } from "@/lib/chart-path.mjs";
 
 /**
  * The chart panels (gm-bug-report.md (g)4–7): trend, priority mix, category mix, ageing.
@@ -61,10 +62,13 @@ function Bar({ label, value, max, color, caption }) {
       <span className="truncate text-xs font-medium" title={label}>
         {label}
       </span>
-      <span className="h-4 overflow-hidden rounded-sm bg-muted">
+      <span className="h-2.5 overflow-hidden rounded-full bg-muted">
         <span
-          className="block h-full rounded-sm"
-          style={{ width: `${pct}%`, backgroundColor: color }}
+          className="block h-full rounded-full"
+          style={{
+            width: `${pct}%`,
+            backgroundImage: `linear-gradient(90deg, ${color}, color-mix(in oklab, ${color} 72%, white))`,
+          }}
           aria-hidden="true"
         />
       </span>
@@ -109,7 +113,11 @@ export function BugTrendPanel({ trend }) {
   const innerH = H - PAD.top - PAD.bottom;
   const x = (i) => PAD.left + (trend.length === 1 ? innerW / 2 : (i / (trend.length - 1)) * innerW);
   const y = (value) => PAD.top + innerH - (value / maxY) * innerH;
-  const line = (pick) => trend.map((point, i) => `${i === 0 ? "M" : "L"}${x(i)},${y(pick(point))}`).join(" ");
+  const countPts = trend.map((point, i) => ({ x: x(i), y: y(point.count) }));
+  const breachPts = trend.map((point, i) => ({ x: x(i), y: y(point.breachedCount) }));
+  const countLine = smoothLinePath(countPts);
+  const breachLine = smoothLinePath(breachPts);
+  const countArea = smoothAreaPath(countPts, y(0));
 
   const first = trend[0];
   const last = trend.at(-1);
@@ -128,6 +136,12 @@ export function BugTrendPanel({ trend }) {
     >
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img"
         aria-label={`Open bugs from ${last.count} at the latest capture, ${change >= 0 ? "up" : "down"} ${Math.abs(change)} since the first`}>
+        <defs>
+          <linearGradient id="bugTrendFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={SCOPE_COLORS[0]} stopOpacity="0.26" />
+            <stop offset="100%" stopColor={SCOPE_COLORS[0]} stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
         {[0, 0.5, 1].map((frac) => (
           <line key={frac} x1={PAD.left} x2={W - PAD.right} y1={y(maxY * frac)} y2={y(maxY * frac)}
             stroke="currentColor" className="text-border-subtle" strokeWidth="1" />
@@ -139,9 +153,10 @@ export function BugTrendPanel({ trend }) {
           </text>
         ))}
 
-        <path d={line((p) => p.count)} fill="none" stroke={SCOPE_COLORS[0]} strokeWidth="2"
+        <path d={countArea} fill="url(#bugTrendFill)" />
+        <path d={countLine} fill="none" stroke={SCOPE_COLORS[0]} strokeWidth="2"
           strokeLinecap="round" strokeLinejoin="round" />
-        <path d={line((p) => p.breachedCount)} fill="none" stroke={BREACH_COLOR} strokeWidth="2"
+        <path d={breachLine} fill="none" stroke={BREACH_COLOR} strokeWidth="2"
           strokeLinecap="round" strokeLinejoin="round" />
 
         {trend.map((point, i) => (
@@ -205,14 +220,17 @@ export function BugPriorityPanel({ matrix }) {
           return (
             <li key={row.label} className="grid grid-cols-[3rem_1fr_auto] items-center gap-3">
               <span className="text-xs font-semibold">{row.label}</span>
-              <span className="flex h-4 gap-0.5 overflow-hidden rounded-sm bg-muted">
+              <span className="flex h-2.5 gap-0.5 overflow-hidden rounded-full bg-muted">
                 {row.segments.map((seg) =>
                   seg.value === 0 ? null : (
                     <span
                       key={seg.name}
                       title={`${seg.name}: ${seg.value}`}
-                      style={{ width: `${(seg.value / max) * 100}%`, backgroundColor: seg.color }}
-                      className="block h-full first:rounded-l-sm last:rounded-r-sm"
+                      style={{
+                        width: `${(seg.value / max) * 100}%`,
+                        backgroundImage: `linear-gradient(90deg, ${seg.color}, color-mix(in oklab, ${seg.color} 72%, white))`,
+                      }}
+                      className="block h-full first:rounded-l-full last:rounded-r-full"
                     />
                   ),
                 )}

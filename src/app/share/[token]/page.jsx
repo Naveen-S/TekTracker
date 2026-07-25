@@ -9,7 +9,7 @@
  */
 import Image from "next/image";
 import { getShareData } from "@/lib/dashboard-data";
-import { formatDate, getDaysRemaining } from "@/lib/metrics.mjs";
+import { formatSprintWindow } from "@/lib/metrics.mjs";
 import { Badge } from "@/components/ui/badge";
 import {
   DaysRemainingPill,
@@ -98,23 +98,19 @@ export default async function SharePage({ params }) {
         <HeroShell className="flex flex-wrap items-center justify-between gap-4 px-5 py-6 md:px-8 md:py-7">
           <div>
             <HeroEyebrow>
-              {sprint.name} · {formatDate(sprint.developmentStart)} –{" "}
-              {formatDate(sprint.developmentEnd)}
-              {sprint.releaseDate ? ` · release ${formatDate(sprint.releaseDate)}` : ""}
+              {sprint.name} · {formatSprintWindow(sprint)}
             </HeroEyebrow>
             <HeroTitle>Shared sprint view</HeroTitle>
-            <div className="mt-2 flex flex-wrap items-center gap-2.5">
-              <HeroCopy>{freshness}</HeroCopy>
-              {/* The live-clock pill only makes sense on live shares; frozen views are as-of capture. */}
-              {isLive ? (
-                <DaysRemainingPill days={getDaysRemaining(sprint)} />
-              ) : (
-                <span className="inline-flex items-center rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-bold whitespace-nowrap text-white/80">
-                  Frozen snapshot
-                </span>
-              )}
-            </div>
+            <HeroCopy className="mt-2">{freshness}</HeroCopy>
           </div>
+          {/* The live-clock pill only makes sense on live shares; frozen views are as-of capture. */}
+          {isLive ? (
+            <DaysRemainingPill sprint={sprint} />
+          ) : (
+            <span className="inline-flex items-center rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-bold whitespace-nowrap text-white/80">
+              Frozen snapshot
+            </span>
+          )}
         </HeroShell>
 
         <MetricGrid metrics={metrics} sprint={sprint} asOf={asOf ?? undefined} />

@@ -6,7 +6,7 @@
 > **[BUILT]**, **[PARTIAL]**, **[PLANNED]**, or **[GAP]** so the as-built state is never confused
 > with the target state.
 >
-> Last reviewed: 2026-07-21 · Owner: Naveen · Audience: engineers + Claude Code.
+> Last reviewed: 2026-07-25 · Owner: Naveen · Audience: engineers + Claude Code.
 >
 > **Path note (cutover, 2026-07-18):** the Next.js app was promoted from the `web/` subfolder to
 > the **repo root**, and the legacy Vite/Express app was backed up into **`legacy/`**. Historical
@@ -75,12 +75,16 @@ Key relationships:
 - **Stage** — A step in the delivery lifecycle for one work item. Stages are tracked as a **manual,
   ordered checklist overlay** on each issue (checking stage *n* auto-checks `0..n`). They are **not**
   currently derived from Jira status — see the critical note in §6.
-- **Sprint / Gate** — A named release window with fixed `startDate`/`endDate` (and a release date).
-  Tekion calls monthly releases "Gates" (e.g. *June 2026 Release*). All filters and progress are
-  **scoped to a sprint**.
+- **Sprint / Gate** — A named release window with a fixed **dev cycle** (`developmentStart` →
+  `developmentEnd`) and a **release date**. The sprint runs **dev cycle → QA/UAT
+  (`developmentEnd → releaseDate`) → released**, and **ends at the release date, not dev end**
+  (2026-07-24; see §12). Tekion calls monthly releases "Gates" (e.g. *June 2026 Release*). All
+  filters and progress are **scoped to a sprint**.
 - **Health** — Per-issue and per-sprint status (On Track / At Risk / Behind / Blocked / Ahead / Done),
-  computed from weighted stage completion vs. time-elapsed expectation (see §14).
-- **Velocity** — Story points completed per week, with a naive linear projection to sprint end (§14).
+  computed from weighted stage completion vs. time-elapsed expectation (see §12). **Sprint** health
+  is the **delivery lens** — roadmap + tech-debt only, against the dev cycle (§12 two-lens).
+- **Velocity** — Story points completed per week (**all work — throughput lens**, §12), with a naive
+  linear projection to sprint end (superseded by snapshot velocity where ≥2 daily snapshots exist).
 - **Sync** — Pull the latest issues for every filter from Jira Cloud (refreshes the issue list and raw
   status; **does not** change manual stage progress).
 - **Share view** — Share the exact configured view with someone else (e.g. EM → senior EM/Director).
@@ -918,7 +922,7 @@ erDiagram
 | Caching | **Redis** (optional) | For ED multi-team reads + Jira rate-limit smoothing. |
 | Auth | **Jira email + API token, encrypted at rest** (decided 2026-06-10) | AES-GCM, key from a secret store; OAuth 3LO remains a later option (§13). **[BUILT in `web/` 2026-06-29]** iron-session cookie + AES-256-GCM `JiraCredential` (auth-layer.md). |
 | AI | **Pluggable provider** (amended 2026-07-20; was "Gemini") | Provider-agnostic `src/lib/ai/` platform switched by `AI_PROVIDER` env (Gemini + Anthropic adapters ship). **[BUILT in part 2026-07-20]** — risk call-outs + leadership narrative ("AI Digest" dialog on `/`); Q&A over sprint data + stage suggestions remain post-v1. |
-| Styling | **Tailwind CSS v4 + shadcn/ui** | Current build uses hand-written CSS (`src/styles.css`). |
+| Styling | **Tailwind CSS v4 + shadcn/ui** | CSS-var token theme in `globals.css` `@theme`. **Two themes (Tekion + Modern) BUILT 2026-07-24** — a `theme-modern` class on `<html>` swaps palette AND layout (blue + a dark nav sidebar via `AppShell`), localStorage-backed (modern-theme.md). Dark mode still post-v1 (dormant `.dark`). |
 
 ---
 
@@ -967,8 +971,21 @@ Jira** button. Footer: "Engineering Internal Tool @ Tekion Corp."
 > icon tiles + display numerals, lucide icons replacing text glyphs, **success toasts**
 > (`ui/toast.jsx`; errors keep the alert modal; admin `window.confirm` → styled confirm), and
 > deterministic accent-palette assignment on filter creation (`accentColor`, the only
-> non-presentation change). **Dark-mode toggle and loading skeletons remain post-v1** (the `.dark`
+> non-presentation change). **A second "Modern" theme (blue + a dark nav sidebar) shipped 2026-07-24
+> (modern-theme.md); the dark-mode toggle and loading skeletons remain post-v1** (the `.dark`
 > token set stays dormant). See context/features/ui-polish.md.
+>
+> **[BUILT 2026-07-24 — Modern theme]** — a second, selectable **"Modern"** theme alongside the
+> untouched **Tekion** default (theme switcher in the top bar + admin header; a `theme-modern` class
+> on `<html>` set by a no-FOUC boot script + localStorage). Unlike a recolor, Modern is a **layout
+> shift**: a shared `AppShell` renders a dark left-nav **sidebar** (active-route highlight,
+> collapse↔icon-rail) on `/`, `/rollup`, `/bugs`, `/admin`, revealed only under Modern via
+> `hidden modern:lg:flex` (CSS-reveal — Tekion is byte-for-byte unchanged); the top-bar nav hides
+> under Modern (`modern:lg:hidden`), and below `lg` Modern falls back to top-bar nav. Blue `#2f6bff`
+> tokens, **monochrome blue status chips** (semantic color survives in matrix dots + card accents +
+> breach counts), a blue-re-hued ink hero, and a cross-fade on theme swap. `/login` + `/share` and
+> the PDF exports + validated bug-chart palette stay Tekion-branded. No schema/migration/route/
+> dependency change. See context/features/modern-theme.md.
 >
 > **[BUILT in `web/` 2026-07-08, step 6b]** — **`/rollup`**, the ED/TPM/EM multi-team roll-up:
 > a read-only server page (one client leaf: sprint selector + "My board" + logout) rendering the
@@ -1019,21 +1036,77 @@ Jira** button. Footer: "Engineering Internal Tool @ Tekion Corp."
 > TopBar gains a "Bugs" link on `/` and `/rollup` when a report exists. See
 > context/features/gm-bug-report.md.
 
+> **[BUILT 2026-07-24 — sprint timeline (dev → QA/UAT → release) + two-lens metrics]** — the
+> days-remaining pill is now **phase-aware** across `/`, `/rollup`, `/share` (dev cycle countdown →
+> **"Dev cycle ended · QA/UAT · Nd to release"** → "Released"; "Sprint ended" only without a release
+> date), hero/admin/export **eyebrows spell out both cycles** (`formatSprintWindow`), and the hero
+> **phase bar is hybrid** — delivery completion % drives Scope·Design·Develop·Review during the dev
+> cycle, then QA·UAT·Release light up by date. Metrics are re-scoped to **two lenses** (§12): Sprint
+> Health / Completion / At-Risk / risk call-outs = **delivery** (roadmap + tech debt, dev cycle);
+> velocity + Issues-in-scope = **all work**. Support/regression bugs keep their Delivery-Matrix rows
+> but no longer move the delivery signal. No schema/migration/route/dependency change. See
+> context/features/sprint-phases-delivery-lens.md.
+
+> **[BUILT 2026-07-25 — hero timeline UI + live release countdown]** — a leadership-readable
+> refresh of the hero timeline (same `feature/modern-theme` branch, presentation only). The flat
+> days-remaining pill is replaced by a live **release countdown** (`ui/release-countdown.jsx`, a
+> client leaf: a progress ring + a ticking `d·h·m·s` clock with blinking colons and a shimmer sweep;
+> phase-aware tone, urgent-red under 3 days, green "Released") — still server-safe via the
+> `DaysRemainingPill` wrapper, and frozen shares still show "Frozen snapshot". On `/` the hero phase
+> bar became a **sprint timeline** (`dashboard/sprint-phase-bar.jsx`): two macro-cycle status chips —
+> **`✓ Dev cycle · Completed`** then **`● QA / UAT · In progress`** (green check / pulsing dot per
+> phase, so "dev done, QA started" reads at a glance) — over the seven phases grouped
+> `Scope·Design·Develop·Review │ QA·UAT·Release` with partial-fill animated bars, and it hosts the
+> countdown at its right end. The countdown moved out of the hero copy line to the hero **top-right**
+> on `/`, `/rollup`, `/share`. The **Relaxed/Dense view toggle was retired** — density is fixed at
+> "dense" (still rides into `SharedView.viewDensity` + matrix padding; the dashboard dropped its
+> `DENSITY_KEY` localStorage pref, the collapse pref stays). New `--on-ink-success` token +
+> `sweep`/`blink` keyframes in `globals.css`; **no schema/migration/route/dependency change**. See
+> context/features/modern-theme.md and context/features/sprint-phases-delivery-lens.md.
+
 ---
 
 ## 12. Metrics & calculations
 
-Reference implementation: [`src/workflows.js`](src/workflows.js) and
-[`src/utils/sprintMetricsCompute.js`](src/utils/sprintMetricsCompute.js).
+Reference implementation: [`src/lib/metrics.mjs`](src/lib/metrics.mjs) (the pure port;
+legacy `src/workflows.js` + `src/utils/sprintMetricsCompute.js` in `legacy/`).
+
+> **Two lenses — delivery vs. throughput (BUILT 2026-07-24; sprint-phases-delivery-lens.md).**
+> Sprint *delivery health* and *team throughput/capacity* are different questions, deliberately
+> scoped differently:
+> - **Delivery lens** = roadmap `FEATURE` + tech-debt `TECH_DEBT`, measured against the **dev cycle**
+>   (`developmentStart → developmentEnd`). Feeds **Sprint Health**, **Completion %**, the **At-Risk**
+>   card, the **risk call-outs**, and the hero phase-bar dev frontier. Support/internal-bug issues are
+>   *reactive* — mostly surfaced during QA — so they never move this "is the committed sprint on
+>   track" signal; they stay Delivery-Matrix rows with their own per-issue health.
+> - **Throughput lens** = **all work** (roadmap + tech debt + support + internal bugs). Feeds
+>   **velocity** and **Issues in scope**, because bugs consume real team capacity.
+> `computeSprintMetrics` returns both sets (`delivery*` fields for the delivery lens; the all-work
+> `points`/`avgProgress`/`healthCounts`/`velocity*` for throughput), and `aggregateRollup` mirrors
+> them. The **burndown / `SprintSnapshot` / trend deliberately stay all-work (throughput)** so the
+> snapshot contract and history stay continuous — no schema change (decision 4).
 
 - **Weighted completion %** = Σ(weight of completed stages) / Σ(all weights), per issue.
 - **Per-issue health** (`getHealthStatus`): compare completion % to *expected* progress
   `elapsedDays / totalDays`. Bands by delta: `≥+10 Ahead`, `−10..+10 On Track`, `−25..−10 At Risk`,
   `<−25 Behind`; plus `Blocked`, `Done` (100%), `Not Started` (0% & <5% expected).
-- **Sprint health** (feature issues only): `Critical` if any blocked or >30% behind; `At Risk` if
-  (atRisk+behind) >20%; `Complete`/`Excellent`/`Healthy`/`Fair` otherwise.
+- **Sprint timeline** (`getSprintPhase`/`formatSprintWindow`, BUILT 2026-07-24; hero UI refreshed
+  2026-07-25): a sprint runs **dev cycle** (`developmentStart → developmentEnd`) → **QA/UAT**
+  (`developmentEnd → releaseDate`) → **released** (after `releaseDate`) — it **ends at the release
+  date, not dev end**. The readout is a live, phase-aware **release countdown** — a progress ring +
+  a ticking `d·h·m·s` clock (dev-cycle countdown → QA/UAT countdown to release → "Released"; only
+  "Sprint ended" when a sprint has no release date) — and the hero phase bar is a **sprint timeline**
+  with two macro-cycle status chips (Dev cycle → QA/UAT, `✓ Completed` / `● In progress`) over the
+  seven phases, **hybrid**: delivery completion % drives the four dev phases during the dev cycle,
+  then QA/UAT/Release light up **by date**. Metric *time math* is unchanged — `getSprintPhase` itself
+  is untouched (the refresh is presentation); delivery is still measured against the dev cycle.
+- **Sprint health** (**delivery lens — roadmap `FEATURE` + tech-debt `TECH_DEBT`**, since
+  2026-07-24; was FEATURE-only): `Critical` if any blocked or >30% behind; `At Risk` if
+  (atRisk+behind) >20%; `Complete`/`Excellent`/`Healthy`/`Fair` otherwise. The At-Risk card + risk
+  call-outs are delivery-scoped the same way (support/bug blocks are not "sprint risks").
 - **Velocity** (`getWeeklyVelocity`): `completedPoints / weeksElapsed`; projects `weeksNeeded =
-  remainingPoints / velocity`. Velocity counts `feature` + `techdebt` only (support excluded). This is
+  remainingPoints / velocity`. Velocity counts **all work** (throughput lens) since 2026-07-24 —
+  bugs consume real capacity; it previously counted `feature` + `techdebt` only. This is
   a **naive linear** model. **The snapshot swap landed 2026-07-19 (trend-burndown):** `/` and
   `/rollup` pass `snapshotVelocity` (trailing-7-day burn off `SprintSnapshot` rows, shared basis
   with the chart projection) into the velocity card whenever ≥ 2 daily snapshots exist — the
@@ -1045,9 +1118,9 @@ Reference implementation: [`src/workflows.js`](src/workflows.js) and
   snapshots or past `developmentEnd`); roll-up days are summed as-is over the teams that captured,
   tagged `teamCount`.
 - **Explicit clock (`asOf`) — `web/` only, step 8 (2026-07-12):** the time-dependent functions
-  (`getHealthStatus`, `getWeeklyVelocity`, `computeSprintMetrics`) take an optional `asOf`
-  (default: now). Frozen shared views pass their snapshot's `capturedAt` so health/velocity can't
-  drift after capture; all other callers pass nothing and behave as before.
+  (`getHealthStatus`, `getWeeklyVelocity`, `computeSprintMetrics`, `getSprintPhase`) take an
+  optional `asOf` (default: now). Frozen shared views pass their snapshot's `capturedAt` so
+  health/velocity can't drift after capture; all other callers pass nothing and behave as before.
 
 > All of the above depend on **manual stage completion** today. They become trustworthy only once the
 > hybrid seed-from-Jira model (§6) lands.
@@ -1231,6 +1304,25 @@ All previously open decisions are now resolved:
   not code. Explicitly NOT an AI task: priority→band and status→category are finite, auditable
   mappings — AI narrates these numbers, it never computes them. See
   context/features/gm-bug-report.md.
+- **Sprint timeline + two-lens metrics (ratified 2026-07-24 with Naveen).** Two connected
+  corrections, ratified via three decision prompts (see §12, §11, and
+  context/features/sprint-phases-delivery-lens.md):
+  (1) **A sprint ends at the release date, not dev end.** It runs **dev cycle
+  (`developmentStart→developmentEnd`) → QA/UAT (`developmentEnd→releaseDate`) → released**; the app
+  must never say "Sprint ended" at dev end — it says **"Dev cycle ended · QA/UAT"** until release.
+  Same representation on the hero: the **phase bar is HYBRID** — delivery completion % drives the
+  four dev phases during the dev cycle, then QA/UAT/Release light up **by date** (chosen over pure
+  time-driven and minimal-relabel alternatives).
+  (2) **Two lenses.** *Delivery health* (roadmap + tech debt, against the dev cycle) drives Sprint
+  Health, Completion %, the At-Risk card and risk call-outs; *throughput/capacity* (all work) drives
+  velocity and Issues-in-scope. Naveen's framing: support + internal bugs are **reactive** work that
+  mostly surfaces after dev-end when QA starts, so they must NOT move the "is the committed sprint on
+  track" signal — but **for velocity and per-member capacity everything counts** (bugs are real
+  effort). So velocity **widened** to all work (it previously excluded support). At-risk is
+  **delivery-scoped** (a blocked support bug is not a "sprint risk" — it keeps its matrix row).
+  Follow-on calls: the **burndown / `SprintSnapshot` / trend stay all-work (throughput)** so the
+  snapshot contract + history stay continuous (no schema change); the AI digest narrates the delivery
+  lens. Metric *time math* is unchanged (delivery still measured against the dev cycle).
 
 ---
 
@@ -1262,4 +1354,4 @@ The plan — exact next steps, in order
 7. Background job — a cron on your internal infra hitting an internal route: refresh issue caches + write the daily per-team SprintSnapshot for active sprints. **[DONE 2026-07-09]** — secret-gated `POST /api/cron/daily` (`CRON_SECRET` bearer, timingSafeEqual over sha256 digests; first session-less route) → `lib/cron/daily.js` `runDailyJob`: per ACTIVE sprint, sequential per-team refresh via the step-5 engine with the `CRON_SYNC_USER_EMAIL` service credential (absent/dead → refresh skipped, snapshots still written; per-team errors isolated), then batched per-team metrics → UTC-midnight `SprintSnapshot` upsert; pure `snapshotValues` in `lib/metrics.mjs`. Verified: 23/23 pure fixtures, DB/env-free build, 30/30 live dev+Neon checks (gates, hand-computed rows, PLANNING/filterless skips, degrade path, idempotent re-run, unset-secret 500). Scheduling on Tekion infra is a deploy-time task. See context/features/background-sync-snapshots.md.
 8. Share view + export — SharedView token route (/share/[token], live or frozen, expiry) replacing the base64 URL; port PDF/PNG export. **[DONE 2026-07-12]** — public session-less `/share/[token]` (192-bit app-generated token, `robots: noindex`, generic invalid/expired state; live = current rows, frozen = input snapshot w/ metrics pinned to `capturedAt` via the new optional `asOf` clock threaded through `lib/metrics.mjs` + the MetricGrid/PlannerPanel/IssueRow props); writer-gated `POST/GET …/shares` (filterIds validated ⊆ team+sprint) + creator/admin `DELETE /api/shares/[shareId]`; ShareDialog (live/frozen, expiry presets, manage/revoke, clipboard+toast) + ExportDialog (filter toggles, paged preview, offscreen A4 pages → PDF/PNG) behind new Hero buttons. Deps `html2canvas-pro@2.2.3` (stock html2canvas can't parse the Tailwind-v4 oklch/`color-mix` theme — proven by a headless-Chrome capture spike) + `jspdf@2.5.2`, dynamic-imported (verified absent from the dashboard chunk). No schema change, no migration. Verified: lint; DB/env-free build (27 ƒ Dynamic); 25/25 asOf fixtures; 37/37 SSR smoke on dev+Neon incl. frozen-vs-live divergence, list scoping, revoke/expiry → generic page. Human acceptance (browser share open + real PDF/PNG) pending with the ui-polish eyeball. See context/features/share-view-export.md.
 9. Importer — one-time script that takes the localStorage JSON (sprintTracker_sprintData + config) and writes Sprint/Filter/IssueProgress rows so your current sprints carry over. **[SKIPPED 2026-07-18]** — Naveen no longer has older sprint data in localStorage (current work already lives in `web/` via real syncs), so there is nothing to import; decided with Naveen 2026-07-18. Spec draft kept for reference at context/features/seed.md.
-10. Cutover, then post-v1 — promote web/ to repo root, delete the Vite app; then burndown/trend UI from snapshots, then Gemini (risk call-outs + narrative first). **[DONE 2026-07-18 (cutover half)]** — two-phase `git mv` on `feature/cutover`: the Vite app (src/, server.js, docs/, lockfiles, untracked .env/node_modules/dist) **retired into `legacy/` instead of deleted** (ratified with Naveen 2026-07-18; startable there under Node 20 — verified :3000/:3001 answer) with plaintext-token `.sessions/` deleted; then `web/*` promoted to root (101 renames, history follows via `git log --follow`). Node 22 bump landed with it (`.nvmrc`, `engines >=22.12`, `.yarnrc` shim deleted, fresh install under 22.22.2). Config/docs: root `.gitignore` = web's + re-added `.claude/*` rules, `turbopack.root` pin kept (dual lockfile with `legacy/yarn.lock`), package renames (`sprint-tracker` / `sprint-tracker-legacy`), CLAUDE.md/AGENTS.md/README.md rewritten for the single-app root, `.claude/skills` `web/`-path sweep (+ `verify-web` renamed `verify`, per Naveen), `legacy/**` added to ESLint ignores (the only config-behavior change). Zero app-code changes; no schema change, no migration. Verified at root under Node 22: lint clean; `prisma validate` + `migrate status` up to date; **DB/env-free build green, 27 ƒ Dynamic (same as step 8)**; dev-server smoke on :3002 — unauth 307, login 200, unknown share → generic page, cron bad-bearer 401, `health/db` ok against Neon, minted-admin dashboard SSR with full chrome. **Deployment re-pointing (build from repo root) is a deploy-time task.** See context/features/cutover.md. *Post-v1 clause:* **trend/burndown UI DONE 2026-07-19** — snapshot-fed `TrendPanel` on `/` + `/rollup` with the trailing-7-day projection, plus the §12 velocity swap (`snapshotVelocity` override w/ naive fallback; share/export untouched); no schema change/migration/deps/routes (see context/features/trend-burndown.md). **AI insights (risk call-outs + narrative) DONE 2026-07-20** — provider-agnostic AI platform (`src/lib/ai/`: neutral `generateJson` + Gemini/Anthropic fetch adapters, env-switched with loud-fail config and a dormant unconfigured state) behind the on-demand "AI Digest" dialog on `/` (`POST …/ai-digest` — **28 ƒ Dynamic**); no schema change, no migration, no new deps (see context/features/ai-insights.md). **Risk comments + roll-up all-risks dialog + roll-up AI Digest DONE 2026-07-21** — `IssueProgress.riskComment` (one additive migration — the first schema change since `add_user_isadmin`) lets a known/agreed risk be communicated to leadership as managed context; `/rollup`'s risk panel now surfaces every team's comments/blocked reasons plus a "View all risks" dialog listing every risky issue across teams; the roll-up hero gained an AI Digest button (`POST /api/rollup/ai-digest` — **29 ƒ Dynamic**) generating a portfolio digest that compares teams and narrates commented risks as known/agreed (see context/features/risk-comments-rollup-digest.md). **Bug report dashboards DONE 2026-07-21** — the config-driven bug matrix + executive dashboard at `/bugs` (+ `/bugs/[slug]`): 7 new models + one migration (the largest schema change since `init`), 4 new API routes + 2 pages (**29 → 35 ƒ Dynamic**), and the **first non-sprint-scoped read path in the app**. Everything about a report is admin config — scope universes (saved filter id or JQL), category→status mapping with a fallback category, SLA days per (scope, priority), and P0–P4 bands — so a second dashboard (Honda) is configuration, not code; classification is read-time so config edits apply with no Jira refresh (see context/features/gm-bug-report.md). Remaining post-v1 ideas: export-embedded narrative, AI Q&A over sprint data, stage suggestions, and PDF/share for `/bugs`.
+10. Cutover, then post-v1 — promote web/ to repo root, delete the Vite app; then burndown/trend UI from snapshots, then Gemini (risk call-outs + narrative first). **[DONE 2026-07-18 (cutover half)]** — two-phase `git mv` on `feature/cutover`: the Vite app (src/, server.js, docs/, lockfiles, untracked .env/node_modules/dist) **retired into `legacy/` instead of deleted** (ratified with Naveen 2026-07-18; startable there under Node 20 — verified :3000/:3001 answer) with plaintext-token `.sessions/` deleted; then `web/*` promoted to root (101 renames, history follows via `git log --follow`). Node 22 bump landed with it (`.nvmrc`, `engines >=22.12`, `.yarnrc` shim deleted, fresh install under 22.22.2). Config/docs: root `.gitignore` = web's + re-added `.claude/*` rules, `turbopack.root` pin kept (dual lockfile with `legacy/yarn.lock`), package renames (`sprint-tracker` / `sprint-tracker-legacy`), CLAUDE.md/AGENTS.md/README.md rewritten for the single-app root, `.claude/skills` `web/`-path sweep (+ `verify-web` renamed `verify`, per Naveen), `legacy/**` added to ESLint ignores (the only config-behavior change). Zero app-code changes; no schema change, no migration. Verified at root under Node 22: lint clean; `prisma validate` + `migrate status` up to date; **DB/env-free build green, 27 ƒ Dynamic (same as step 8)**; dev-server smoke on :3002 — unauth 307, login 200, unknown share → generic page, cron bad-bearer 401, `health/db` ok against Neon, minted-admin dashboard SSR with full chrome. **Deployment re-pointing (build from repo root) is a deploy-time task.** See context/features/cutover.md. *Post-v1 clause:* **trend/burndown UI DONE 2026-07-19** — snapshot-fed `TrendPanel` on `/` + `/rollup` with the trailing-7-day projection, plus the §12 velocity swap (`snapshotVelocity` override w/ naive fallback; share/export untouched); no schema change/migration/deps/routes (see context/features/trend-burndown.md). **AI insights (risk call-outs + narrative) DONE 2026-07-20** — provider-agnostic AI platform (`src/lib/ai/`: neutral `generateJson` + Gemini/Anthropic fetch adapters, env-switched with loud-fail config and a dormant unconfigured state) behind the on-demand "AI Digest" dialog on `/` (`POST …/ai-digest` — **28 ƒ Dynamic**); no schema change, no migration, no new deps (see context/features/ai-insights.md). **Risk comments + roll-up all-risks dialog + roll-up AI Digest DONE 2026-07-21** — `IssueProgress.riskComment` (one additive migration — the first schema change since `add_user_isadmin`) lets a known/agreed risk be communicated to leadership as managed context; `/rollup`'s risk panel now surfaces every team's comments/blocked reasons plus a "View all risks" dialog listing every risky issue across teams; the roll-up hero gained an AI Digest button (`POST /api/rollup/ai-digest` — **29 ƒ Dynamic**) generating a portfolio digest that compares teams and narrates commented risks as known/agreed (see context/features/risk-comments-rollup-digest.md). **Bug report dashboards DONE 2026-07-21** — the config-driven bug matrix + executive dashboard at `/bugs` (+ `/bugs/[slug]`): 7 new models + one migration (the largest schema change since `init`), 4 new API routes + 2 pages (**29 → 35 ƒ Dynamic**), and the **first non-sprint-scoped read path in the app**. Everything about a report is admin config — scope universes (saved filter id or JQL), category→status mapping with a fallback category, SLA days per (scope, priority), and P0–P4 bands — so a second dashboard (Honda) is configuration, not code; classification is read-time so config edits apply with no Jira refresh (see context/features/gm-bug-report.md). **Sprint timeline (dev → QA/UAT → release) + two-lens metrics DONE 2026-07-24** (implemented on the `feature/modern-theme` branch) — a sprint now ends at its release date, not dev end: phase-aware days-remaining pill (`"Dev cycle ended · QA/UAT · Nd to release"`), window-spelling eyebrows (`formatSprintWindow`), and a **hybrid** hero phase bar (completion drives the dev phases, then QA/UAT/Release light up by date); metrics split into a **delivery lens** (roadmap + tech debt, dev cycle → Sprint Health / Completion / At-Risk / risk call-outs) and a **throughput lens** (all work → velocity, now incl. support + bugs, + Issues-in-scope). Burndown/`SprintSnapshot`/trend deliberately stay all-work; **no schema/migration/route/dependency change**, 35 ƒ Dynamic unchanged (see context/features/sprint-phases-delivery-lens.md). **Hero timeline UI + live release countdown DONE 2026-07-25** (same branch, presentation only) — the flat days-remaining pill became a live animated **release countdown** (progress ring + ticking `d·h·m·s` clock, `ui/release-countdown.jsx`) repositioned to the hero top-right; the hero phase bar became a **sprint timeline** with two macro-cycle status chips (`✓ Dev cycle · Completed` → `● QA / UAT · In progress`) over partial-fill animated phase bars; and the **Relaxed/Dense view toggle was retired** (density fixed at "dense"). New `--on-ink-success` token + `sweep`/`blink` keyframes; no schema/migration/route/dependency change (see context/features/modern-theme.md). Remaining post-v1 ideas: export-embedded narrative, AI Q&A over sprint data, stage suggestions, and PDF/share for `/bugs`.

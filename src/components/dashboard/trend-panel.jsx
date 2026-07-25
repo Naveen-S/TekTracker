@@ -1,6 +1,7 @@
 import { TrendingDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatDateUTC } from "@/lib/metrics.mjs";
+import { smoothAreaPath, smoothLinePath } from "@/lib/chart-path.mjs";
 
 /**
  * Sprint burndown from daily SprintSnapshot rows (trend-burndown.md (c)) — server-safe like
@@ -106,15 +107,9 @@ export function TrendPanel({ series, sprint, asOf, totalTeams }) {
   const toY = (value) => r2(MARGIN.top + (1 - value / tickMax) * INNER_H);
 
   const xTicks = [0, 1, 2, 3].map((i) => startMs + (i / 3) * spanMs);
-  const actualPoints = points
-    .map((point) => `${toX(point.date)},${toY(point.remainingPoints)}`)
-    .join(" ");
-  const areaPath =
-    points.length >= 2
-      ? `M ${toX(points[0].date)} ${toY(points[0].remainingPoints)} ` +
-        points.slice(1).map((point) => `L ${toX(point.date)} ${toY(point.remainingPoints)}`).join(" ") +
-        ` L ${toX(latest.date)} ${toY(0)} L ${toX(points[0].date)} ${toY(0)} Z`
-      : null;
+  const linePts = points.map((point) => ({ x: toX(point.date), y: toY(point.remainingPoints) }));
+  const linePath = points.length >= 2 ? smoothLinePath(linePts) : null;
+  const areaPath = points.length >= 2 ? smoothAreaPath(linePts, toY(0)) : null;
 
   // No client-side clock fallback — without a server-provided asOf the marker is omitted
   // rather than risking an SSR/hydration mismatch.
@@ -162,10 +157,16 @@ export function TrendPanel({ series, sprint, asOf, totalTeams }) {
     <PanelShell stats={stats}>
       <svg
         viewBox={`0 0 ${VB_W} ${VB_H}`}
-        className="mt-2 w-full max-w-3xl"
+        className="mt-2 w-full max-w-3xl text-primary"
         role="img"
         aria-label={`Burndown: ${fmtPts(latest.remainingPoints)} of ${fmtPts(maxY)} story points remaining`}
       >
+        <defs>
+          <linearGradient id="burndownFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="currentColor" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="currentColor" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
         {/* Gridlines + y ticks (solid hairlines, recessive) */}
         {yTicks.map((value) => (
           <g key={value}>
@@ -215,11 +216,11 @@ export function TrendPanel({ series, sprint, asOf, totalTeams }) {
           />
         )}
 
-        {/* Actual burndown: wash + 2px line */}
-        {areaPath && <path d={areaPath} className="fill-primary" fillOpacity="0.07" />}
-        {points.length >= 2 && (
-          <polyline
-            points={actualPoints}
+        {/* Actual burndown: gradient wash + smooth 2px line */}
+        {areaPath && <path d={areaPath} fill="url(#burndownFill)" />}
+        {linePath && (
+          <path
+            d={linePath}
             fill="none"
             className="stroke-primary"
             strokeWidth="2"

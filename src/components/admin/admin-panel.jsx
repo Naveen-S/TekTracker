@@ -15,10 +15,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { PageLoader } from "@/components/ui/spinner";
 import { apiFetch } from "@/lib/api-client";
 import { BugReportConfig } from "@/components/admin/bug-report-config";
-import { formatDate } from "@/lib/metrics.mjs";
+import { formatSprintWindow } from "@/lib/metrics.mjs";
 
 const ROLES = ["ADMIN", "ED", "TPM", "EM", "LEAD", "MEMBER", "VIEWER"];
 const SPRINT_STATE_TONE = { PLANNING: "neutral", ACTIVE: "success", CLOSED: "warn" };
@@ -204,9 +205,12 @@ export function AdminPanel({
           <h1 className="text-xl font-semibold">Admin</h1>
           <p className="text-sm text-muted-foreground">Teams, members, and sprint (Gate) configuration</p>
         </div>
-        <Button variant="secondary" size="sm" asChild>
-          <Link href="/">← Back to dashboard</Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <Button variant="secondary" size="sm" className="modern:lg:hidden" asChild>
+            <Link href="/">← Back to dashboard</Link>
+          </Button>
+        </div>
       </header>
 
       {status && (
@@ -265,8 +269,7 @@ export function AdminPanel({
               <span className="flex-1 truncate">
                 <strong>{sprint.name}</strong>{" "}
                 <span className="text-xs text-muted-foreground">
-                  {formatDate(sprint.developmentStart)} – {formatDate(sprint.developmentEnd)}
-                  {sprint.releaseDate ? ` · release ${formatDate(sprint.releaseDate)}` : ""}
+                  {formatSprintWindow(sprint)}
                 </span>
               </span>
               <Badge tone={SPRINT_STATE_TONE[sprint.state]}>{sprint.state}</Badge>

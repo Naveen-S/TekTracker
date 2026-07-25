@@ -159,7 +159,7 @@ export function RiskCalloutsPanel({ issues = [], series, jiraBaseUrl, onEditComm
               key={`${issue.teamKey ?? ""}:${issue.filterId}:${issue.jiraKey}`}
               className="col-span-full grid grid-cols-subgrid items-start py-2"
             >
-              <Badge tone={issue.health.tone} className="justify-self-start">
+              <Badge tone={issue.health.tone} className="health-chip justify-self-start">
                 {issue.health.icon} {issue.health.status}
               </Badge>
               {hasTeamChips &&

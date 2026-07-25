@@ -85,21 +85,22 @@ export function MetricGrid({ metrics, sprint, asOf, velocityOverride }) {
           </Badge>
         </div>
         <p className="text-xs text-muted-foreground">
-          {metrics.featureAheadCount + metrics.featureOnTrackCount}/{metrics.totalFeatureIssues}{" "}
-          features on track · {metrics.featureBlockedCount} blocked
+          {metrics.deliveryHealthCounts.ahead + metrics.deliveryHealthCounts.onTrack}/
+          {metrics.totalDeliveryIssues} delivery on track · {metrics.deliveryHealthCounts.blocked}{" "}
+          blocked
         </p>
       </MetricCard>
       <Metric
         label="Issues in scope"
         icon={Layers}
         value={metrics.totalIssues}
-        detail={`${metrics.points} total story points`}
+        detail={`${metrics.points} total story points · all work`}
       />
       <Metric
         label="Completion"
         icon={Target}
-        value={`${metrics.avgProgress}%`}
-        detail={`${Math.round(metrics.completedPoints)}/${metrics.points} weighted story points`}
+        value={`${metrics.deliveryAvgProgress}%`}
+        detail={`${Math.round(metrics.deliveryCompletedPoints)}/${metrics.deliveryPoints} delivery story points`}
         tone="brand"
       />
       <Metric

@@ -30,13 +30,23 @@ export const metadata = {
     "One fast, comprehensive view of an entire sprint — from roadmap to backlog. Engineering internal tool @ Tekion Corp.",
 };
 
+// No-FOUC theme boot (modern-theme.md): apply the saved theme class to <html>
+// BEFORE first paint, so a Modern user never sees a Tekion → Modern flash. Runs
+// synchronously; `suppressHydrationWarning` silences the expected <html> class
+// diff (the server can't know a client-only localStorage value).
+const THEME_INIT = `(function(){try{if(localStorage.getItem("theme")==="modern"){document.documentElement.classList.add("theme-modern")}}catch(e){}})();`;
+
 export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${manrope.variable} ${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
+        {children}
+      </body>
     </html>
   );
 }

@@ -173,7 +173,7 @@ export function IssueRow({
             (canWrite ? (blocked ? " — click to unblock" : " — click to mark blocked") : "")
           }
           className={cn(
-            "inline-flex min-w-16 items-center justify-center gap-1 rounded-md border-[1.5px] px-2.5 py-1.5 transition-all duration-200",
+            "health-pill inline-flex min-w-16 items-center justify-center gap-1 rounded-md border-[1.5px] px-2.5 py-1.5 transition-all duration-200",
             HEALTH_PILL[health.tone] ?? HEALTH_PILL.neutral,
             canWrite && !busy ? "cursor-pointer hover:-translate-y-px hover:shadow-sm" : "cursor-default",
           )}

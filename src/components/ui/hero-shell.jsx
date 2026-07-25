@@ -1,4 +1,6 @@
+import { getSprintPhase } from "@/lib/metrics.mjs";
 import { cn } from "@/lib/utils";
+import { ReleaseCountdown } from "@/components/ui/release-countdown";
 
 /**
  * The signature ink hero surface (legacy .hero-panel, src/styles.css :381-443) shared by the
@@ -33,19 +35,27 @@ export function HeroCopy({ className, children }) {
   return <p className={cn("text-[13px] leading-relaxed text-white/65", className)}>{children}</p>;
 }
 
-/** Days-remaining pill; flips to the red urgent variant under 3 days (legacy :427-443). */
-export function DaysRemainingPill({ days }) {
-  const urgent = days < 3;
+/**
+ * Phase-aware timeline pill (sprint-phases-delivery-lens.md): the sprint runs dev cycle → QA/UAT →
+ * release, so it does NOT read "Sprint ended" at dev end — it reports the current phase. During the
+ * dev cycle it counts down to dev end; once past dev end (with a release date) it counts down to
+ * release under a "QA / UAT → Release" label; only after the release date is it truly done. The
+ * visual is a live animated countdown (ReleaseCountdown, a client leaf) — a progress ring + a
+ * ticking d·h·m·s clock — flipping to the urgent danger tone under 3 days from the milestone.
+ * Server-safe: this computes the phase and hands serializable props (timestamps + day counts) to
+ * the client leaf, so it still renders on the server pages (`/rollup`, `/share`).
+ */
+export function DaysRemainingPill({ sprint, asOf }) {
+  const { phase, daysToDevEnd, daysToRelease } = getSprintPhase(sprint, asOf);
+
   return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold whitespace-nowrap",
-        urgent
-          ? "border-danger/30 bg-danger/20 text-on-ink-danger"
-          : "border-primary/25 bg-primary/20 text-on-ink-accent",
-      )}
-    >
-      {days > 0 ? `${days} days remaining` : days === 0 ? "Last day!" : "Sprint ended"}
-    </span>
+    <ReleaseCountdown
+      phase={phase}
+      devStartMs={new Date(sprint.developmentStart).getTime()}
+      devEndMs={new Date(sprint.developmentEnd).getTime()}
+      releaseMs={sprint.releaseDate ? new Date(sprint.releaseDate).getTime() : null}
+      daysToDevEnd={daysToDevEnd}
+      daysToRelease={daysToRelease}
+    />
   );
 }

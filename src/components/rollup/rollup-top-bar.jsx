@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { apiFetch } from "@/lib/api-client";
 import { initials } from "@/lib/utils";
 
@@ -26,7 +27,7 @@ export function RollupTopBar({ user, sprints, selectedSprint, hasBugReport }) {
 
   return (
     <header className="sticky top-0 z-40 flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b bg-card px-4 py-2 shadow-xs md:flex-nowrap md:gap-4 md:px-6 md:py-0">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 modern:lg:hidden">
         <Image src="/tekion-logo.svg" alt="Tekion" width={92} height={22} priority />
         <span className="hidden h-5.5 w-px bg-border sm:block" aria-hidden="true" />
         <div className="hidden leading-tight sm:block">
@@ -50,14 +51,15 @@ export function RollupTopBar({ user, sprints, selectedSprint, hasBugReport }) {
       )}
 
       <div className="ml-auto flex items-center gap-2">
-        <Button variant="ghost" size="sm" asChild>
+        <Button variant="ghost" size="sm" className="modern:lg:hidden" asChild>
           <Link href="/">My board</Link>
         </Button>
         {hasBugReport && (
-          <Button variant="ghost" size="sm" asChild>
+          <Button variant="ghost" size="sm" className="modern:lg:hidden" asChild>
             <Link href="/bugs">Bugs</Link>
           </Button>
         )}
+        <ThemeToggle />
         <div
           className="flex size-8 items-center justify-center rounded-full bg-ink text-xs font-bold text-white"
           title={`${user.displayName} · ${user.email}`}

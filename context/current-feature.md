@@ -1,108 +1,77 @@
 # Current Feature
 
-**Bug Report dashboards — config-driven bug matrix + executive dashboard** — full spec:
-@context/features/gm-bug-report.md
+**Modern theme — a blue, sidebar-shell theme alongside Tekion** — full spec:
+@context/features/modern-theme.md
 
-Automate the hand-built **daily GM bug report** (category × External/Internal × P0/P1/P2+ matrix
-with SLA-breach overlays) as a leadership dashboard at **`/bugs`**, built **multi-report from day
-one** so "the same dashboard for Project = Honda" is admin config, not code. Requested by Naveen
-2026-07-21; post-v1 (the master plan is complete), sequenced ahead of the remaining open AI ideas.
+Add a second **"Modern"** theme (blue `#2f6bff`, cool canvas, a dark **left-sidebar** app shell,
+monochrome status chips, retained dark hero) selectable from the user menu, alongside the
+**untouched Tekion** default. Requested by Naveen 2026-07-23; post-v1. The visual target is an
+approved 5-frame design board built from Naveen's own mockups
+(https://claude.ai/code/artifact/d84f5b02-0e84-401f-a303-e2ab50a9d520).
 
-**The first read path in the app that is NOT sprint-scoped** — no sprint, no stages, no per-issue
-lifecycle; its unit is *counts across dimensions*. New config + cache + snapshot models and a pure
-aggregation module, reusing only the Jira client, the cron shell, and the UI kit.
+**Not recolor-only — a layout shift.** Nav moves from the top bar into a persistent sidebar, so the
+theme toggle swaps **layout + palette**. Everything is gated on a single `theme-modern` class on
+`<html>`, so Tekion renders byte-for-byte as today.
 
 ## Status
 
-**Done 2026-07-21.** Branch `feature/gm-bug-report`. 7 models + migration
-`20260721190833_add_bug_report_models`; pure `lib/bug-report/matrix.mjs`; `lib/bug-report/refresh.js`
-(abort-before-write); 4 routes + cron extension; `lib/bug-report-data.js` + `/bugs` + `/bugs/[slug]`;
-10 panels across 6 component files; admin config surface with vocabulary pickers.
+**Done 2026-07-24 (Phases A–C), on `feature/modern-theme`.** A second **"Modern"** theme (blue
+`#2f6bff`, cool canvas, a dark left-nav **sidebar**, monochrome status chips, blue-re-hued ink hero)
+selectable from the top bar / admin header, alongside the **untouched Tekion** default.
 
-**Verified:** lint clean; `prisma validate` + `migrate status` up to date (**4 migrations**);
-**DB/env-free build green — 35 ƒ Dynamic**; **80/80 plain-Node fixtures** (incl. a ground-truth case
-built from live filter 68840); **49/49 SSR/API smoke on dev + Neon against the REAL filters
-68840/68841** — live two-scope refresh (**External 58 · Internal 173 · 231 total**, Internal proving
->100-issue pagination), matrix arithmetic reconciling, idempotent same-day re-run, **failure
-isolation** (broken filter → cache + snapshots untouched, `lastRefreshError` set), full panel SSR,
-and **an SLA edit moving breaches 81 → 0 with no Jira refresh**; runtime smoke re-run post-build;
-**headless-Chrome visual pass at 1440/1800px** on real data. **Two real bugs found and fixed**
-(both Prisma 5s transaction-timeout defects: the config save and the per-cell snapshot upserts) plus
-a linter-caught `Date.now()`-in-render violation of the feature's own `asOf` discipline. Fixture torn
-down to 0 rows across all 7 tables; harnesses + spike page deleted.
+- **Phase A** — `@custom-variant modern` + additive `:root.theme-modern` tokens + hero/selection/
+  brand-glow re-hue in `globals.css`; no-FOUC boot script + `suppressHydrationWarning` in
+  `layout.jsx`; `ui/theme-toggle.jsx` (localStorage, imperative class flip).
+- **Phase B** — `ui/app-shell.jsx` + `ui/app-sidebar.jsx` (active-route highlight, collapse↔icon-rail
+  pref) wrapping `/`, `/rollup`, `/bugs`, `/admin`; CSS-reveal layout swap; top-bar nav hidden under
+  Modern.
+- **Phase C** — monochrome blue **status chips** (`.health-chip`/`.health-pill` override; semantic
+  color survives in matrix dots + card accents + breach counts); **theme-swap cross-fade**
+  (`.theme-transition`, `prefers-reduced-motion`-guarded); **responsive** — sidebar shows at `lg+`
+  (`modern:lg:flex`), Modern falls back to top-bar nav below `lg` (`modern:lg:hidden`).
 
-⚠️ **Pending human acceptance (Naveen):** create the production report in `/admin` with the real
-filters + category→status mapping + SLA days, then confirm the matrix matches the manual report
-(`P2 + P3 + P4 == manual P2+`).
+**Verified:** lint clean; **DB/env-free build green — 35 ƒ Dynamic (unchanged)**; Modern tokens +
+`modern:lg:*` responsive variants + monochrome-chip override + `theme-transition` + hero override +
+sidebar chunk all compiled into a clean rebuild; no-FOUC boot script served; routes 200/307. No
+schema/migration/route/dependency change; no new dependency.
 
-**Next:** export/share for `/bugs`, export-embedded AI narrative, AI Q&A over sprint data, or stage
-suggestions.
+⚠️ **Pending human acceptance (Naveen):** an authed visual pass in both themes — toggle Modern across
+board/roll-up/bugs/admin, check the sidebar/collapse, status chips, and the swap animation (the
+browser extension isn't connected, so the build validates structure, not the look). **Not committed.**
+
+**Next:** fold in Naveen's visual tweaks, then commit; remaining post-v1 ideas — export-embedded AI
+narrative, AI Q&A, stage suggestions, dark mode (trivial on this mechanism now).
 
 ## Goals
 
-- **(a) Schema + migration** — `BugReport`, `BugReportScope`, `BugReportBand`, `BugSlaTarget`,
-  `BugReportCategory`, `BugReportIssue` (cache), `BugReportSnapshot` (history) in
-  `prisma/schema.prisma`; migration `add_bug_report_models`; §9 synced byte-consistent same change.
-- **(b) Pure classification/aggregation** — `src/lib/bug-report/matrix.mjs`: `resolveBand`,
-  `resolveCategory`, `isBreached`, `buildMatrix`, `snapshotRows`, `diffMatrix`, `agingBuckets`,
-  `cellJql`, `validateConfig`. Plain-Node testable, no Prisma/fetch.
-- **(c) Refresh pipeline** — `src/lib/bug-report/refresh.js`: per scope resolve JQL → paginated
-  fetch → transactional cache replace → classify → upsert today's snapshot rows; abort before any
-  write on scope failure.
-- **(d) Jira client** — `searchIssues` gains optional `maxIssues`; bug-report-specific field list
-  (adds created/updated/components/labels/reporter). Never truncate — throw loudly.
-- **(e) Routes** — `GET|POST /api/bug-reports`, `GET|PATCH|DELETE /api/bug-reports/[reportId]`,
-  `PUT /api/bug-reports/[reportId]/config` (whole document, transactional, admin),
-  `POST /api/bug-reports/[reportId]/refresh` (any authenticated); `src/lib/schemas/bug-report.js`;
-  `src/lib/cron/daily.js` extension with per-report error isolation.
-- **(f) Read path + pages** — `src/lib/bug-report-data.js` (`getBugReportData`, `listBugReports`,
-  `getBugReportConfig`); `src/app/bugs/page.jsx` + `src/app/bugs/[slug]/page.jsx`; TopBar links.
-- **(g) Dashboard panels** — `src/components/bugs/`: hero, KPI cards, **the matrix**, trend,
-  priority, category, aging, breach call-outs, ticket table, reference links.
-- **(h) Admin config surface** — `src/components/admin/bug-report-config.jsx`: report fields +
-  fallback picker, scopes w/ "Resolve & preview", SLA-days grid, bands, ordered categories with
-  live validation, "Duplicate report", manual Refresh. Status/priority inputs are **pickers over
-  the observed vocabulary, not free text**.
-- **Acceptance:** lint; `prisma validate` + `migrate status` (**4 migrations**); DB/env-free build
-  **35 ƒ Dynamic**; plain-Node fixtures incl. one built from the real live distribution; SSR/API
-  smoke on dev+Neon w/ mock Jira; a real two-scope run against filters `68840`/`68841` through the
-  config UI; visual pass at 1440/1800px.
+- **(a) Mechanism** — `theme-modern` class on `<html>`; `:root` = Tekion (untouched); additive
+  `:root.theme-modern` overrides; `localStorage` via `useLocalPref` + a no-FOUC boot script +
+  `suppressHydrationWarning` (carried from the reverted attempt — still the right mechanism).
+- **(b) Layout shift, CSS-driven** — a shared `AppShell` (dark sidebar + slim top bar + main) on the
+  four authenticated pages; the sidebar is revealed and the wrapper flips `flex-direction` under
+  `.theme-modern`, so the toggle stays **instant, flash-free, and server-change-free**.
+- **(c) Sidebar** — nav with active-route highlight + collapse↔icon-rail (a second `localStorage`
+  pref); avatar/logout/theme-toggle in its footer under Modern; top-bar nav CSS-hidden under Modern.
+- **(d) Modern tokens** — blue brand from the board; **monochrome status chips** (semantic color
+  survives only in matrix dots, KPI/metric accents, SLA-breach counts).
+- **Acceptance:** lint; DB/env-free build (ƒ Dynamic unchanged); Tekion pixel-identical; Modern shell
+  + palette across `/`, `/rollup`, `/bugs`, `/admin`; `/login` + `/share` stay Tekion; toggle instant
+  + persists + no hydration warning; visual pass vs the board.
 
 ## Notes
 
-- **Two decisions were ratified then REVERSED (2026-07-21) — the reversals are authoritative.**
-  (6) SLA breach is **app-computed from configurable days per (scope, priority)**, not a Jira
-  filter — `created + days < now`, keyed by Jira **priority name** (bands are display columns).
-  (9) Unmatched statuses fall back to a **configurable fallback category** (Engineering Team), not
-  a residual row; `__unattributed__` renders only when no fallback is configured.
-- **Nothing is hardcoded.** Universes, category→status mapping, SLA days, bands are all admin
-  config; the app ships with an **empty config** + a "no report configured yet" state.
-- **The cache stores raw Jira facts only; ALL classification is read-time** (band, category,
-  breach are pure functions of `(issue, config, asOf)`). Config edits re-render **instantly, with
-  no Jira refresh** — and the pipeline stays a dumb mirror. No `categoryId`/`bandId`/`slaBreached`
-  columns on the cache.
-- **Never hardcode a universe**: `project = GM` is the *Internal* scope only; External lives in
-  `project = "Tekion Engineering" AND type = "Tap Ticket" AND component = DR_GM`. **Never parse
-  priority strings** — map names to bands via config.
-- **Priority→band is NOT an AI task** (decision 11): finite, stable, auditable mapping; AI
-  narrates these numbers, never computes them.
-- **Five bands by default — P0 · P1 · P2 · P3 · P4** (Naveen 2026-07-21, revised from grouped
-  `P0/P1/P2+`): more intuitive for charts. Matrix is ~13 columns (frozen first column + h-scroll).
-  **At most one** catch-all band, **zero is the default** → unmatched priorities land in a derived
-  `__unbanded__` column rendered only when non-empty. Parity vs the manual report is
-  `P2 + P3 + P4 == manual P2+`.
-- **Read the installed docs first** — Next 16.2.9 (`node_modules/next/dist/docs/`, async
-  `params`/`searchParams`), Prisma 7.8.0 (migration + `String[]` scalar lists), Tailwind v4
-  (`@theme`, no `tailwind.config.*`). All three differ from training data.
-- **prisma-change discipline:** named migration via `yarn db:migrate` (never `db push`), §9 and
-  schema.prisma in the same change, client regenerated, build stays DB/env-free.
-- **A failed scope aborts before any write** (decision 17) — last-good data keeps rendering behind
-  an error banner. A zeroed row on a leadership dashboard is a lie.
-- **Charts hand-rolled inline SVG, no charting dep** (TrendPanel precedent; keeps panels server
-  components and the html2canvas-pro export path viable). Consult the `dataviz` skill first.
-- **Metrics purity:** nothing here reads/writes `metrics.mjs`, `IssueProgress`, or sprint data —
-  §12 numbers cannot move.
-- Test filters: External `68840` (57 issues), Internal `68841` (>100, paginated).
+- **Scope confirmed with Naveen 2026-07-23:** recolor **+ sidebar layout**, one unified dark labeled
+  sidebar (frame 01 = its collapsed icon-rail state); one synthesized-then-mockup-driven "Modern"
+  theme alongside Tekion; user-menu toggle backed by localStorage; dark mode still out of scope.
+- **Key architectural call (decision 3):** layout swap is **CSS-reveal** (both chromes in the DOM,
+  theme class shows one), not SSR — because the theme is a client-only localStorage value the server
+  can't see without a flash. Cookie+SSR is the deferred alternative.
+- **Deliberately NOT recolored:** PDF/PNG **exports** and the **validated bug-chart palette** stay
+  Tekion-branded; `/login` + `/share` stay Tekion (no sidebar).
+- **Decisions locked (2026-07-23):** persistence = localStorage + CSS-reveal; typography kept
+  (Manrope/Inter/JetBrains) — the **"wow" is an explicit goal**, carried by the shell + motion +
+  polish; sidebar collapse/expand is in v1.
+
 
 ## History
 
@@ -1070,3 +1039,105 @@ suggestions.
   composed JQL exactly**; the rendered `/bugs` HTML emits **32 distinct breach links** (`created <
   -Nd`) alongside 39 open-cell links. Fixtures **94/94** (4 new: per-priority term, no-SLA-target
   → null, scope-total OR, empty-SLA → null). Lint clean; **DB/env-free build green — 35 ƒ Dynamic**.
+- 2026-07-23 — Naveen asked to modernize the UI while keeping Tekion, with a settings theme toggle,
+  referencing two Figma dashboards. Explored the theming architecture, ratified four scope choices
+  (recolor-only, one synthesized "Modern" theme, user-menu localStorage toggle, dark mode out), and
+  **implemented a recolor-only indigo theme** on `feature/theme-switcher` (additive
+  `:root.theme-modern` tokens, no-FOUC boot script, `ui/theme-toggle.jsx`, wired into the three top
+  bars; lint + DB/env-free build green). Figma frames couldn't be captured (no Figma integration;
+  Figma won't render via WebFetch), so the palette was synthesized.
+- 2026-07-23 — Naveen then supplied **three of his own mockups** (a dark icon-rail board, a
+  light-sidebar leadership roll-up, a dense no-sidebar board) — revealing the real Modern theme is
+  **blue with a left sidebar (a layout shift)**, not the indigo recolor. Built a high-fidelity
+  **design board Artifact** reproducing all frames on one token set
+  (https://claude.ai/code/artifact/d84f5b02-0e84-401f-a303-e2ab50a9d520), then extended it with
+  **Bugs and Admin frames** grounded in the real page components. Naveen **approved the board**,
+  confirmed the layout shift + a unified dark sidebar. Per his instruction: **reverted the indigo
+  attempt in full** (restored `globals.css`/`layout.jsx`/the three top bars, deleted
+  `ui/theme-toggle.jsx` + `context/features/theme-switcher.md`, deleted branch `feature/theme-switcher`
+  — `main` clean), and **drafted this plan** (@context/features/modern-theme.md): a blue,
+  sidebar-shell Modern theme in three phases (mechanism + tokens → app shell + sidebar → component
+  parity), CSS-driven layout swap, no schema/route change. **Awaiting go-ahead to start-feature.**
+- 2026-07-24 — Started `feature/modern-theme` and implemented **Phase A + B**. Phase A (mechanism +
+  blue tokens): added `@custom-variant modern (&:is(.theme-modern *))` + an additive
+  `:root.theme-modern` blue block (primary `#2f6bff`, canvas `#eef1f5`, ink `#17181b`, radius
+  `0.75rem`) + hero/`::selection`/`--shadow-brand` re-hue in `globals.css`; no-FOUC boot script +
+  `suppressHydrationWarning` in `layout.jsx`; new `ui/theme-toggle.jsx` wired into all three top bars
+  + the admin header (reachable in both themes). Phase B (the layout shift): new `ui/app-shell.jsx` +
+  `ui/app-sidebar.jsx` — a dark nav sidebar (active-route highlight via `usePathname`, collapse↔icon
+  rail via a `localStorage` pref), revealed only under Modern (`hidden modern:flex`) so Tekion is
+  byte-for-byte unchanged (CSS-reveal, decision 3); wrapped `/`, `/rollup`, `/bugs`, `/admin` in
+  `AppShell`; hid top-bar nav links + brand under Modern via `modern:hidden`. Verified: lint clean;
+  DB/env-free build green — **35 ƒ Dynamic (unchanged)**; Modern tokens + both `modern:` rules + hero
+  override + sidebar chunk confirmed in the compiled bundle; boot script served; routes 200/307 (a
+  pre-existing dev server on :3002 hot-reloaded the changes). No schema/migration/route/dependency
+  change. **Phase C next** (monochrome chips, matrix/KPI parity, motion polish, responsive sidebar).
+  ⚠️ Authed visual pass in both themes pending (browser extension not connected). Not committed.
+- 2026-07-24 — Implemented **Phase C** (the "wow" pass) and marked modern-theme **Done**.
+  (1) **Monochrome status chips under Modern:** marked the health chips (`Badge tone={health.tone}` in
+  team-summary + risk-callouts → `.health-chip`; the matrix pill in `issue-row` → `.health-pill`) and
+  added an unlayered `:root.theme-modern .health-chip/.health-pill` blue override — sprint-state
+  badges and toasts keep their semantic tones; semantic color survives in matrix dots, card accents,
+  and SLA-breach counts. (2) **Theme-swap cross-fade:** `theme-toggle.jsx` adds a `.theme-transition`
+  class to `<html>` for ~450ms around the flip, and a `prefers-reduced-motion`-guarded rule in
+  `globals.css` cross-fades color/border/shadow only during the swap (never during normal use).
+  (3) **Responsive sidebar:** `modern:flex`→`modern:lg:flex` and `modern:hidden`→`modern:lg:hidden`
+  so the sidebar shows at `lg+` and Modern falls back to top-bar nav below `lg` (mobile isn't
+  cramped). Verified: lint clean; **clean-rebuild DB/env-free build green — 35 ƒ Dynamic**; the
+  `modern:lg:*` variants (correctly nested under `@media (min-width:64rem)` + `:is(.theme-modern *)`),
+  the monochrome-chip override, and `theme-transition` all confirmed in the fresh bundle; source has
+  no bare `modern:flex/hidden` left (only comments). Doc-synced project-overview §10 Styling row + §11
+  (BUILT note). No schema/migration/route/dependency change. ⚠️ Authed visual pass in both themes
+  pending (browser extension not connected). Not committed.
+- 2026-07-24 — **Hero iteration (per Naveen): added a 7-phase delivery bar** to the dashboard hero to
+  depict overall progress better (mockup from frame 01 of the design board). New server-safe
+  `components/dashboard/sprint-phase-bar.jsx`: seven fixed SDLC phases (Scope · Design · Develop ·
+  Review · QA · UAT · Release) with the sprint's overall weighted completion (`metrics.avgProgress`,
+  the same value the Completion card shows) projected across them — phases behind the frontier render
+  Done (green), the phase the completion sits in renders Active (orange), the rest Upcoming (gray),
+  with a 500ms colour transition + an `aria-label`. `hero.jsx` restructured to a column (title/actions
+  row, then the full-width bar); `dashboard.jsx` passes `completion`. Renders on the dark ink hero in
+  **both** themes (dashboard `/` only; `/rollup` has its own inline hero). Verified: lint clean;
+  DB/env-free build green — **35 ƒ Dynamic**. Note: the bar projects the overall completion number
+  onto the phase scale (not literal per-Jira-phase tracking) — a stage-derived variant is an option
+  if a more literal read is wanted. Not committed.
+- 2026-07-24 — **Modernized the charts (per Naveen, Dabang-style reference).** Kept the hand-rolled
+  inline SVG (no charting dependency — decision 18 / dataviz precedent). New pure
+  `src/lib/chart-path.mjs`: `smoothLinePath`/`smoothAreaPath` — **monotone cubic (Fritsch–Carlson)**
+  so curves smooth WITHOUT overshoot (a burndown can't dip below a measured value or invent a bump —
+  honest). Applied to: (1) the **sprint burndown** (`trend-panel.jsx`, on `/` and `/rollup`) — smooth
+  actual line + a theme-aware **gradient area fill** (`<linearGradient>` with `currentColor` = primary
+  via `text-primary` on the svg, so it's teal in Tekion / blue in Modern); ideal + projection stay
+  straight (they're linear); markers stay on the real data points. (2) The **bug trend**
+  (`bug-charts.jsx`) — smooth open + breached lines + a teal gradient fill under Open (keeps the
+  dataviz-validated teal/blue palette). (3) The **bug priority/category/ageing bars** — thinner
+  `rounded-full` pills with a subtle `color-mix` gradient. Verified: 6/6 plain-Node math checks
+  (structure, no-NaN, **no-overshoot within data range**, area closes to baseline); lint clean;
+  DB/env-free build green — **35 ƒ Dynamic**. Consulted the `dataviz` skill; palettes unchanged
+  (burndown = single primary; bug charts = the already-validated teal/blue). Not committed.
+- 2026-07-24 — **Sprint timeline (dev → QA/UAT → release) + two-lens metrics (per Naveen; rides on
+  the `feature/modern-theme` branch).** Drafted @context/features/sprint-phases-delivery-lens.md and
+  implemented it after ratifying three decision prompts. **(1) A sprint ends at its release date, not
+  dev end:** new pure `getSprintPhase(sprint, asOf)` (`dev`/`qa`/`released`/`ended`) +
+  `formatSprintWindow` in `metrics.mjs`; the days-remaining pill is now phase-aware across `/`,
+  `/rollup`, `/share` (`"N days left in dev cycle"` → **`"Dev cycle ended · QA/UAT · Nd to release"`**
+  → `"Released"`; "Sprint ended" only without a release date); hero/rollup/share/admin/export
+  eyebrows spell out both cycles; the hero `SprintPhaseBar` is now **hybrid** — delivery completion %
+  drives Scope·Design·Develop·Review during the dev cycle, then QA·UAT·Release light up by date.
+  **(2) Two-lens metrics:** `computeSprintMetrics`/`aggregateRollup` re-scoped — **delivery lens**
+  (roadmap `FEATURE` + tech-debt `TECH_DEBT`, dev cycle) drives Sprint Health (was FEATURE-only),
+  Completion %, the At-Risk card and risk call-outs; **throughput lens** (all work) drives velocity
+  (widened from feature+techdebt — support/bugs consume real capacity, per Naveen) and Issues-in-scope.
+  Removed the `feature*` metric fields for `delivery*`; updated metric-grid, dashboard (phase-bar
+  completion = `deliveryAvgProgress`, risk panel fed `deliveryIssues`), rollup page + team-summary
+  table, export-dialog, and both AI digest builders. Deliberately **not** touched: the burndown /
+  `SprintSnapshot` / trend stay all-work (throughput) so the snapshot contract + history stay
+  continuous — no schema change (decision 4). Verified: lint clean; 22/22 plain-Node fixtures
+  (support-blocked bug excluded from delivery `blockedCount`/`sprintHealth`, velocity counts all, no
+  Critical leak in the roll-up, phase transitions dev/qa/released/ended, window label); **DB/env-free
+  build green — 35 ƒ Dynamic (unchanged)**; dev server restarted on :3002 (build clobbered `.next`).
+  No schema/migration/route/dependency change. Doc-synced project-overview §4/§11/§12/§16 +
+  master-plan clause + `Last reviewed` (per Naveen's "capture all the decisions" ask). ⚠️ Pending
+  human acceptance: authed visual pass of the pill across phases, the hybrid phase bar, and the
+  two-lens cards. **Not committed. Next:** fold in Naveen's visual tweaks (modern-theme + these) then
+  commit; remaining post-v1 ideas — export-embedded AI narrative, AI Q&A, stage suggestions, dark mode.

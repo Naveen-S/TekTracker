@@ -79,11 +79,11 @@ export function TeamSummaryTable({ perTeam, selectedSprint, asOf, viewerIsAdmin 
               </td>
               <td className="px-3 py-2.5 text-right tabular-nums">{metrics.totalIssues}</td>
               <td className="px-3 py-2.5 text-right tabular-nums">
-                {Math.round(metrics.completedPoints)}/{metrics.points}
+                {Math.round(metrics.deliveryCompletedPoints)}/{metrics.deliveryPoints}
               </td>
-              <td className="px-3 py-2.5 text-right tabular-nums">{metrics.avgProgress}%</td>
+              <td className="px-3 py-2.5 text-right tabular-nums">{metrics.deliveryAvgProgress}%</td>
               <td className="px-3 py-2.5">
-                <Badge tone={metrics.sprintHealth.tone}>
+                <Badge tone={metrics.sprintHealth.tone} className="health-chip">
                   {metrics.sprintHealth.icon} {metrics.sprintHealth.status}
                 </Badge>
               </td>
@@ -92,10 +92,10 @@ export function TeamSummaryTable({ perTeam, selectedSprint, asOf, viewerIsAdmin 
                   {BANDS.map((band) => (
                     <span
                       key={band.key}
-                      className={metrics.healthCounts[band.key] > 0 ? band.className : "text-muted-foreground/50"}
+                      className={metrics.deliveryHealthCounts[band.key] > 0 ? band.className : "text-muted-foreground/50"}
                       title={band.label}
                     >
-                      {band.icon} {metrics.healthCounts[band.key]}
+                      {band.icon} {metrics.deliveryHealthCounts[band.key]}
                     </span>
                   ))}
                 </span>

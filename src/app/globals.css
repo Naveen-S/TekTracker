@@ -4,6 +4,10 @@
 /* Dark mode is opt-in via a `.dark` class on an ancestor (default is light). */
 @custom-variant dark (&:is(.dark *));
 
+/* "Modern" theme is opt-in via a `theme-modern` class on <html> (modern-theme.md).
+   Lets components style per-theme with a `modern:` variant, e.g. `hidden modern:flex`. */
+@custom-variant modern (&:is(.theme-modern *));
+
 /* ── Light (default) ───────────────────────────────────────────────
    Tekion design tokens ported from the legacy app (src/styles.css :6-111):
    teal #00bfa5 on ink #0b1620, a #f4f7fa canvas, slate neutrals, and the
@@ -67,6 +71,7 @@
   /* Accent tints that stay readable on the ink hero (legacy teal-200 / #fca5a5) */
   --on-ink-accent: #7fe3d5;
   --on-ink-danger: #fca5a5;
+  --on-ink-success: #6ee7b7; /* emerald-300 — "shipped" green on ink (theme-neutral) */
 
   --chart-1: #00bfa5;
   --chart-2: #0ea5e9;
@@ -180,6 +185,7 @@
 
   --color-on-ink-accent: var(--on-ink-accent);
   --color-on-ink-danger: var(--on-ink-danger);
+  --color-on-ink-success: var(--on-ink-success);
 
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -243,6 +249,30 @@
       transform: translateY(6px);
     }
   }
+
+  /* Release-countdown pill (hero DaysRemainingPill): a light sweep across the
+     capsule + a clock-style colon blink so the live timer reads as "alive". */
+  --animate-sweep: sweep 4s ease-in-out infinite;
+  --animate-blink: blink 1s ease-in-out infinite;
+
+  @keyframes sweep {
+    0% {
+      transform: translateX(-120%);
+    }
+    55%,
+    100% {
+      transform: translateX(120%);
+    }
+  }
+  @keyframes blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.25;
+    }
+  }
 }
 
 /* The signature ink hero surface: dual teal radial glows over brand ink
@@ -268,5 +298,100 @@
   }
   a {
     text-underline-offset: 3px;
+  }
+}
+
+/* ── "Modern" theme (modern-theme.md) — blue, sidebar-shell alternative ──
+   Additive: overrides only the tokens that differ; the Tekion `:root` is
+   untouched. `:root.theme-modern` (specificity 0,2,0) beats `:root` (0,1,0).
+   Health/semantic + chart tokens are inherited so status colors keep their
+   meaning across themes; semantic color survives in matrix dots + card accents. */
+:root.theme-modern {
+  --bg-app: #eef1f5;
+  --bg-subtle: #f6f8fb;
+
+  --background: #ffffff;
+  --foreground: #1b1e24;
+
+  --card: #ffffff;
+  --card-foreground: #1b1e24;
+
+  --popover: #ffffff;
+  --popover-foreground: #1b1e24;
+
+  --primary: #2f6bff;
+  --primary-foreground: #ffffff;
+
+  --secondary: #eef1f6;
+  --secondary-foreground: #2c2f47;
+
+  --muted: #eef1f6;
+  --muted-foreground: #79818d;
+
+  --accent: #e9f1ff;
+  --accent-foreground: #2258e6;
+
+  --destructive: #ef5350;
+  --destructive-foreground: #ffffff;
+
+  --border: #e7eaf0;
+  --border-subtle: #eef1f5;
+  --border-strong: #d4d9e2;
+  --input: #e7eaf0;
+  --ring: #2f6bff;
+
+  --ink: #17181b;
+  --on-ink-accent: #9db8ff;
+  --on-ink-danger: #fca5a5;
+
+  --radius: 0.75rem;
+  --shadow-brand: 0 6px 18px rgb(47 107 255 / 0.3);
+
+  --sidebar: #17181b;
+  --sidebar-foreground: #e8eaee;
+  --sidebar-primary: #2f6bff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #23252a;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #26282e;
+  --sidebar-ring: #2f6bff;
+}
+
+/* Re-hue the ink hero's radial glows to blue (with a warm accent) for Modern. */
+:root.theme-modern .hero-panel {
+  background:
+    radial-gradient(130% 150% at 88% -10%, rgb(196 138 86 / 0.26), transparent 46%),
+    radial-gradient(120% 130% at 0% 120%, rgb(47 107 255 / 0.18), transparent 55%),
+    var(--ink);
+}
+
+/* Selection highlight (the base layer uses a fixed teal literal). */
+:root.theme-modern ::selection {
+  background-color: #dbe4ff; /* blue-100 */
+  color: var(--ink);
+}
+
+/* Monochrome blue status chips under Modern — health chips read as one calm pill;
+   semantic color survives in matrix dots, card accents, and SLA-breach counts
+   (modern-theme.md decision 7). Unlayered → wins over the tone utilities. */
+:root.theme-modern .health-chip,
+:root.theme-modern .health-pill {
+  background-color: var(--accent);
+  border-color: color-mix(in oklab, var(--primary) 22%, transparent);
+  color: var(--accent-foreground);
+}
+
+/* "Wow" theme-swap: cross-fade colors ONLY during a switch — the toggle adds
+   `.theme-transition` to <html> for ~450ms, never during normal interaction. */
+@media (prefers-reduced-motion: no-preference) {
+  html.theme-transition,
+  html.theme-transition * {
+    transition:
+      background-color 0.4s var(--ease-out),
+      border-color 0.4s var(--ease-out),
+      color 0.35s var(--ease-out),
+      fill 0.4s var(--ease-out),
+      box-shadow 0.4s var(--ease-out) !important;
+    transition-delay: 0s !important;
   }
 }

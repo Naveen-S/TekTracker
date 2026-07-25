@@ -3,13 +3,13 @@
 import { Download, Layers, Link2, ListChecks, Sparkles, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  DaysRemainingPill,
   HeroCopy,
   HeroEyebrow,
   HeroShell,
   HeroTitle,
 } from "@/components/ui/hero-shell";
-import { formatDate, getDaysRemaining } from "@/lib/metrics.mjs";
+import { formatDate, formatSprintWindow } from "@/lib/metrics.mjs";
+import { SprintPhaseBar } from "./sprint-phase-bar";
 
 const WELCOME_FEATURES = [
   { icon: Layers, label: "Multiple Jira filters", detail: "Roadmap, support, tech debt — one board" },
@@ -19,10 +19,9 @@ const WELCOME_FEATURES = [
 
 export function Hero({
   showWelcome,
+  completion,
   sprint,
   team,
-  density,
-  onToggleDensity,
   onConfigureSprint,
   onAddFilter,
   onShare,
@@ -68,47 +67,42 @@ export function Hero({
     );
   }
 
-  const daysRemaining = getDaysRemaining(sprint);
   return (
-    <HeroShell className="flex flex-wrap items-center justify-between gap-4 px-5 py-6 md:px-8 md:py-7">
-      <div>
-        <HeroEyebrow>
-          {sprint.name} · {formatDate(sprint.developmentStart)} – {formatDate(sprint.developmentEnd)}
-          {sprint.releaseDate ? ` · release ${formatDate(sprint.releaseDate)}` : ""}
-        </HeroEyebrow>
-        <HeroTitle>{team.name} — sprint delivery board</HeroTitle>
-        <div className="mt-2 flex flex-wrap items-center gap-2.5">
-          <HeroCopy>
+    <HeroShell className="flex flex-col gap-5 px-5 py-6 md:px-8 md:py-7">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <HeroEyebrow>
+            {sprint.name} · {formatSprintWindow(sprint)}
+          </HeroEyebrow>
+          <HeroTitle>{team.name} — sprint delivery board</HeroTitle>
+          <HeroCopy className="mt-2">
             Roadmap, support, and tech-debt tracks with stage-by-stage delivery visibility.
           </HeroCopy>
-          <DaysRemainingPill days={daysRemaining} />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {onAiDigest && (
+            <Button variant="onDark" size="sm" onClick={onAiDigest}>
+              <Sparkles /> AI Digest
+            </Button>
+          )}
+          {onShare && (
+            <Button variant="onDark" size="sm" onClick={onShare}>
+              <Link2 /> Share View
+            </Button>
+          )}
+          {onExport && (
+            <Button variant="onDark" size="sm" onClick={onExport}>
+              <Download /> Export
+            </Button>
+          )}
+          {onConfigureSprint && (
+            <Button variant="onDark" size="sm" onClick={onConfigureSprint}>
+              Configure Sprint
+            </Button>
+          )}
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="onDark" size="sm" onClick={onToggleDensity}>
-          {density === "dense" ? "Relaxed view" : "Dense view"}
-        </Button>
-        {onAiDigest && (
-          <Button variant="onDark" size="sm" onClick={onAiDigest}>
-            <Sparkles /> AI Digest
-          </Button>
-        )}
-        {onShare && (
-          <Button variant="onDark" size="sm" onClick={onShare}>
-            <Link2 /> Share View
-          </Button>
-        )}
-        {onExport && (
-          <Button variant="onDark" size="sm" onClick={onExport}>
-            <Download /> Export
-          </Button>
-        )}
-        {onConfigureSprint && (
-          <Button variant="onDark" size="sm" onClick={onConfigureSprint}>
-            Configure Sprint
-          </Button>
-        )}
-      </div>
+      <SprintPhaseBar completion={completion ?? 0} sprint={sprint} />
     </HeroShell>
   );
 }

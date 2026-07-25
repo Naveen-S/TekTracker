@@ -18,7 +18,11 @@ import { useMemo, useRef, useState } from "react";
 import { Download } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { computeSprintMetrics, formatDate, getWeeklyVelocity } from "@/lib/metrics.mjs";
+import {
+  computeSprintMetrics,
+  formatSprintWindow,
+  getWeeklyVelocity,
+} from "@/lib/metrics.mjs";
 import { WORKFLOWS } from "@/lib/workflows.mjs";
 import { cn } from "@/lib/utils";
 
@@ -320,11 +324,14 @@ function OverallCard({ tone, label, value, detail }) {
 function SummaryPage({ sprint, selectedFilters, exportIssues, exportMetrics, velocity }) {
   const inProgressCount = exportIssues.filter((issue) => issue.percent > 0 && issue.percent < 100).length;
   const healthStatus = exportMetrics.sprintHealth.status;
+  // Delivery lens (roadmap + tech debt) for the leadership health/completion cards; velocity below
+  // stays all-work (two-lens model, sprint-phases-delivery-lens.md).
   const completionPct =
-    exportMetrics.points > 0
-      ? Math.round((exportMetrics.completedPoints / exportMetrics.points) * 100)
+    exportMetrics.deliveryPoints > 0
+      ? Math.round((exportMetrics.deliveryCompletedPoints / exportMetrics.deliveryPoints) * 100)
       : 0;
-  const featuresOnTrack = exportMetrics.featureOnTrackCount + exportMetrics.featureAheadCount;
+  const deliveryOnTrack =
+    exportMetrics.deliveryHealthCounts.onTrack + exportMetrics.deliveryHealthCounts.ahead;
 
   const generatedOn = new Date().toLocaleDateString("en-US", {
     weekday: "long",
@@ -341,9 +348,7 @@ function SummaryPage({ sprint, selectedFilters, exportIssues, exportMetrics, vel
         <div>
           <SectionLabel>Sprint Report</SectionLabel>
           <h3 className="mt-1 font-display text-2xl font-extrabold">{sprint.name}</h3>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">
-            {formatDate(sprint.developmentStart)} – {formatDate(sprint.developmentEnd)}
-          </p>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">{formatSprintWindow(sprint)}</p>
         </div>
         <div className="shrink-0 text-right">
           <span className="block text-[11px] text-muted-foreground">Generated on</span>
@@ -427,13 +432,13 @@ function SummaryPage({ sprint, selectedFilters, exportIssues, exportMetrics, vel
           tone={healthTone}
           label="Sprint health"
           value={healthStatus}
-          detail={`${featuresOnTrack}/${exportMetrics.totalFeatureIssues} features on track`}
+          detail={`${deliveryOnTrack}/${exportMetrics.totalDeliveryIssues} delivery on track`}
         />
         <OverallCard
           tone="completion"
           label="Completion"
           value={`${completionPct}%`}
-          detail={`${Math.round(exportMetrics.completedPoints)} / ${exportMetrics.points} story points`}
+          detail={`${Math.round(exportMetrics.deliveryCompletedPoints)} / ${exportMetrics.deliveryPoints} delivery pts`}
         />
         <OverallCard
           tone="projected"

@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { BugsTopBar } from "@/components/bugs/bugs-top-bar";
 import { BugsPage } from "@/components/bugs/bugs-page";
+import { AppShell } from "@/components/ui/app-shell";
 
 export const dynamic = "force-dynamic";
 
@@ -17,9 +18,11 @@ export default async function BugsRoute() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <BugsTopBar user={user} />
-      <BugsPage user={user} />
-    </div>
+    <AppShell user={user} hasBugReport>
+      <div className="flex min-h-screen flex-col">
+        <BugsTopBar user={user} />
+        <BugsPage user={user} />
+      </div>
+    </AppShell>
   );
 }

@@ -18,6 +18,20 @@ import { WORKFLOWS } from "./workflows.mjs";
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
+/**
+ * Workflow types that count toward sprint DELIVERY health (roadmap + tech debt). Support and
+ * internal bugs are reactive work — mostly surfaced during QA — so they never move the "is the
+ * committed sprint on track" signal (sprint-phases-delivery-lens.md two-lens model); they still
+ * render as matrix rows with their own per-issue health, and they DO count toward
+ * velocity/throughput (which measures real team capacity).
+ */
+const DELIVERY_TYPES = new Set(["FEATURE", "TECH_DEBT"]);
+
+const averagePercent = (list) =>
+  list.length > 0 ? Math.round(list.reduce((sum, i) => sum + i.percent, 0) / list.length) : 0;
+const weightedCompleted = (list) =>
+  list.reduce((sum, i) => sum + i.storyPoints * (i.percent / 100), 0);
+
 /** Weighted completion % for one issue's checklist (§12). */
 export function calculateWeightedCompletion(stageCompletion, weights) {
   if (!weights || weights.length !== stageCompletion.length) {
@@ -108,23 +122,14 @@ export function computeSprintMetrics(filters, progressByKey, sprint, asOf) {
   );
 
   const points = issues.reduce((sum, issue) => sum + issue.storyPoints, 0);
-  const avgProgress =
-    issues.length > 0
-      ? Math.round(issues.reduce((sum, issue) => sum + issue.percent, 0) / issues.length)
-      : 0;
-  const completedPoints = issues.reduce(
-    (sum, issue) => sum + issue.storyPoints * (issue.percent / 100),
-    0,
-  );
+  const avgProgress = averagePercent(issues);
+  const completedPoints = weightedCompleted(issues);
 
-  const velocityIssues = issues.filter(
-    (issue) => issue.workflowType === "FEATURE" || issue.workflowType === "TECH_DEBT",
-  );
-  const velocityPoints = velocityIssues.reduce((sum, issue) => sum + issue.storyPoints, 0);
-  const velocityCompletedPoints = velocityIssues.reduce(
-    (sum, issue) => sum + issue.storyPoints * (issue.percent / 100),
-    0,
-  );
+  // Throughput lens (sprint-phases-delivery-lens.md): velocity/capacity counts ALL work — support
+  // + internal bugs consume real team capacity — so it tracks the all-work points (was
+  // FEATURE + TECH_DEBT only, which wrongly dropped support).
+  const velocityPoints = points;
+  const velocityCompletedPoints = completedPoints;
 
   const countStatuses = (list) => ({
     blocked: list.filter((i) => i.health.status === "Blocked").length,
@@ -135,47 +140,57 @@ export function computeSprintMetrics(filters, progressByKey, sprint, asOf) {
     done: list.filter((i) => i.health.status === "Done").length,
   });
 
-  const featureIssues = issues.filter((issue) => issue.workflowType === "FEATURE");
-  const allHealthCounts = countStatuses(issues);
-  const featureHealthCounts = countStatuses(featureIssues);
-  const totalFeatureIssues = featureIssues.length;
+  // Delivery lens: sprint health / completion / at-risk track only the committed deliverables
+  // (roadmap + tech debt) against the dev cycle. Support/regression bugs stay out of these signals
+  // (two-lens model) but keep their own matrix rows + per-issue health, and feed velocity above.
+  const deliveryIssues = issues.filter((issue) => DELIVERY_TYPES.has(issue.workflowType));
+  const totalDeliveryIssues = deliveryIssues.length;
+  const deliveryPoints = deliveryIssues.reduce((sum, issue) => sum + issue.storyPoints, 0);
+  const deliveryCompletedPoints = weightedCompleted(deliveryIssues);
+  const deliveryAvgProgress = averagePercent(deliveryIssues);
+  const deliveryHealthCounts = countStatuses(deliveryIssues);
+  const healthCounts = countStatuses(issues);
 
   return {
     issues,
+    deliveryIssues,
     totalIssues: issues.length,
+    totalDeliveryIssues,
     points,
     avgProgress,
     completedPoints,
+    deliveryPoints,
+    deliveryCompletedPoints,
+    deliveryAvgProgress,
     velocityPoints,
     velocityCompletedPoints,
-    sprintHealth: bandSprintHealth(featureHealthCounts, totalFeatureIssues, avgProgress),
-    totalFeatureIssues,
-    healthCounts: allHealthCounts,
-    featureHealthCounts,
-    blockedCount: allHealthCounts.blocked,
-    behindCount: allHealthCounts.behind,
-    atRiskCount: allHealthCounts.atRisk,
-    riskCount: allHealthCounts.blocked + allHealthCounts.behind + allHealthCounts.atRisk,
-    featureBlockedCount: featureHealthCounts.blocked,
-    featureOnTrackCount: featureHealthCounts.onTrack,
-    featureAheadCount: featureHealthCounts.ahead,
+    sprintHealth: bandSprintHealth(deliveryHealthCounts, totalDeliveryIssues, deliveryAvgProgress),
+    healthCounts,
+    deliveryHealthCounts,
+    blockedCount: deliveryHealthCounts.blocked,
+    behindCount: deliveryHealthCounts.behind,
+    atRiskCount: deliveryHealthCounts.atRisk,
+    riskCount:
+      deliveryHealthCounts.blocked + deliveryHealthCounts.behind + deliveryHealthCounts.atRisk,
   };
 }
 
 /**
- * §12 sprint-health banding over FEATURE health counts — shared by `computeSprintMetrics` (one
- * team) and `aggregateRollup` (portfolio, 6b) so `/` and `/rollup` can never drift.
+ * §12 sprint-health banding over DELIVERY health counts (roadmap + tech debt — the two-lens
+ * model, sprint-phases-delivery-lens.md; was FEATURE-only pre-2026-07-24). Shared by
+ * `computeSprintMetrics` (one team) and `aggregateRollup` (portfolio, 6b) so `/` and `/rollup`
+ * can never drift.
  */
-function bandSprintHealth(featureHealthCounts, totalFeatureIssues, avgProgress) {
-  if (totalFeatureIssues === 0) return { status: "No Data", tone: "neutral", icon: "○" };
-  if (featureHealthCounts.blocked > 0 || featureHealthCounts.behind > totalFeatureIssues * 0.3)
+function bandSprintHealth(deliveryHealthCounts, totalDeliveryIssues, avgProgress) {
+  if (totalDeliveryIssues === 0) return { status: "No Data", tone: "neutral", icon: "○" };
+  if (deliveryHealthCounts.blocked > 0 || deliveryHealthCounts.behind > totalDeliveryIssues * 0.3)
     return { status: "Critical", tone: "danger", icon: "⚠" };
-  if (featureHealthCounts.atRisk + featureHealthCounts.behind > totalFeatureIssues * 0.2)
+  if (deliveryHealthCounts.atRisk + deliveryHealthCounts.behind > totalDeliveryIssues * 0.2)
     return { status: "At Risk", tone: "warn", icon: "⚠" };
-  if (featureHealthCounts.done === totalFeatureIssues)
+  if (deliveryHealthCounts.done === totalDeliveryIssues)
     return { status: "Complete", tone: "success", icon: "✓" };
   if (avgProgress >= 90) return { status: "Excellent", tone: "success", icon: "🎯" };
-  if (featureHealthCounts.ahead + featureHealthCounts.onTrack > totalFeatureIssues * 0.7)
+  if (deliveryHealthCounts.ahead + deliveryHealthCounts.onTrack > totalDeliveryIssues * 0.7)
     return { status: "Healthy", tone: "info", icon: "✓" };
   return { status: "Fair", tone: "info", icon: "→" };
 }
@@ -187,8 +202,8 @@ const HEALTH_COUNT_KEYS = ["blocked", "behind", "atRisk", "onTrack", "ahead", "d
  * Progress rows are keyed PER TEAM (§9) so per-team metrics are computed first and summed here —
  * never recomputed over merged progress maps. Sums for counts/points/velocity inputs,
  * issue-weighted `avgProgress`, and portfolio health = the same §12 bands re-applied to the
- * summed feature health counts (one blocked feature anywhere → Critical; teams with no feature
- * issues contribute nothing; all-empty → No Data). Velocity stays additive: feed the summed
+ * summed DELIVERY health counts (one blocked roadmap/tech-debt item anywhere → Critical; teams
+ * with no delivery issues contribute nothing; all-empty → No Data). Velocity stays additive: feed the summed
  * `velocityCompletedPoints`/`velocityPoints` to `getWeeklyVelocity` — with the org-wide sprint
  * cadence that equals the sum of per-team weekly velocities. Mirrors the per-team →
  * org-totals shape the step-7 `SprintSnapshot` job will write.
@@ -199,31 +214,38 @@ export function aggregateRollup(perTeamMetrics) {
     Object.fromEntries(HEALTH_COUNT_KEYS.map((key) => [key, sumOf((m) => pick(m)[key])]));
 
   const totalIssues = sumOf((m) => m.totalIssues);
-  const totalFeatureIssues = sumOf((m) => m.totalFeatureIssues);
+  const totalDeliveryIssues = sumOf((m) => m.totalDeliveryIssues);
   const healthCounts = sumCounts((m) => m.healthCounts);
-  const featureHealthCounts = sumCounts((m) => m.featureHealthCounts);
+  const deliveryHealthCounts = sumCounts((m) => m.deliveryHealthCounts);
   const avgProgress =
     totalIssues > 0 ? Math.round(sumOf((m) => m.avgProgress * m.totalIssues) / totalIssues) : 0;
+  const deliveryAvgProgress =
+    totalDeliveryIssues > 0
+      ? Math.round(
+          sumOf((m) => m.deliveryAvgProgress * m.totalDeliveryIssues) / totalDeliveryIssues,
+        )
+      : 0;
 
   return {
     teamCount: perTeamMetrics.length,
     totalIssues,
+    totalDeliveryIssues,
     points: sumOf((m) => m.points),
+    deliveryPoints: sumOf((m) => m.deliveryPoints),
     avgProgress,
+    deliveryAvgProgress,
     completedPoints: sumOf((m) => m.completedPoints),
+    deliveryCompletedPoints: sumOf((m) => m.deliveryCompletedPoints),
     velocityPoints: sumOf((m) => m.velocityPoints),
     velocityCompletedPoints: sumOf((m) => m.velocityCompletedPoints),
-    sprintHealth: bandSprintHealth(featureHealthCounts, totalFeatureIssues, avgProgress),
-    totalFeatureIssues,
+    sprintHealth: bandSprintHealth(deliveryHealthCounts, totalDeliveryIssues, deliveryAvgProgress),
     healthCounts,
-    featureHealthCounts,
-    blockedCount: healthCounts.blocked,
-    behindCount: healthCounts.behind,
-    atRiskCount: healthCounts.atRisk,
-    riskCount: healthCounts.blocked + healthCounts.behind + healthCounts.atRisk,
-    featureBlockedCount: featureHealthCounts.blocked,
-    featureOnTrackCount: featureHealthCounts.onTrack,
-    featureAheadCount: featureHealthCounts.ahead,
+    deliveryHealthCounts,
+    blockedCount: deliveryHealthCounts.blocked,
+    behindCount: deliveryHealthCounts.behind,
+    atRiskCount: deliveryHealthCounts.atRisk,
+    riskCount:
+      deliveryHealthCounts.blocked + deliveryHealthCounts.behind + deliveryHealthCounts.atRisk,
   };
 }
 
@@ -443,6 +465,58 @@ export function getWeeklyVelocity(sprint, completedPoints, points, asOf) {
 
 export function getDaysRemaining(sprint) {
   return Math.ceil((new Date(sprint.developmentEnd) - new Date()) / DAY_MS);
+}
+
+/**
+ * Where the sprint sits on the dev → QA/UAT → release timeline (sprint-phases-delivery-lens.md).
+ * The committed delivery runs to `developmentEnd`; the window from dev end to `releaseDate` is the
+ * QA/UAT cycle; the sprint TRULY ends at `releaseDate` (not dev end). Without a release date we
+ * can't define a QA window, so the sprint is treated as ending at dev end (legacy behavior).
+ * `asOf` (Date | ISO, default now) is the explicit clock.
+ *   phase: "dev" | "qa" | "released" | "ended"
+ *   qaProgress: 0..1 through the QA/UAT window (only in the "qa" phase; else null)
+ */
+export function getSprintPhase(sprint, asOf) {
+  const now = asOf ? new Date(asOf) : new Date();
+  const devEnd = new Date(sprint.developmentEnd);
+  const release = sprint.releaseDate ? new Date(sprint.releaseDate) : null;
+  const daysUntil = (date) => Math.ceil((date - now) / DAY_MS);
+
+  if (now <= devEnd) {
+    return {
+      phase: "dev",
+      daysToDevEnd: daysUntil(devEnd),
+      daysToRelease: release ? daysUntil(release) : null,
+      qaProgress: null,
+    };
+  }
+  if (release && now <= release) {
+    const span = release - devEnd;
+    return {
+      phase: "qa",
+      daysToDevEnd: daysUntil(devEnd),
+      daysToRelease: daysUntil(release),
+      qaProgress: span > 0 ? Math.max(0, Math.min(1, (now - devEnd) / span)) : 1,
+    };
+  }
+  if (release) {
+    return {
+      phase: "released",
+      daysToDevEnd: daysUntil(devEnd),
+      daysToRelease: daysUntil(release),
+      qaProgress: 1,
+    };
+  }
+  return { phase: "ended", daysToDevEnd: daysUntil(devEnd), daysToRelease: null, qaProgress: null };
+}
+
+/**
+ * Eyebrow window label spelling out both cycles, e.g.
+ * "Dev cycle Jun 25 – Jul 23 · QA/UAT → release Aug 12" (dev range only when no release date).
+ */
+export function formatSprintWindow(sprint) {
+  const dev = `Dev cycle ${formatDate(sprint.developmentStart)} – ${formatDate(sprint.developmentEnd)}`;
+  return sprint.releaseDate ? `${dev} · QA/UAT → release ${formatDate(sprint.releaseDate)}` : dev;
 }
 
 export function formatDate(value) {

@@ -8,6 +8,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { AdminPanel } from "@/components/admin/admin-panel";
 import { getBugReportData } from "@/lib/bug-report-data";
+import { AppShell } from "@/components/ui/app-shell";
 
 export const dynamic = "force-dynamic";
 
@@ -42,13 +43,15 @@ export default async function AdminPage() {
   const bugData = await getBugReportData(undefined, new Date());
 
   return (
-    <AdminPanel
-      teams={teams}
-      sprints={sprints}
-      bugReports={bugData?.reports ?? []}
-      bugConfig={bugData?.report ?? null}
-      bugStatusVocabulary={bugData?.statusVocabulary ?? []}
-      bugPriorityVocabulary={bugData?.priorityVocabulary ?? []}
-    />
+    <AppShell user={user} hasBugReport={(bugData?.reports?.length ?? 0) > 0}>
+      <AdminPanel
+        teams={teams}
+        sprints={sprints}
+        bugReports={bugData?.reports ?? []}
+        bugConfig={bugData?.report ?? null}
+        bugStatusVocabulary={bugData?.statusVocabulary ?? []}
+        bugPriorityVocabulary={bugData?.priorityVocabulary ?? []}
+      />
+    </AppShell>
   );
 }
