@@ -1141,3 +1141,127 @@ narrative, AI Q&A, stage suggestions, dark mode (trivial on this mechanism now).
   human acceptance: authed visual pass of the pill across phases, the hybrid phase bar, and the
   two-lens cards. **Not committed. Next:** fold in Naveen's visual tweaks (modern-theme + these) then
   commit; remaining post-v1 ideas — export-embedded AI narrative, AI Q&A, stage suggestions, dark mode.
+- 2026-07-25 — **UI/UX pass on `/bugs` + `/admin` (per Naveen — "make the UI/UX better", bolder
+  intensity; rides on `feature/modern-theme`, presentation only).** Both surfaces were quietly
+  opting out of the app's own strongest devices, which is why they read flat next to `/`.
+  **`/bugs`:** new server-safe **`bugs/bug-pressure-bar.jsx`** — the hero instrument, the direct
+  counterpart of `SprintPhaseBar`: SLA + trend status chips (the `CycleChip` grammar) over a
+  **two-tier composition rail** (upper tier = severity mix per priority band, lower tier = the
+  SLA-breached share of each band) with a directly-labelled legend and the open-bug total anchoring
+  the right end. **No new palette** — severity is opacity of `--on-ink-accent` mixed toward
+  `--ink`, breach is `--on-ink-danger`, so it re-hues to blue under Modern for free. (First cut
+  overlaid breach at full height and, at 46% breached, the rail read as one wall of red with the
+  severity ramp destroyed — split into two tiers; the ramp floor was then raised to 68% because the
+  widest band is a *low*-severity one, so the biggest group was rendering faintest.) Hero metadata
+  became discrete chips instead of a run-on `a · b · c` sentence. **Matrix**: fixed a real
+  structural defect — at ~13 columns the two scope groups had no separation (the P4│Total│P0
+  boundary looked like a band boundary), so scopes now open on a strong rule and close on a tinted
+  Total column; plus **magnitude heat** (low-alpha primary wash scaled to share of row max, weight
+  stepping with it — never color-only), a **sticky header**, and a row hover line. KPI row gained a
+  **lead card** (spans 2 cols, larger numeral) so the headline outranks the hygiene footnote, plus
+  the missing `aria-label` and "since <date>" delta context. Consolidated the two drifted local
+  `Panel` copies into **`bugs/panel.jsx`** (one header rhythm + the metric-card icon-tile idiom);
+  breach rows dropped the 2px accent stripe for a magnitude tint. **`/admin`:** it had **no hero at
+  all** and headings that didn't even use the display font — now the shared ink `HeroShell` with
+  provisioning counts + active-sprint status, `SectionCard` carrying the app's icon-tile + display
+  heading, success feedback moved to the existing **`Toast`** (a banner atop a very long page is
+  unread by the time it appears; errors stay pinned inline), `↑`/`↓` text glyphs → lucide chevrons
+  (completing the ui-polish sweep admin missed), **empty states** for zero teams/sprints, nesting
+  flattened (card > card > card became a divided list / ruled groups), `max-w-4xl` → `5xl`, and
+  **SLA/band priority pickers reordered by configured band severity** instead of by frequency —
+  they were rendering "P2, P1, P0, P4, P3". Verified: lint clean; **DB/env-free build green — 35 ƒ
+  Dynamic (unchanged)**; impeccable detector clean on all 9 files; **two batched headless-Chrome
+  rounds at 1512px and 420px against Naveen's real `gm` report** (244 open / 113 breached) with a
+  minted admin cookie — both rounds' findings fixed. No schema/migration/route/dependency change.
+  ⚠️ One item not re-shot: the admin sprint-row wrap fix at 420px (the confirming crop framed the
+  Teams card instead). **Not committed.**
+- 2026-07-25 — **Chart palette + chart forms (per Naveen — "some colors look very dull… see if the
+  charts can be represented in a better way"; rides on `feature/modern-theme`, presentation only).**
+  Scope confirmed with Naveen: `/bugs` **+ the sprint burndown**, with chart colour **theme-aware
+  and validated per theme**. Ran the **dataviz** skill's `validate_palette.js` before touching any
+  chart code — every value below is computed, none eyeballed. **The colour system now lives in
+  `globals.css`, not in component hex:** categorical `--chart-cat-1/2` where **slot 1 is the active
+  theme's own hue** (Tekion teal→blue ΔE 19.9 protan / 20.9 normal; Modern blue→teal ΔE 23.5 deutan
+  / 26.0 normal — both PASS), plus an **ordinal `--age-1..4` amber ramp** (`--ordinal`: monotone L,
+  every adjacent ΔL ≥ 0.06, light end 2.39:1). **The headline bug this fixed:** `bug-charts.jsx`
+  hardcoded `#00a892`/`#3b82f6`, so under **Modern the four chart panels stayed Tekion teal on a
+  blue page** — the dashboard read as two products glued together. Form + encoding work:
+  (1) **Trend** is now two stacked **bands** instead of two free lines, so the filled gap between
+  them is "open but still within SLA" — a number the old chart never showed; taller viewBox,
+  `niceStep` gridlines, endpoint direct labels outside the plot, and a **CSS-only hover layer**
+  (per-capture hit strip → crosshair + ink readout, `opacity-0` so it stays a server component and
+  the html2canvas export path is untouched). (2) **Ageing** stopped wearing the **status** palette —
+  green/green/red/red invented a cliff at 31 days that no rule defines and spent SLA-breach red on
+  something that is not a breach; it takes the ordinal amber ramp. (3) **Category mix** gained the
+  breached share as a **second tier under each bar** (the hero pressure-rail grammar) rather than an
+  inline segment — an inline split put slot-1 on "External" in Priority mix and on "within SLA" in
+  the panel beside it, one hue with two meanings two inches apart. (4) **Solid bar fills** replaced
+  the `linear-gradient(…, color-mix(color 72%, white))` that faded every bar toward white across its
+  own length, draining density exactly at the value end — most of the literal "dull". (5) **Matrix
+  heat** re-curved: linear-capped-at-13% put nearly every real cell between 3% and 8% alpha (one
+  flat haze, not heat) — now `share ** 0.7` to a 26% ceiling with the hard 0.12 cutoff removed, and
+  weight steps with it. (6) **Sprint burndown**: dropped the `max-w-3xl` cap that left a third of its
+  own card empty since it moved into a two-up row, widened the viewBox, pointed its marks at
+  `--chart-cat-1`, and **named the un-instrumented stretch** ("no captures yet" band + boundary rule)
+  so a cron that started mid-sprint reads as un-instrumented rather than broken. Verified: lint
+  clean; **DB/env-free build green — 35 ƒ Dynamic (unchanged)**, `.env` genuinely moved away and
+  restored; both themes' `--chart-cat-1` values, all 13 new Tailwind utilities and both
+  arbitrary stop-color rules confirmed in the compiled bundle; impeccable detector clean on all 4
+  files; **three batched headless-Chrome rounds at 1512px and 420px in BOTH themes** against
+  Naveen's real `gm` report (253 open / 115 breached) with a minted admin cookie — caught and fixed
+  the slot-1 collision between adjacent panels, the trend card's dead space, and the burndown's
+  "no captures yet" label sitting on the ideal line. Dev server stopped for the env-free build and
+  restarted; harness deleted. No schema/migration/route/dependency change. **Not committed.**
+- 2026-07-26 — **Fixed a self-inflicted build break: prose is a Tailwind source.** The previous
+  entry's own text quoted an arbitrary-property class verbatim (`[stop-color:var(…)]`, with a
+  literal ellipsis). Tailwind v4 auto-scans every non-ignored file, `context/**` included, so it
+  read that changelog sentence as a **class candidate** and emitted `stop-color: var(…)` — invalid
+  CSS, PostCSS parse failure, **every route 500**. Fix: `@source not "../../context"` +
+  `@source not "../../legacy"` in `globals.css` (these directories describe the app, they never
+  define it), and the sentence reworded. Proven, not assumed: with a deliberately bogus
+  `bg-[#abcdef]` **and** the ellipsis class left in prose, a from-scratch build passes and neither
+  string reaches the CSS, while the real `stop-color:var(--color-chart-cat-1)` rule still compiles.
+  **Verification lesson — the reason this shipped:** the "build green" reported in the previous
+  entry came from a build over a **warm `.next`** whose CSS chunk predated the bad string, so the
+  broken input was never re-transformed. A cached build is not a build. Standing correction to the
+  house `/verify` habit: **`rm -rf .next` before the acceptance build**, and finish with a real
+  authenticated runtime pass, not greps over a stale bundle. Now verified: lint clean; **cold
+  DB/env-free build green — 35 ƒ Dynamic (unchanged)**, `.env` genuinely moved aside and restored;
+  dev server restarted on a cleared `.next`; **five routes loaded authed in a real browser — `/bugs`
+  (both themes), `/`, `/rollup`, `/admin` all HTTP 200 with zero console errors and zero hydration
+  warnings** (the one `next/image` aspect-ratio warning on `tekion-logo.svg` is pre-existing and
+  outside this diff); charts re-shot after the cold rebuild, unchanged. Harness deleted.
+- 2026-07-26 — **Dropdown redesign + sidebar promoted to Tekion too (per Naveen; rides on
+  `feature/modern-theme`, presentation only).** Two asks. (1) **`ui/select.jsx` rebuilt as a
+  styled trigger over a still-native `<select>`** (kept the ui-port.md no-radix decision — the
+  open option list stays OS-native, only the trigger changes): `appearance-none` + a drawn lucide
+  `ChevronDown` replace the OS glyph, with hover/focus-ring treatment matching Input/Button and a
+  new `cva`-based `variant="onDark"` for the ink hero. That variant closes a real latent bug —
+  `bugs-actions.jsx`'s report switcher was passing `className="onDark"`, which is not a Tailwind
+  utility and had silently done nothing since it shipped; it now passes `variant="onDark"` and
+  gets the same glass treatment as the neighboring onDark Refresh button. The trigger is wrapped
+  in a `relative` div for the icon, deliberately **not** `inline-flex`/`inline-block`: a plain
+  block wrapper blockifies identically to the bare `<select>` it replaces when used as a flex
+  child, so row contexts (top-bar team/sprint pickers, compact admin role selects) stay
+  content-sized and column contexts (dialog forms) still stretch full-width — verified by reasoning
+  through both call-site shapes, not by trial and error. (2) **The left-nav sidebar (`app-sidebar.jsx`)
+  is no longer Modern-only** — visibility flipped from `hidden modern:lg:flex` to `hidden lg:flex`,
+  and the top bars' now-redundant nav links/brand block flipped from `modern:lg:hidden` to
+  `lg:hidden` across `dashboard/top-bar.jsx`, `rollup/rollup-top-bar.jsx`, `bugs/bugs-top-bar.jsx`,
+  `bugs/bugs-page.jsx`'s footer "back to board" link, and `admin/admin-panel.jsx`'s hero back
+  button — plus the `SkeletonChrome` loading placeholder in `ui/skeleton.jsx`, so route transitions
+  don't flash a top-bar skeleton under a sidebar page. This **reverses** modern-theme.md's original
+  framing ("Tekion renders byte-for-byte as today" / sidebar as a Modern-exclusive differentiator,
+  §11) — both themes now share the same shell; `bg-ink` plus the themed `--primary`/`--accent`
+  tokens re-hue the sidebar automatically (teal active state under Tekion, blue under Modern) with
+  no per-theme branching in the component. `/login` and `/share` are unaffected (they don't use
+  `AppShell`). No schema/migration/route/dependency change. Verified: lint clean; impeccable
+  detector clean on all 10 touched files; **cold `rm -rf .next` build green — 35 ƒ Dynamic
+  unchanged**; since the Chrome extension wasn't connected this session, visual verification used
+  a headless-Chrome (Playwright, system Chrome) pass instead — a locally-minted iron-session
+  cookie for the seeded admin (house pattern, no real Jira credentials involved) against the
+  running dev server, screenshotting `/`, `/rollup`, `/bugs`, `/admin` in both themes at 1600px
+  plus responsive checks at 1280px/1000px/390px confirming the sidebar shows at `lg+` in Tekion
+  now and both themes correctly fall back to top-bar nav below `lg`; dev server restarted after
+  the clobbering build. Screenshots + harness stayed in the session scratch dir, not the repo.
+  **Not committed.**

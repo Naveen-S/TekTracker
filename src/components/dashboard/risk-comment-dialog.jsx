@@ -9,8 +9,9 @@
  * house transition pattern) so this stays a dumb form.
  */
 import { useState } from "react";
-import { Dialog } from "@/components/ui/dialog";
+import { Dialog, DialogError } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -28,16 +29,39 @@ export function RiskCommentDialog({ issue, onSave, onRemove, onClose, busy }) {
   };
 
   return (
-    <Dialog open title="Risk comment" onClose={busy ? undefined : onClose}>
-      <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-        <p className="text-sm text-muted-foreground">
-          Note a known, agreed-upon reason this item is flagged as risk (e.g. an intentionally
-          late QA handoff). Visible to everyone on the board and the roll-up — it tells leadership
-          the risk is managed, not a new alarm.
-        </p>
-        <div className="flex items-center justify-between">
-          <Label>
-            <span className="font-mono text-xs">{issue.jiraKey}</span> — {issue.title}
+    <Dialog
+      open
+      title="Risk comment"
+      description="Note a known, agreed-upon reason this item is flagged — e.g. an intentionally late QA hand-off. Visible on the board and the roll-up, so leadership reads it as managed, not as a new alarm."
+      onClose={busy ? undefined : onClose}
+      footer={
+        <>
+          {issue.riskComment && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="mr-auto text-danger-strong hover:bg-danger-soft hover:text-danger-strong"
+              onClick={onRemove}
+              disabled={busy}
+            >
+              Remove comment
+            </Button>
+          )}
+          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="submit" form="risk-comment-form" disabled={busy}>
+            {busy && <Spinner />}
+            {busy ? "Saving…" : "Save"}
+          </Button>
+        </>
+      }
+    >
+      <form id="risk-comment-form" className="flex flex-col gap-4" onSubmit={handleSubmit}>
+        <div className="rounded-md border border-border-subtle bg-muted/40 px-3 py-2">
+          <Label className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="font-mono text-xs text-primary">{issue.jiraKey}</span>
+            <span className="min-w-0 font-normal text-muted-foreground">{issue.title}</span>
           </Label>
         </div>
         <fieldset className="flex flex-col gap-1.5">
@@ -55,25 +79,7 @@ export function RiskCommentDialog({ issue, onSave, onRemove, onClose, busy }) {
           </span>
         </fieldset>
 
-        {error && (
-          <p className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm font-medium text-danger-strong">
-            {error}
-          </p>
-        )}
-
-        <div className="flex items-center justify-end gap-2">
-          {issue.riskComment && (
-            <Button type="button" variant="secondary" onClick={onRemove} disabled={busy}>
-              Remove
-            </Button>
-          )}
-          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={busy}>
-            Save
-          </Button>
-        </div>
+        <DialogError>{error}</DialogError>
       </form>
     </Dialog>
   );

@@ -14,10 +14,11 @@
  */
 import { useState } from "react";
 import { Copy, RefreshCw, Sparkles } from "lucide-react";
-import { Dialog } from "@/components/ui/dialog";
+import { Dialog, DialogError } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api-client";
 
 const SEVERITY_LABEL = { danger: "Danger", warn: "Warning", info: "Info" };
@@ -96,13 +97,60 @@ export function AiDigestDialog({
   const digest = result?.digest ?? null;
 
   return (
-    <Dialog open title="AI Digest" onClose={busy ? undefined : onClose}>
+    <Dialog
+      open
+      title="AI Digest"
+      onClose={busy ? undefined : onClose}
+      size="lg"
+      footer={
+        <>
+          {digest && !busy && (
+            <>
+              <Button variant="secondary" onClick={handleCopy}>
+                <Copy /> Copy
+              </Button>
+              <Button variant="secondary" onClick={handleGenerate}>
+                <RefreshCw /> Regenerate
+              </Button>
+            </>
+          )}
+          {!digest && (
+            <Button onClick={handleGenerate} disabled={busy}>
+              {busy ? <Spinner /> : <Sparkles />}
+              {busy ? "Generating…" : "Generate digest"}
+            </Button>
+          )}
+          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+            Close
+          </Button>
+        </>
+      }
+    >
       <div className="flex flex-col gap-4">
-        {!digest && !busy && <p className="text-sm text-muted-foreground">{intro}</p>}
+        {!digest && !busy && <p className="text-sm leading-relaxed text-muted-foreground">{intro}</p>}
 
+        {/* Generation runs 5–15s, so the wait gets the shape of the answer rather than a spinner:
+            a headline bar, three narrative lines and two call-out rows, in the same rhythm the
+            digest itself lands in. */}
         {busy && (
-          <div className="flex items-center gap-2.5 rounded-md border border-border-subtle px-3 py-3 text-sm text-muted-foreground">
-            <Spinner className="size-4" /> Writing digest…
+          <div className="flex flex-col gap-3" role="status" aria-label="Writing digest">
+            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <Spinner className="size-4 text-primary" /> Writing digest…
+            </div>
+            <Skeleton className="h-5 w-3/5" />
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-11/12" />
+              <Skeleton className="h-3 w-4/5" />
+            </div>
+            <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
+              {[0, 1].map((row) => (
+                <div key={row} className="flex items-start gap-2">
+                  <Skeleton className="h-5 w-16 shrink-0 rounded-full" />
+                  <Skeleton className="mt-0.5 h-3 flex-1" />
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -147,32 +195,7 @@ export function AiDigestDialog({
           </div>
         )}
 
-        {error && (
-          <p className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm font-medium text-danger-strong">
-            {error}
-          </p>
-        )}
-
-        <div className="flex items-center justify-end gap-2">
-          {digest && !busy && (
-            <>
-              <Button variant="secondary" onClick={handleCopy}>
-                <Copy /> Copy
-              </Button>
-              <Button variant="secondary" onClick={handleGenerate}>
-                <RefreshCw /> Regenerate
-              </Button>
-            </>
-          )}
-          {!digest && (
-            <Button onClick={handleGenerate} disabled={busy}>
-              <Sparkles /> {busy ? "Generating…" : "Generate digest"}
-            </Button>
-          )}
-          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
-            Close
-          </Button>
-        </div>
+        <DialogError>{error}</DialogError>
       </div>
     </Dialog>
   );

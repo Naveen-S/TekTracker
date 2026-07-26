@@ -28,9 +28,20 @@ const toneTile = {
   neutral: "bg-muted text-secondary-foreground",
 };
 
-function Card({ label, icon: Icon, tone = "neutral", value, detail, delta }) {
+/**
+ * `lead` promotes a card to the row's headline: it spans two columns and steps the numeral up a
+ * size. Five identically-weighted cards give "Total open bugs" exactly the same voice as
+ * "Unmapped status" — a hygiene footnote — so the row has no entry point. One lead card gives the
+ * eye somewhere to land first and lets the rest read as its supporting detail.
+ */
+function Card({ label, icon: Icon, tone = "neutral", value, detail, delta, deltaTitle, lead }) {
   return (
-    <article className="relative flex flex-col gap-1.5 overflow-hidden rounded-lg border bg-card p-4 pt-4.5 transition-all duration-200 ease-out hover:-translate-y-px hover:shadow-sm">
+    <article
+      className={cn(
+        "relative flex flex-col gap-1.5 overflow-hidden rounded-lg border bg-card p-4 pt-4.5 transition-all duration-200 ease-out hover:-translate-y-px hover:shadow-sm",
+        lead && "sm:col-span-2 lg:col-span-1 xl:col-span-2",
+      )}
+    >
       <span className={cn("absolute inset-x-0 top-0 h-0.75", toneStripe[tone])} aria-hidden="true" />
       <div className="flex items-center gap-2.5">
         <span className={cn("grid size-7 shrink-0 place-items-center rounded-md", toneTile[tone])} aria-hidden="true">
@@ -38,10 +49,21 @@ function Card({ label, icon: Icon, tone = "neutral", value, detail, delta }) {
         </span>
         <p className="text-[11px] font-bold tracking-wider uppercase text-muted-foreground">{label}</p>
       </div>
-      <p className="mt-1 flex items-baseline gap-2 font-display text-[26px] leading-none font-extrabold tracking-tight">
+      <p
+        className={cn(
+          "mt-1 flex items-baseline gap-2 font-display leading-none font-extrabold tracking-tight tabular-nums",
+          lead ? "text-[38px]" : "text-[26px]",
+        )}
+      >
         {value}
         {delta !== null && delta !== undefined && delta !== 0 && (
-          <span className={cn("text-xs font-bold", delta > 0 ? "text-danger" : "text-success")}>
+          <span
+            title={deltaTitle}
+            className={cn(
+              "text-xs font-bold whitespace-nowrap",
+              delta > 0 ? "text-danger" : "text-success",
+            )}
+          >
             {delta > 0 ? "▲" : "▼"}
             {Math.abs(delta)}
           </span>
@@ -78,14 +100,27 @@ export function BugKpiCards({ matrix, diff, aging }) {
 
   const oldBugs = (aging.buckets.at(-1)?.count ?? 0) + (aging.buckets.at(-2)?.count ?? 0);
 
+  const since = diff.priorDate
+    ? `since the previous capture on ${new Date(diff.priorDate).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+      })}`
+    : undefined;
+
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+    <div
+      className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"
+      aria-label="Bug report summary metrics"
+    >
       <Card
+        lead
         label="Total open bugs"
         icon={Bug}
         tone="brand"
         value={total.grandTotal.count}
         delta={diff.priorDate ? totalDelta : null}
+        deltaTitle={since}
         detail={matrix.scopes
           .map((scope) => `${scope.name} ${total.cells[scope.id]?.[SCOPE_TOTAL_BAND_KEY]?.count ?? 0}`)
           .join(" · ")}
@@ -96,6 +131,7 @@ export function BugKpiCards({ matrix, diff, aging }) {
         tone="danger"
         value={total.grandTotal.breachedCount}
         delta={diff.priorDate ? breachDelta : null}
+        deltaTitle={since}
         detail={
           total.grandTotal.count > 0
             ? `${Math.round((total.grandTotal.breachedCount / total.grandTotal.count) * 100)}% of open bugs`

@@ -10,6 +10,7 @@
  */
 import { useState } from "react";
 import { Dialog } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   IssueKey,
@@ -34,8 +35,14 @@ export function RollupRiskSection({ issues, series, jiraBaseUrl }) {
         <Dialog
           open
           title={`All risks (${risky.length})`}
+          description="Every risky issue across the teams you can see, worst first. Comments marked Known are agreed and managed."
           onClose={() => setOpen(false)}
-          className="max-w-2xl"
+          size="lg"
+          footer={
+            <Button variant="secondary" onClick={() => setOpen(false)}>
+              Close
+            </Button>
+          }
         >
           <ul className="flex flex-col divide-y divide-border-subtle">
             {risky.map((issue) => (

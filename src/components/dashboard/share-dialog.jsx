@@ -10,8 +10,10 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { Copy, Trash2 } from "lucide-react";
-import { Dialog } from "@/components/ui/dialog";
+import { Dialog, DialogError } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -104,7 +106,17 @@ export function ShareDialog({ base, filters, density, onClose, showToast }) {
   };
 
   return (
-    <Dialog open title="Share View" onClose={busy ? undefined : onClose}>
+    <Dialog
+      open
+      title="Share View"
+      description={`Shares all ${filters.length} filter${filters.length === 1 ? "" : "s"} on this board, read-only. Anyone with the link can view it — no sign-in needed.`}
+      onClose={busy ? undefined : onClose}
+      footer={
+        <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+          Close
+        </Button>
+      }
+    >
       <div className="flex flex-col gap-4">
         <fieldset className="flex flex-col gap-1.5">
           <Label>Link type</Label>
@@ -150,13 +162,10 @@ export function ShareDialog({ base, filters, density, onClose, showToast }) {
             </Select>
           </div>
           <Button onClick={handleCreate} disabled={busy || filters.length === 0}>
+            {busy && <Spinner />}
             {busy ? "Working…" : "Create share link"}
           </Button>
         </div>
-        <p className="-mt-2 text-xs text-muted-foreground">
-          Shares all {filters.length} filter{filters.length === 1 ? "" : "s"} on this board,
-          read-only. Anyone with the link can view it — no sign-in needed.
-        </p>
 
         {createdUrl && (
           <div className="flex items-center gap-2 rounded-md border border-success-strong/40 bg-success-soft p-2">
@@ -172,16 +181,19 @@ export function ShareDialog({ base, filters, density, onClose, showToast }) {
           </div>
         )}
 
-        {error && (
-          <p className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm font-medium text-danger-strong">
-            {error}
-          </p>
-        )}
+        <DialogError>{error}</DialogError>
 
         <div className="flex flex-col gap-1.5 border-t border-border-subtle pt-3">
           <Label>Existing links for this sprint</Label>
           {shares === null ? (
-            <p className="text-xs text-muted-foreground">Loading…</p>
+            <ul className="flex flex-col gap-1.5" aria-label="Loading share links">
+              {[0, 1].map((row) => (
+                <li key={row} className="rounded-md border border-border-subtle px-2.5 py-1.5">
+                  <Skeleton className="h-3 w-40" />
+                  <Skeleton className="mt-1.5 h-2.5 w-56 max-w-full" />
+                </li>
+              ))}
+            </ul>
           ) : shares.length === 0 ? (
             <p className="text-xs text-muted-foreground">No share links yet.</p>
           ) : (
@@ -227,12 +239,6 @@ export function ShareDialog({ base, filters, density, onClose, showToast }) {
               ))}
             </ul>
           )}
-        </div>
-
-        <div className="flex justify-end">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
-            Close
-          </Button>
         </div>
       </div>
     </Dialog>

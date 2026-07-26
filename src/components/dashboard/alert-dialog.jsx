@@ -8,18 +8,22 @@ import { cn } from "@/lib/utils";
 export function AlertDialog({ alert, onClose }) {
   if (!alert) return null;
   return (
-    <Dialog open title={alert.title} tone={alert.tone === "error" ? "error" : "success"} onClose={onClose}>
+    <Dialog
+      open
+      title={alert.title}
+      tone={alert.tone === "error" ? "error" : "success"}
+      onClose={onClose}
+      size="sm"
+      footer={<Button onClick={onClose}>OK</Button>}
+    >
       <p
         className={cn(
-          "whitespace-pre-wrap text-sm",
+          "whitespace-pre-wrap text-sm leading-relaxed",
           alert.tone === "error" ? "text-danger-strong" : "text-foreground",
         )}
       >
         {alert.body}
       </p>
-      <div className="mt-4 flex justify-end">
-        <Button onClick={onClose}>OK</Button>
-      </div>
     </Dialog>
   );
 }

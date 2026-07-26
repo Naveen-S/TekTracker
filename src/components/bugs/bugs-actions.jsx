@@ -60,7 +60,7 @@ export function BugsActions({ report, reports, canRefresh }) {
             onChange={switchReport}
             disabled={inFlight}
             aria-label="Bug report"
-            className="onDark"
+            variant="onDark"
           >
             {reports.map((candidate) => (
               <option key={candidate.id} value={candidate.id}>
@@ -77,7 +77,7 @@ export function BugsActions({ report, reports, canRefresh }) {
         )}
       </div>
 
-      {inFlight && <PageLoader label="Refreshing from Jira…" />}
+      <PageLoader show={inFlight} label="Refreshing from Jira…" />
       <AlertDialog alert={alert} onClose={() => setAlert(null)} />
       <Toast toast={toast} />
     </>

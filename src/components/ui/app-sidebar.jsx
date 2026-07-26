@@ -1,18 +1,19 @@
 "use client";
 
 /**
- * Modern-theme navigation sidebar (modern-theme.md Phase B). Rendered by AppShell on the four
- * authenticated pages, but only VISIBLE under the Modern theme at lg+ widths: `hidden modern:lg:flex`
- * keeps it out of the DOM's flow under Tekion (Tekion's top-bar-only layout is byte-for-byte
- * unchanged) and below lg (Modern falls back to top-bar nav, so mobile isn't cramped).
+ * App navigation sidebar (modern-theme.md Phase B; promoted to both themes per Naveen 2026-07-26).
+ * Rendered by AppShell on the four authenticated pages, visible at lg+ widths in BOTH themes
+ * (`hidden lg:flex`) and hidden below lg so mobile falls back to top-bar nav. `bg-ink` plus the
+ * themed `--primary`/`--accent` tokens mean it re-hues automatically (teal active state under
+ * Tekion, blue under Modern) with no per-theme branching here.
  *
- * Nav owns the cross-page links under Modern at lg+ (the top bars hide theirs via `modern:lg:hidden`).
+ * Nav owns the cross-page links at lg+ (the top bars hide theirs via `lg:hidden`).
  * Collapse ↔ icon-rail state is a third ephemeral localStorage pref (§17).
  */
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Bug, Layers, LayoutGrid, PanelLeft, PanelLeftClose, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { NavLink } from "./nav-link";
 import { useLocalPref } from "@/lib/use-local-pref";
 
 const COLLAPSE_KEY = "sprintTracker_sidebarCollapsed";
@@ -36,7 +37,7 @@ export function AppSidebar({ user, hasBugReport }) {
   return (
     <aside
       className={cn(
-        "app-sidebar sticky top-0 z-30 hidden h-screen shrink-0 flex-col bg-ink text-white transition-[width] duration-300 ease-out modern:lg:flex",
+        "app-sidebar sticky top-0 z-30 hidden h-screen shrink-0 flex-col bg-ink text-white transition-[width] duration-300 ease-out lg:flex",
         collapsed ? "w-16" : "w-60",
       )}
     >
@@ -49,7 +50,7 @@ export function AppSidebar({ user, hasBugReport }) {
 
       <nav className="mt-2 flex flex-col gap-1 px-2.5">
         {nav.map(({ href, label, icon: Icon, active }) => (
-          <Link
+          <NavLink
             key={href}
             href={href}
             title={collapsed ? label : undefined}
@@ -64,7 +65,7 @@ export function AppSidebar({ user, hasBugReport }) {
           >
             <Icon className="size-[18px] shrink-0" />
             {!collapsed && <span className="whitespace-nowrap">{label}</span>}
-          </Link>
+          </NavLink>
         ))}
       </nav>
 

@@ -1,6 +1,7 @@
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Link2, ListOrdered, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { Panel } from "@/components/bugs/panel";
 
 /**
  * The list panels (gm-bug-report.md (g)8–10): SLA breach call-outs, the ticket table, and the
@@ -9,21 +10,6 @@ import { cn } from "@/lib/utils";
  * As-built deviation from the spec's file list: three small list panels sharing the same row and
  * key-link primitives, so they live together rather than in three near-identical files.
  */
-function Panel({ title, subtitle, children, aside }) {
-  return (
-    <section className="flex flex-col rounded-xl border bg-card p-5">
-      <header className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <div>
-          <h2 className="font-display text-base font-bold">{title}</h2>
-          {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
-        </div>
-        {aside}
-      </header>
-      {children}
-    </section>
-  );
-}
-
 function IssueKey({ jiraKey, jiraBaseUrl }) {
   const className =
     "rounded border border-primary/25 bg-accent px-1.5 py-0.5 font-mono text-[11px] font-semibold text-accent-foreground";
@@ -46,10 +32,16 @@ const MAX_BREACH_ROWS = 8;
 export function BugBreachPanel({ breached, jiraBaseUrl }) {
   if (breached.length === 0) {
     return (
-      <Panel title="SLA breaches" subtitle="Bugs past their configured SLA">
+      <Panel
+        title="SLA breaches"
+        subtitle="Bugs past their configured SLA"
+        icon={ShieldAlert}
+        tone="neutral"
+      >
         <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed py-8 text-center">
-          <p className="text-xs text-muted-foreground">
-            No open bug is past its SLA. Configure SLA days per priority in admin if you expect some.
+          <p className="max-w-70 text-xs text-muted-foreground">
+            Every open bug is inside its SLA. If you expected breaches, check that SLA days are set
+            per priority in Admin.
           </p>
         </div>
       </Panel>
@@ -57,27 +49,39 @@ export function BugBreachPanel({ breached, jiraBaseUrl }) {
   }
 
   const shown = breached.slice(0, MAX_BREACH_ROWS);
+  const worst = shown[0].daysOverSla;
 
   return (
     <Panel
       title="SLA breaches"
       subtitle="Worst first, by days past SLA"
+      icon={ShieldAlert}
+      tone="danger"
       aside={<Badge tone="danger">{breached.length} breached</Badge>}
     >
-      <ul className="flex flex-col gap-1.5">
+      <ul className="flex flex-col gap-1">
         {shown.map((issue) => (
           <li
             key={`${issue.scopeId}-${issue.jiraKey}`}
-            className="grid grid-cols-[auto_auto_1fr_auto] items-center gap-2 rounded-md border-l-2 border-danger bg-danger-soft/30 py-1.5 pr-2 pl-2.5"
+            className="relative grid grid-cols-[auto_auto_1fr_auto] items-center gap-2 overflow-hidden rounded-md border border-danger/20 bg-danger-soft/40 py-1.5 pr-2.5 pl-2.5 transition-colors hover:bg-danger-soft/70"
           >
-            <span className="text-[11px] font-bold whitespace-nowrap text-danger">
+            {/* Severity as magnitude, not as a stripe: the row's tint depth tracks how far past
+                SLA it is, so the worst offender reads hottest without a decorative accent bar. */}
+            <span
+              className="absolute inset-y-0 left-0 bg-danger/10"
+              style={{ width: `${Math.round((issue.daysOverSla / worst) * 100)}%` }}
+              aria-hidden="true"
+            />
+            <span className="relative text-[11px] font-bold whitespace-nowrap text-danger-strong tabular-nums">
               +{issue.daysOverSla}d
             </span>
-            <IssueKey jiraKey={issue.jiraKey} jiraBaseUrl={jiraBaseUrl} />
-            <span className="truncate text-xs" title={issue.title}>
+            <span className="relative">
+              <IssueKey jiraKey={issue.jiraKey} jiraBaseUrl={jiraBaseUrl} />
+            </span>
+            <span className="relative truncate text-xs" title={issue.title}>
               {issue.title}
             </span>
-            <span className="text-[11px] whitespace-nowrap text-muted-foreground">
+            <span className="relative text-[11px] whitespace-nowrap text-muted-foreground">
               {issue.priority ?? "—"}
             </span>
           </li>
@@ -106,6 +110,8 @@ export function BugTicketTable({ issues, jiraBaseUrl, asOf }) {
     <Panel
       title="Oldest open bugs"
       subtitle={`${rows.length} of ${issues.length} open bugs, oldest first`}
+      icon={ListOrdered}
+      tone="info"
     >
       <div className="overflow-x-auto">
         <table className="w-full min-w-150 border-collapse text-sm">
@@ -125,7 +131,10 @@ export function BugTicketTable({ issues, jiraBaseUrl, asOf }) {
                 ? Math.floor((asOf.getTime() - new Date(issue.jiraCreatedAt).getTime()) / 86400000)
                 : null;
               return (
-                <tr key={`${issue.scopeId}-${issue.jiraKey}`} className="border-b last:border-0">
+                <tr
+                  key={`${issue.scopeId}-${issue.jiraKey}`}
+                  className="border-b transition-colors last:border-0 hover:bg-muted/40"
+                >
                   <td className="py-1.5 pr-3">
                     <IssueKey jiraKey={issue.jiraKey} jiraBaseUrl={jiraBaseUrl} />
                   </td>
@@ -155,7 +164,7 @@ export function BugReferenceLinks({ report, jiraBaseUrl }) {
   if (report.scopes.length === 0) return null;
 
   return (
-    <Panel title="Reference" subtitle="The Jira filters behind these numbers">
+    <Panel title="Reference" subtitle="The Jira filters behind these numbers" icon={Link2} tone="neutral">
       <ul className="flex flex-wrap gap-2">
         {report.scopes.map((scope) => {
           const href = scope.jiraFilterId

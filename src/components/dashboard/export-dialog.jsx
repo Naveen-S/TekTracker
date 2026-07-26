@@ -15,9 +15,10 @@
  * captured light-mode surfaces, never theme-flipped.
  */
 import { useMemo, useRef, useState } from "react";
-import { Download } from "lucide-react";
-import { Dialog } from "@/components/ui/dialog";
+import { ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { Dialog, DialogError } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   computeSprintMetrics,
   formatSprintWindow,
@@ -159,7 +160,55 @@ export function ExportDialog({ sprint, filters, progressByKey, onClose, showToas
   };
 
   return (
-    <Dialog open title={`Sprint Report — ${sprint.name}`} onClose={busy ? undefined : onClose} className="max-w-4xl">
+    <Dialog
+      open
+      title={`Sprint Report — ${sprint.name}`}
+      description="Pick the filters to include, check the preview, then export."
+      onClose={busy ? undefined : onClose}
+      size="xl"
+      footer={
+        <>
+          {/* Page stepper sits with the actions rather than under a preview that scrolls — on a
+              multi-page report the old placement went out of reach exactly when it was needed. */}
+          {totalPages > 1 && (
+            <div className="mr-auto flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label="Previous page"
+                onClick={() => setCurrentPage(Math.max(0, pageIndex - 1))}
+                disabled={pageIndex === 0}
+              >
+                <ChevronLeft />
+              </Button>
+              <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+                Page {pageIndex + 1} of {totalPages}
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label="Next page"
+                onClick={() => setCurrentPage(Math.min(totalPages - 1, pageIndex + 1))}
+                disabled={pageIndex === totalPages - 1}
+              >
+                <ChevronRight />
+              </Button>
+            </div>
+          )}
+          <Button
+            variant="secondary"
+            onClick={() => handleExport("image")}
+            disabled={busy || nothingSelected}
+          >
+            <Download /> PNG
+          </Button>
+          <Button onClick={() => handleExport("pdf")} disabled={busy || nothingSelected}>
+            {busy ? <Spinner /> : <Download />}
+            {busy ? "Exporting…" : "Export PDF"}
+          </Button>
+        </>
+      }
+    >
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="flex flex-col gap-1.5">
@@ -204,26 +253,9 @@ export function ExportDialog({ sprint, filters, progressByKey, onClose, showToas
               <span className="text-xs text-danger">Select at least one filter to export.</span>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <Button size="sm" onClick={() => handleExport("pdf")} disabled={busy || nothingSelected}>
-              <Download /> {busy ? "Exporting…" : "Export PDF"}
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => handleExport("image")}
-              disabled={busy || nothingSelected}
-            >
-              <Download /> Export PNG
-            </Button>
-          </div>
         </div>
 
-        {error && (
-          <p className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm font-medium text-danger-strong">
-            {error}
-          </p>
-        )}
+        <DialogError>{error}</DialogError>
 
         <div className="overflow-x-auto rounded-lg border border-border-subtle bg-subtle p-4">
           <div className="mx-auto w-198.5 bg-white p-8 shadow-sm">
@@ -241,29 +273,6 @@ export function ExportDialog({ sprint, filters, progressByKey, onClose, showToas
           </div>
         </div>
 
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-3">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setCurrentPage(Math.max(0, pageIndex - 1))}
-              disabled={pageIndex === 0}
-            >
-              ← Previous
-            </Button>
-            <span className="text-xs font-semibold text-muted-foreground">
-              Page {pageIndex + 1} of {totalPages}
-            </span>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setCurrentPage(Math.min(totalPages - 1, pageIndex + 1))}
-              disabled={pageIndex === totalPages - 1}
-            >
-              Next →
-            </Button>
-          </div>
-        )}
       </div>
 
       {/* Offscreen A4 print pages — what html2canvas-pro actually captures. Rendered (not

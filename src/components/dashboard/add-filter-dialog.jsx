@@ -6,8 +6,9 @@
  * (the create API requires it; Jira-filter names are refreshed as jql at sync, not as our name).
  */
 import { useState } from "react";
-import { Dialog } from "@/components/ui/dialog";
+import { Dialog, DialogError } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -46,8 +47,24 @@ export function AddFilterDialog({ onAdd, onClose, busy, existingCount = 0 }) {
   };
 
   return (
-    <Dialog open title="Add Jira Source" onClose={busy ? undefined : onClose}>
-      <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+    <Dialog
+      open
+      title="Add Jira Source"
+      description="Point this board at a saved Jira filter or a JQL query. Its issues load right away."
+      onClose={busy ? undefined : onClose}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="submit" form="add-filter-form" disabled={busy}>
+            {busy && <Spinner />}
+            {busy ? "Adding + syncing…" : "Add Source"}
+          </Button>
+        </>
+      }
+    >
+      <form id="add-filter-form" className="flex flex-col gap-4" onSubmit={handleSubmit}>
         <fieldset className="flex flex-col gap-1.5">
           <Label>Workflow Type</Label>
           <div className="grid grid-cols-2 gap-1.5">
@@ -144,20 +161,7 @@ export function AddFilterDialog({ onAdd, onClose, busy, existingCount = 0 }) {
           </div>
         )}
 
-        {error && (
-          <p className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm font-medium text-danger-strong">
-            {error}
-          </p>
-        )}
-
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={busy}>
-            {busy ? "Adding + syncing…" : "Add Source"}
-          </Button>
-        </div>
+        <DialogError>{error}</DialogError>
       </form>
     </Dialog>
   );

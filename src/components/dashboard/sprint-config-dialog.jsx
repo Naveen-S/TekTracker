@@ -6,8 +6,9 @@
  */
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Dialog } from "@/components/ui/dialog";
+import { Dialog, DialogError } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -65,9 +66,21 @@ export function SprintConfigDialog({ mode, sprint, selectedTeamId, onClose, onSe
     <Dialog
       open
       title={mode === "create" ? "Create Sprint (Gate)" : "Configure Sprint"}
+      description="Sprints are global — one shared cadence for every team, running dev cycle → QA/UAT → release."
       onClose={saving ? undefined : onClose}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button type="submit" form="sprint-config-form" disabled={saving}>
+            {saving && <Spinner />}
+            {saving ? "Saving…" : mode === "create" ? "Create Sprint" : "Save changes"}
+          </Button>
+        </>
+      }
     >
-      <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+      <form id="sprint-config-form" className="flex flex-col gap-4" onSubmit={handleSubmit}>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="sprint-name">Name</Label>
           <Input
@@ -129,23 +142,11 @@ export function SprintConfigDialog({ mode, sprint, selectedTeamId, onClose, onSe
             </Select>
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">
-          Sprints are global (one shared cadence for all teams) — renaming or re-dating affects
-          every team. Closing a sprint is the supported alternative to deleting it.
+        <p className="rounded-md border border-border-subtle bg-muted/40 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+          Renaming or re-dating affects every team. Closing a sprint is the supported alternative
+          to deleting it.
         </p>
-        {error && (
-          <p className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm font-medium text-danger-strong">
-            {error}
-          </p>
-        )}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={saving}>
-            {saving ? "Saving…" : mode === "create" ? "Create Sprint" : "Save changes"}
-          </Button>
-        </div>
+        <DialogError>{error}</DialogError>
       </form>
     </Dialog>
   );

@@ -1,6 +1,14 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Prose is not a source of utilities. Tailwind v4 auto-scans every non-ignored file, so a doc that
+   merely *mentions* a class — `context/current-feature.md` quoting an arbitrary-property class in a
+   changelog entry — gets scanned as a real candidate. One such mention emitted `stop-color: var(…)`
+   with a literal ellipsis and broke the CSS parse, 500-ing every route. These directories describe
+   the app; they never define it. */
+@source not "../../context";
+@source not "../../legacy";
+
 /* Dark mode is opt-in via a `.dark` class on an ancestor (default is light). */
 @custom-variant dark (&:is(.dark *));
 
@@ -78,6 +86,30 @@
   --chart-3: #10b981;
   --chart-4: #f59e0b;
   --chart-5: #dc2626;
+
+  /* ── Data-viz palette (dataviz skill; every value came out of
+     scripts/validate_palette.js, never eyeballed) ────────────────────
+     CATEGORICAL — series identity. Slot 1 is always the ACTIVE THEME's own
+     hue so a chart reads as part of the page it sits on; slot 2 is its
+     validated partner. Both orderings clear the six checks on a white card:
+       Tekion  teal→blue   CVD ΔE 19.9 protan · 20.9 normal
+       Modern  blue→teal   CVD ΔE 23.5 deutan · 26.0 normal
+     Teal's 2.92:1 vs the card is the one WARN, legal only with a relief
+     channel — every series here is directly labelled and the matrix above
+     is the table view. Two slots is the cap: a third series folds into the
+     matrix rather than inventing a hue. */
+  --chart-cat-1: #00a892;
+  --chart-cat-2: #3b82f6;
+
+  /* ORDINAL — age buckets. One hue, monotone lightness (validated with
+     --ordinal: every adjacent ΔL ≥ 0.06, light end 2.39:1 vs the card).
+     Deliberately NOT the danger red: "open a long time" and "past SLA" are
+     different claims, and letting age wear the breach colour made the two
+     unreadable against each other. */
+  --age-1: #d99a06;
+  --age-2: #b87a08;
+  --age-3: #94600a;
+  --age-4: #6f4708;
 
   --sidebar: #f7f9fb;
   --sidebar-foreground: #0b1620;
@@ -193,6 +225,14 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
 
+  --color-chart-cat-1: var(--chart-cat-1);
+  --color-chart-cat-2: var(--chart-cat-2);
+
+  --color-age-1: var(--age-1);
+  --color-age-2: var(--age-2);
+  --color-age-3: var(--age-3);
+  --color-age-4: var(--age-4);
+
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -273,6 +313,58 @@
       opacity: 0.25;
     }
   }
+
+  /* ── Loading vocabulary ──────────────────────────────────────────────
+     Skeletons sweep rather than pulse: a pulse blinks a box at you, a sweep
+     reads as content streaming in left-to-right, matching how the page
+     actually fills. Transform-only, so it stays off the main thread while
+     the RSC payload lands. */
+  --animate-shimmer: shimmer 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+
+  /* Indeterminate top progress: a travelling highlight, never a fake
+     percentage — we genuinely don't know how long a Jira sync takes. */
+  --animate-progress: progress-sweep 1.1s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+
+  /* Blocking scrims mount instantly (input must be blocked at once) but stay
+     INVISIBLE for 260ms, so a 120ms stage toggle never flashes a full-screen
+     veil. Only work that actually outlives the delay is ever drawn. */
+  --animate-veil: veil-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) 0.26s both;
+  --animate-veil-panel: veil-panel-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) 0.26s both;
+
+  @keyframes shimmer {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+  @keyframes progress-sweep {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(500%);
+    }
+  }
+  @keyframes veil-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes veil-panel-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
 }
 
 /* The signature ink hero surface: dual teal radial glows over brand ink
@@ -344,6 +436,13 @@
   --on-ink-accent: #9db8ff;
   --on-ink-danger: #fca5a5;
 
+  /* Categorical slot 1 follows the theme (see the :root block); slot 2 swaps
+     to teal, which separates from this blue even better than the Tekion pair
+     (ΔE 26.0 normal / 23.5 deutan). The AGE ramp is theme-neutral by design —
+     amber is nobody's brand hue here, so "how old" never reads as "ours". */
+  --chart-cat-1: #2f6bff;
+  --chart-cat-2: #00a892;
+
   --radius: 0.75rem;
   --shadow-brand: 0 6px 18px rgb(47 107 255 / 0.3);
 
@@ -379,6 +478,31 @@
   background-color: var(--accent);
   border-color: color-mix(in oklab, var(--primary) 22%, transparent);
   color: var(--accent-foreground);
+}
+
+/* Motion sensitivity — the loading and dialog systems are the app's only
+   continuously-animating surfaces, so they honour the OS preference explicitly.
+   Reduced motion means CALMER, not absent: the skeletons keep a static tint and
+   dialogs still cross-fade, so state changes stay legible. Travelling sweeps
+   (shimmer, progress) and the dialog's rise are what get dropped. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-sweep,
+  .progress-sweep {
+    animation: none !important;
+  }
+  .skeleton-sweep {
+    opacity: 0;
+  }
+  .progress-sweep {
+    transform: none !important;
+    width: 100% !important;
+    opacity: 0.5;
+  }
+  .dialog-panel,
+  .dialog-overlay {
+    animation-name: veil-in !important;
+    animation-duration: 0.15s !important;
+  }
 }
 
 /* "Wow" theme-swap: cross-fade colors ONLY during a switch — the toggle adds

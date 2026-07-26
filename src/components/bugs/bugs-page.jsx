@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Clock, UserRound } from "lucide-react";
 import { getBugReportData } from "@/lib/bug-report-data";
 import { HeroCopy, HeroEyebrow, HeroShell, HeroTitle } from "@/components/ui/hero-shell";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { BugsActions } from "@/components/bugs/bugs-actions";
 import { BugKpiCards } from "@/components/bugs/bug-kpi-cards";
 import { BugMatrix } from "@/components/bugs/bug-matrix";
+import { BugPressureBar } from "@/components/bugs/bug-pressure-bar";
 import {
   BugAgingPanel,
   BugCategoryPanel,
@@ -60,20 +61,33 @@ export async function BugsPage({ slug, user }) {
 
   return (
     <main className="flex w-full flex-1 flex-col gap-5 p-4 md:p-6">
-      <HeroShell className="p-6 md:p-7">
+      <HeroShell className="flex flex-col gap-5 px-5 py-6 md:px-8 md:py-7">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <HeroEyebrow>Bug report</HeroEyebrow>
             <HeroTitle>{report.name}</HeroTitle>
-            <HeroCopy className="mt-1.5">
-              {report.description ? `${report.description} · ` : ""}
-              {report.ownerName ? `Owner: ${report.ownerName} · ` : ""}
-              Updated {relativeTime(report.lastRefreshedAt, asOf)}
-              {report.lastRefreshedByEmail ? ` by ${report.lastRefreshedByEmail}` : ""}
-            </HeroCopy>
+            {report.description && <HeroCopy className="mt-2">{report.description}</HeroCopy>}
+            {/* Provenance as discrete facts rather than one run-on "a · b · c" sentence: who owns
+                these numbers and how fresh they are are two different questions. */}
+            <ul className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-white/55">
+              {report.ownerName && (
+                <li className="flex items-center gap-1.5">
+                  <UserRound className="size-3.5 shrink-0 opacity-70" aria-hidden="true" />
+                  {report.ownerName}
+                </li>
+              )}
+              <li className="flex items-center gap-1.5">
+                <Clock className="size-3.5 shrink-0 opacity-70" aria-hidden="true" />
+                Updated {relativeTime(report.lastRefreshedAt, asOf)}
+                {report.lastRefreshedByEmail ? ` by ${report.lastRefreshedByEmail}` : ""}
+              </li>
+            </ul>
           </div>
           <BugsActions report={report} reports={reports} canRefresh={configured} />
         </div>
+        {configured && issues.length > 0 && (
+          <BugPressureBar matrix={matrix} diff={diff} report={report} />
+        )}
       </HeroShell>
 
       {report.lastRefreshError && (
@@ -123,9 +137,13 @@ export async function BugsPage({ slug, user }) {
         </>
       )}
 
-      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Link href="/" className="inline-flex items-center gap-1 hover:underline">
-          <ArrowLeft className="size-3" /> Back to the sprint board
+      {/* Under Modern the sidebar owns cross-page nav, so this footer link would be redundant. */}
+      <p className="border-t pt-4 text-xs lg:hidden">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="size-3.5" /> Back to the sprint board
         </Link>
       </p>
     </main>

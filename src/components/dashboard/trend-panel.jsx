@@ -13,12 +13,14 @@ import { smoothAreaPath, smoothLinePath } from "@/lib/chart-path.mjs";
  * tooltips are out of scope).
  */
 
-/* Flat aspect + a capped rendered width (`max-w-3xl` on the <svg>) keep the chart ~190px tall on
- * any screen — `w-full` alone let the uniform viewBox scaling balloon past 500px on wide
- * monitors (Naveen, 2026-07-19: "way too big"). */
-const VB_W = 760;
-const VB_H = 190;
-const MARGIN = { top: 12, right: 88, bottom: 26, left: 48 };
+/* Flat aspect keeps the chart short on any screen — a square-ish viewBox with `w-full` let the
+ * uniform scaling balloon past 500px tall on wide monitors (Naveen, 2026-07-19: "way too big").
+ * The old `max-w-3xl` cap that came with it is gone: since this panel moved into a two-up row it
+ * left the right third of its own card empty, which is the same dead-space bug the bug-report
+ * trend had. The flat aspect alone now does the height limiting. */
+const VB_W = 1000;
+const VB_H = 210;
+const MARGIN = { top: 14, right: 104, bottom: 28, left: 52 };
 const INNER_W = VB_W - MARGIN.left - MARGIN.right;
 const INNER_H = VB_H - MARGIN.top - MARGIN.bottom;
 
@@ -106,6 +108,11 @@ export function TrendPanel({ series, sprint, asOf, totalTeams }) {
   const toX = (dateLike) => r2(MARGIN.left + ((new Date(dateLike).getTime() - startMs) / spanMs) * INNER_W);
   const toY = (value) => r2(MARGIN.top + (1 - value / tickMax) * INNER_H);
 
+  // Only worth naming when it's a real slice of the window — a day or two of lead-in is just margin.
+  const firstX = toX(points[0].date);
+  const uncaptured =
+    firstX - MARGIN.left > INNER_W * 0.12 ? { width: r2(firstX - MARGIN.left) } : null;
+
   const xTicks = [0, 1, 2, 3].map((i) => startMs + (i / 3) * spanMs);
   const linePts = points.map((point) => ({ x: toX(point.date), y: toY(point.remainingPoints) }));
   const linePath = points.length >= 2 ? smoothLinePath(linePts) : null;
@@ -157,7 +164,7 @@ export function TrendPanel({ series, sprint, asOf, totalTeams }) {
     <PanelShell stats={stats}>
       <svg
         viewBox={`0 0 ${VB_W} ${VB_H}`}
-        className="mt-2 w-full max-w-3xl text-primary"
+        className="mt-2 w-full text-chart-cat-1"
         role="img"
         aria-label={`Burndown: ${fmtPts(latest.remainingPoints)} of ${fmtPts(maxY)} story points remaining`}
       >
@@ -202,6 +209,39 @@ export function TrendPanel({ series, sprint, asOf, totalTeams }) {
           </text>
         ))}
 
+        {/* The stretch of the sprint window that has no snapshots yet. Without it, a cron that
+            started mid-sprint reads as "nothing happened until the 20th" — the plot looks broken
+            rather than un-instrumented. Naming the gap is honest and costs one rect. */}
+        {uncaptured && (
+          <g>
+            <rect
+              x={MARGIN.left}
+              y={MARGIN.top}
+              width={uncaptured.width}
+              height={INNER_H}
+              className="fill-muted/45"
+            />
+            <line
+              x1={MARGIN.left + uncaptured.width}
+              x2={MARGIN.left + uncaptured.width}
+              y1={MARGIN.top}
+              y2={MARGIN.top + INNER_H}
+              className="stroke-border-strong"
+              strokeWidth="1"
+            />
+            {/* Pinned to the floor of the band: the ideal line sweeps down through the middle of
+                this region, and a centred label sat straight on it. */}
+            <text
+              x={MARGIN.left + uncaptured.width / 2}
+              y={MARGIN.top + INNER_H - 10}
+              textAnchor="middle"
+              className="fill-muted-foreground text-[10px]"
+            >
+              no captures yet
+            </text>
+          </g>
+        )}
+
         {/* Ideal reference line: latest total → 0 across the sprint window */}
         {ideal && (
           <line
@@ -222,7 +262,7 @@ export function TrendPanel({ series, sprint, asOf, totalTeams }) {
           <path
             d={linePath}
             fill="none"
-            className="stroke-primary"
+            className="stroke-chart-cat-1"
             strokeWidth="2"
             strokeLinejoin="round"
             strokeLinecap="round"
@@ -236,7 +276,7 @@ export function TrendPanel({ series, sprint, asOf, totalTeams }) {
             y1={toY(projection.line[0].remaining)}
             x2={toX(projection.line[1].date)}
             y2={toY(Math.max(projection.line[1].remaining, 0))}
-            className="stroke-primary"
+            className="stroke-chart-cat-1"
             strokeWidth="2"
             strokeOpacity="0.65"
             strokeDasharray="6 5"
@@ -273,7 +313,7 @@ export function TrendPanel({ series, sprint, asOf, totalTeams }) {
             cx={toX(point.date)}
             cy={toY(point.remainingPoints)}
             r="4"
-            className="fill-primary stroke-card"
+            className="fill-chart-cat-1 stroke-card"
             strokeWidth="2"
           >
             <title>
@@ -303,12 +343,12 @@ export function TrendPanel({ series, sprint, asOf, totalTeams }) {
           Ideal
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-0.5 w-4 rounded-full bg-primary" aria-hidden="true" />
+          <span className="inline-block h-0.5 w-4 rounded-full bg-chart-cat-1" aria-hidden="true" />
           Actual
         </span>
         {projection && (
           <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block w-4 border-t-2 border-dashed border-primary/65" aria-hidden="true" />
+            <span className="inline-block w-4 border-t-2 border-dashed border-chart-cat-1/65" aria-hidden="true" />
             Projected
           </span>
         )}

@@ -8,7 +8,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { X } from "lucide-react";
+import { CalendarRange, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -17,20 +17,66 @@ import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { PageLoader } from "@/components/ui/spinner";
+import { Toast, useToast } from "@/components/ui/toast";
+import {
+  HeroCopy,
+  HeroEyebrow,
+  HeroShell,
+  HeroTitle,
+} from "@/components/ui/hero-shell";
 import { apiFetch } from "@/lib/api-client";
 import { BugReportConfig } from "@/components/admin/bug-report-config";
 import { formatSprintWindow } from "@/lib/metrics.mjs";
+import { cn } from "@/lib/utils";
 
 const ROLES = ["ADMIN", "ED", "TPM", "EM", "LEAD", "MEMBER", "VIEWER"];
 const SPRINT_STATE_TONE = { PLANNING: "neutral", ACTIVE: "success", CLOSED: "warn" };
 
-function SectionCard({ title, subtitle, children }) {
+const toneTile = {
+  brand: "bg-accent text-accent-foreground",
+  info: "bg-info-soft text-info-strong",
+  warn: "bg-warn-soft text-warn-strong",
+  neutral: "bg-muted text-secondary-foreground",
+};
+
+/**
+ * Section shell for the admin surface. Carries the same icon-tile + display heading treatment as
+ * every other panel in the app — admin previously used a bare `text-base font-semibold` heading
+ * and no icon, which is why it read like scaffolding next to `/` and `/bugs`.
+ */
+function SectionCard({ title, subtitle, icon: Icon, tone = "neutral", count, children }) {
   return (
     <section className="rounded-xl border bg-card p-5">
-      <h2 className="text-base font-semibold">{title}</h2>
-      <p className="mb-4 text-xs text-muted-foreground">{subtitle}</p>
+      <header className="mb-4 flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className={cn("grid size-7 shrink-0 place-items-center rounded-md", toneTile[tone])}
+            aria-hidden="true"
+          >
+            <Icon className="size-4" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="font-display text-base leading-tight font-bold">{title}</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
+          </div>
+        </div>
+        {count !== undefined && (
+          <span className="shrink-0 rounded-full border bg-muted/40 px-2.5 py-1 text-[11px] font-bold text-muted-foreground tabular-nums">
+            {count}
+          </span>
+        )}
+      </header>
       {children}
     </section>
+  );
+}
+
+/** Quiet in-section empty state — a form with nothing above it reads as a broken list. */
+function SectionEmpty({ children }) {
+  return (
+    <p className="rounded-lg border border-dashed px-4 py-6 text-center text-xs text-muted-foreground">
+      {children}
+    </p>
   );
 }
 
@@ -48,11 +94,15 @@ function TeamCard({ team, run, busy }) {
   };
 
   return (
-    <article className="rounded-lg border bg-background p-4">
+    // A row in the teams list, not a card inside a card — one border around the list reads as a
+    // list; a border per team stacks three levels of rounded box on this page.
+    <article className="p-4 transition-colors hover:bg-muted/25">
       <div className="flex items-center justify-between gap-2">
-        <div>
-          <strong className="text-sm">{team.name}</strong>{" "}
-          <span className="font-mono text-xs text-muted-foreground">({team.key})</span>
+        <div className="flex min-w-0 items-baseline gap-2">
+          <strong className="truncate text-sm">{team.name}</strong>
+          <span className="rounded border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground">
+            {team.key}
+          </span>
         </div>
         <Button
           variant="ghost"
@@ -69,27 +119,31 @@ function TeamCard({ team, run, busy }) {
         <Dialog
           open
           title={`Delete team ${team.key}?`}
+          description="This cannot be undone."
           tone="error"
+          size="sm"
           onClose={() => setConfirmingDelete(false)}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setConfirmingDelete(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  setConfirmingDelete(false);
+                  run(`Delete ${team.key}`, () => apiFetch(`/api/teams/${team.id}`, { method: "DELETE" }));
+                }}
+              >
+                Delete team
+              </Button>
+            </>
+          }
         >
-          <p className="text-sm">
-            This removes the team&apos;s filters, cached issues, memberships, and stage progress.
-            It cannot be undone.
+          <p className="text-sm leading-relaxed">
+            Deleting <strong>{team.name}</strong> also removes its filters, cached issues,
+            memberships, and all stage progress.
           </p>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setConfirmingDelete(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                setConfirmingDelete(false);
-                run(`Delete ${team.key}`, () => apiFetch(`/api/teams/${team.id}`, { method: "DELETE" }));
-              }}
-            >
-              Delete team
-            </Button>
-          </div>
         </Dialog>
       )}
 
@@ -176,58 +230,110 @@ export function AdminPanel({
   // busy spans the API call AND the router.refresh() re-render, so forms stay disabled until
   // the lists actually reflect the change (React 19 transition; post-await updates re-wrapped).
   const [busy, startRun] = useTransition();
-  const [status, setStatus] = useState(null); // { ok, text }
+  const [error, setError] = useState(null); // failures persist; successes toast
+  const [toast, showToast] = useToast();
   const [teamName, setTeamName] = useState("");
   const [teamKey, setTeamKey] = useState("");
   const [sprintForm, setSprintForm] = useState({ name: "", start: "", end: "", release: "" });
 
-  /** Run a mutation; surface the outcome inline and refresh server data. */
+  /**
+   * Run a mutation. Success is a toast (the app's own non-blocking feedback, ui-polish decision 5)
+   * rather than a banner at the top of a long page that has usually scrolled out of view by the
+   * time it appears; failures stay pinned inline because they need acting on.
+   */
   const run = (label, fn) => {
-    setStatus(null);
+    setError(null);
     startRun(async () => {
       try {
         await fn();
-        // "— done" commits together with the refreshed lists, not before them.
+        // The toast fires together with the refreshed lists, not before them.
         startRun(() => {
           router.refresh();
-          setStatus({ ok: true, text: `${label} — done` });
+          showToast(`${label} — done`);
         });
-      } catch (error) {
-        setStatus({ ok: false, text: `${label} — ${error.message}` });
+      } catch (caught) {
+        setError(`${label} — ${caught.message}`);
       }
     });
   };
 
+  const activeSprint = sprints.find((sprint) => sprint.state === "ACTIVE");
+
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-col gap-5 p-4 md:p-6">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">Admin</h1>
-          <p className="text-sm text-muted-foreground">Teams, members, and sprint (Gate) configuration</p>
+    <main className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 md:p-6">
+      <HeroShell className="flex flex-wrap items-start justify-between gap-4 px-5 py-6 md:px-8 md:py-7">
+        <div className="min-w-0">
+          <HeroEyebrow>Administration</HeroEyebrow>
+          <HeroTitle>Workspace configuration</HeroTitle>
+          <HeroCopy className="mt-2">
+            Teams and membership, the shared sprint (Gate) calendar, and the bug-report dashboards.
+          </HeroCopy>
+          {/* The counts that tell an admin whether the workspace is actually provisioned. */}
+          <ul className="mt-3 flex flex-wrap items-center gap-2">
+            {[
+              { label: "team", value: teams.length },
+              { label: "sprint", value: sprints.length },
+              { label: "bug report", value: bugReports.length },
+            ].map(({ label, value }) => (
+              <li
+                key={label}
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/12 bg-white/8 px-2.5 py-1 text-[11px] whitespace-nowrap text-white/65 backdrop-blur-sm"
+              >
+                <span className="font-bold text-white tabular-nums">{value}</span>
+                {value === 1 ? label : `${label}s`}
+              </li>
+            ))}
+            <li className="inline-flex items-center gap-1.5 rounded-full border border-white/12 bg-white/8 px-2.5 py-1 text-[11px] whitespace-nowrap text-white/65 backdrop-blur-sm">
+              <span
+                className={cn(
+                  "size-1.5 rounded-full",
+                  activeSprint ? "bg-on-ink-success" : "bg-on-ink-danger",
+                )}
+                aria-hidden="true"
+              />
+              {activeSprint ? `${activeSprint.name} active` : "No active sprint"}
+            </li>
+          </ul>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <ThemeToggle />
-          <Button variant="secondary" size="sm" className="modern:lg:hidden" asChild>
+          <Button variant="onDark" size="sm" className="lg:hidden" asChild>
             <Link href="/">← Back to dashboard</Link>
           </Button>
         </div>
-      </header>
+      </HeroShell>
 
-      {status && (
+      {error && (
         <p
-          className={`rounded-md border px-3 py-2 text-sm font-medium ${status.ok ? "border-success/35 bg-success-soft text-success-strong" : "border-danger/30 bg-danger-soft text-danger-strong"}`}
+          role="alert"
+          className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm font-medium text-danger-strong"
         >
-          {status.text}
+          {error}
         </p>
       )}
 
-      <SectionCard title="Teams" subtitle="A scrum team owns its filters, progress, and memberships.">
-        <div className="flex flex-col gap-3">
-          {teams.map((team) => (
-            <TeamCard key={team.id} team={team} run={run} busy={busy} />
-          ))}
+      <SectionCard
+        title="Teams"
+        subtitle="A scrum team owns its filters, progress, and memberships."
+        icon={Users}
+        tone="brand"
+        count={teams.length}
+      >
+        <div className="flex flex-col gap-4">
+          {teams.length === 0 ? (
+            <SectionEmpty>
+              No teams yet. Create the first one below — members can only be added after they have
+              signed in with Jira once.
+            </SectionEmpty>
+          ) : (
+            <div className="divide-y overflow-hidden rounded-lg border">
+              {teams.map((team) => (
+                <TeamCard key={team.id} team={team} run={run} busy={busy} />
+              ))}
+            </div>
+          )}
           <form
-            className="flex gap-2"
+            className="flex flex-wrap gap-2"
             onSubmit={(event) => {
               event.preventDefault();
               run(`Create team ${teamKey}`, async () => {
@@ -243,6 +349,7 @@ export function AdminPanel({
               placeholder="Team name (e.g. Growth & Monetization)"
               required
               disabled={busy}
+              className="min-w-60 flex-1"
             />
             <Input
               value={teamKey}
@@ -262,37 +369,53 @@ export function AdminPanel({
       <SectionCard
         title="Sprints (Gates)"
         subtitle="Global — one shared cadence for all teams. Close a sprint instead of deleting it."
+        icon={CalendarRange}
+        tone="info"
+        count={sprints.length}
       >
-        <ul className="flex flex-col gap-1.5">
-          {sprints.map((sprint) => (
-            <li key={sprint.id} className="flex items-center gap-3 text-sm">
-              <span className="flex-1 truncate">
-                <strong>{sprint.name}</strong>{" "}
-                <span className="text-xs text-muted-foreground">
-                  {formatSprintWindow(sprint)}
-                </span>
-              </span>
-              <Badge tone={SPRINT_STATE_TONE[sprint.state]}>{sprint.state}</Badge>
-              <Select
-                className="h-7 text-xs"
-                value={sprint.state}
-                disabled={busy}
-                onChange={(event) =>
-                  run(`Set ${sprint.name} → ${event.target.value}`, () =>
-                    apiFetch(`/api/sprints/${sprint.id}`, {
-                      method: "PATCH",
-                      body: { state: event.target.value },
-                    }),
-                  )
-                }
+        {sprints.length === 0 ? (
+          <SectionEmpty>
+            No sprints yet. Create the first Gate below — every filter and all progress is scoped to
+            one.
+          </SectionEmpty>
+        ) : (
+          <ul className="divide-y overflow-hidden rounded-lg border">
+            {sprints.map((sprint) => (
+              <li
+                key={sprint.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-2.5 text-sm transition-colors hover:bg-muted/25"
               >
-                <option value="PLANNING">PLANNING</option>
-                <option value="ACTIVE">ACTIVE</option>
-                <option value="CLOSED">CLOSED</option>
-              </Select>
-            </li>
-          ))}
-        </ul>
+                {/* Wraps to two lines rather than forcing the row wider than the card: the window
+                    string is long and was `whitespace-nowrap` inside a flex-1 track. */}
+                <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+                  <strong className="truncate">{sprint.name}</strong>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {formatSprintWindow(sprint)}
+                  </span>
+                </span>
+                <Badge tone={SPRINT_STATE_TONE[sprint.state]}>{sprint.state}</Badge>
+                <Select
+                  className="h-7 w-28 text-xs"
+                  value={sprint.state}
+                  disabled={busy}
+                  aria-label={`State for ${sprint.name}`}
+                  onChange={(event) =>
+                    run(`Set ${sprint.name} → ${event.target.value}`, () =>
+                      apiFetch(`/api/sprints/${sprint.id}`, {
+                        method: "PATCH",
+                        body: { state: event.target.value },
+                      }),
+                    )
+                  }
+                >
+                  <option value="PLANNING">PLANNING</option>
+                  <option value="ACTIVE">ACTIVE</option>
+                  <option value="CLOSED">CLOSED</option>
+                </Select>
+              </li>
+            ))}
+          </ul>
+        )}
         <form
           className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-[1fr_auto_auto_auto_auto]"
           onSubmit={(event) => {
@@ -368,6 +491,7 @@ export function AdminPanel({
       />
 
       <PageLoader show={busy} label="Working…" />
+      <Toast toast={toast} />
     </main>
   );
 }

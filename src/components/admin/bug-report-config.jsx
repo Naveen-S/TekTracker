@@ -15,7 +15,7 @@
  */
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { Bug, ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,11 +24,16 @@ import { Badge } from "@/components/ui/badge";
 import { apiFetch } from "@/lib/api-client";
 import { validateConfig, DEFAULT_BANDS } from "@/lib/bug-report/matrix.mjs";
 
+/**
+ * A labelled group inside the bug-report card. Deliberately NOT another bordered box: this panel
+ * already sits inside a card, and each scope/band/category row below carries its own border, so a
+ * third rounded container stacked three deep. A rule and a heading do the same grouping job.
+ */
 function Section({ title, hint, children }) {
   return (
-    <div className="rounded-lg border bg-muted/20 p-4">
-      <h4 className="text-sm font-bold">{title}</h4>
-      {hint && <p className="mb-3 text-xs text-muted-foreground">{hint}</p>}
+    <div className="border-t pt-4 first:border-t-0 first:pt-0">
+      <h4 className="font-display text-sm font-bold">{title}</h4>
+      {hint && <p className="mt-0.5 mb-3 max-w-2xl text-xs text-muted-foreground">{hint}</p>}
       {children}
     </div>
   );
@@ -154,6 +159,25 @@ export function BugReportConfig({ reports, config, statusVocabulary, priorityVoc
   const mappedStatuses = new Set(categories.flatMap((c) => c.statuses.map((s) => s.toLowerCase())));
   const unmappedStatuses = statusVocabulary.filter((entry) => !mappedStatuses.has(entry.value.toLowerCase()));
 
+  /**
+   * Priorities arrive sorted by how often they occur — right for statuses, wrong here: it renders
+   * the SLA inputs as "P2, P1, P0, P4, P3", which nobody can fill in without re-reading each label.
+   * The configured bands already ARE the severity order, so order by owning band and fall back to
+   * frequency for anything not yet banded.
+   */
+  const bandRank = new Map();
+  bands.forEach((band, index) =>
+    band.priorityNames.forEach((name) => {
+      const key = name.toLowerCase();
+      if (!bandRank.has(key)) bandRank.set(key, index);
+    }),
+  );
+  const orderedPriorities = [...priorityVocabulary].sort(
+    (a, b) =>
+      (bandRank.get(a.value.toLowerCase()) ?? Number.MAX_SAFE_INTEGER) -
+      (bandRank.get(b.value.toLowerCase()) ?? Number.MAX_SAFE_INTEGER),
+  );
+
   const run = async (fn, successMessage) => {
     setBusy(true);
     setStatus(null);
@@ -209,11 +233,28 @@ export function BugReportConfig({ reports, config, statusVocabulary, priorityVoc
 
   return (
     <section className="rounded-xl border bg-card p-5">
-      <h2 className="text-base font-semibold">Bug report dashboards</h2>
-      <p className="mb-4 text-xs text-muted-foreground">
-        Every filter, mapping and SLA value here is configuration — nothing is hardcoded. Duplicate
-        a report to stand up a new one (e.g. Honda) without a code change.
-      </p>
+      <header className="mb-4 flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className="grid size-7 shrink-0 place-items-center rounded-md bg-warn-soft text-warn-strong"
+            aria-hidden="true"
+          >
+            <Bug className="size-4" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="font-display text-base leading-tight font-bold">Bug report dashboards</h2>
+            <p className="mt-0.5 max-w-2xl text-xs text-muted-foreground">
+              Every filter, mapping and SLA value here is configuration — nothing is hardcoded.
+              Duplicate a report to stand up a new one (e.g. Honda) without a code change.
+            </p>
+          </div>
+        </div>
+        {reports.length > 0 && (
+          <span className="shrink-0 rounded-full border bg-muted/40 px-2.5 py-1 text-[11px] font-bold text-muted-foreground tabular-nums">
+            {reports.length}
+          </span>
+        )}
+      </header>
 
       {status && (
         <p
@@ -264,7 +305,7 @@ export function BugReportConfig({ reports, config, statusVocabulary, priorityVoc
       {!config ? (
         <p className="text-xs text-muted-foreground">Create a report above to configure it.</p>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-5">
           {errors.length > 0 && (
             <ul className="rounded-lg border border-danger/30 bg-danger-soft/40 p-3 text-xs text-danger-strong">
               {errors.map((error) => (
@@ -334,23 +375,30 @@ export function BugReportConfig({ reports, config, statusVocabulary, priorityVoc
                       type="button"
                       variant="ghost"
                       onClick={() => setScopes((prev) => prev.filter((_, i) => i !== index))}
+                      aria-label={`Remove scope ${scope.name || index + 1}`}
                       className="h-8"
                     >
                       <Trash2 className="size-3.5" />
                     </Button>
                   </div>
 
-                  <div className="mt-3">
+                  <div className="mt-3 border-t pt-3">
                     <Label className="text-[11px]">SLA days by priority</Label>
-                    <div className="mt-1 flex flex-wrap gap-2">
-                      {priorityVocabulary.map((entry) => {
+                    {/* A labelled cell per priority, in severity order, so the row scans as a
+                        table of thresholds instead of a wrapping run of inline pairs. */}
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {orderedPriorities.map((entry) => {
                         const target = scope.slaTargets.find((item) => item.priorityName === entry.value);
                         return (
-                          <span key={entry.value} className="flex items-center gap-1 text-xs">
-                            <span className="text-muted-foreground">{entry.value}</span>
+                          <span
+                            key={entry.value}
+                            className="flex items-center gap-1.5 rounded-md border bg-muted/30 py-1 pr-1 pl-2 text-xs"
+                          >
+                            <span className="whitespace-nowrap text-muted-foreground">{entry.value}</span>
                             <Input
                               type="number"
                               min="0"
+                              aria-label={`SLA days for ${entry.value} in ${scope.name || "this scope"}`}
                               value={target?.days ?? ""}
                               placeholder="—"
                               onChange={(event) => {
@@ -373,7 +421,7 @@ export function BugReportConfig({ reports, config, statusVocabulary, priorityVoc
                                   }),
                                 );
                               }}
-                              className="h-7 w-16 text-xs"
+                              className="h-7 w-14 bg-card text-xs"
                             />
                           </span>
                         );
@@ -438,6 +486,7 @@ export function BugReportConfig({ reports, config, statusVocabulary, priorityVoc
                       type="button"
                       variant="ghost"
                       onClick={() => setBands((prev) => prev.filter((_, i) => i !== index))}
+                      aria-label={`Remove band ${band.label || index + 1}`}
                       className="ml-auto h-8"
                     >
                       <Trash2 className="size-3.5" />
@@ -446,7 +495,7 @@ export function BugReportConfig({ reports, config, statusVocabulary, priorityVoc
                   <div className="mt-2">
                     <VocabularyPicker
                       selected={band.priorityNames}
-                      vocabulary={priorityVocabulary}
+                      vocabulary={orderedPriorities}
                       placeholder="Priority not in the data yet…"
                       onChange={(next) =>
                         setBands((prev) =>
@@ -507,9 +556,10 @@ export function BugReportConfig({ reports, config, statusVocabulary, priorityVoc
                           return next;
                         })
                       }
+                      aria-label={`Move ${category.name || "category"} up`}
                       className="h-8"
                     >
-                      ↑
+                      <ChevronUp className="size-3.5" />
                     </Button>
                     <Button
                       type="button"
@@ -522,14 +572,16 @@ export function BugReportConfig({ reports, config, statusVocabulary, priorityVoc
                           return next;
                         })
                       }
+                      aria-label={`Move ${category.name || "category"} down`}
                       className="h-8"
                     >
-                      ↓
+                      <ChevronDown className="size-3.5" />
                     </Button>
                     <Button
                       type="button"
                       variant="ghost"
                       onClick={() => setCategories((prev) => prev.filter((_, i) => i !== index))}
+                      aria-label={`Remove category ${category.name || index + 1}`}
                       className="ml-auto h-8"
                     >
                       <Trash2 className="size-3.5" />
