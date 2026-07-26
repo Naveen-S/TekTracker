@@ -1,77 +1,84 @@
 # Current Feature
 
-**Modern theme — a blue, sidebar-shell theme alongside Tekion** — full spec:
-@context/features/modern-theme.md
+**One-Click Sprint Start** — full spec: @context/features/one-click-sprint-start.md
 
-Add a second **"Modern"** theme (blue `#2f6bff`, cool canvas, a dark **left-sidebar** app shell,
-monochrome status chips, retained dark hero) selectable from the user menu, alongside the
-**untouched Tekion** default. Requested by Naveen 2026-07-23; post-v1. The visual target is an
-approved 5-frame design board built from Naveen's own mockups
-(https://claude.ai/code/artifact/d84f5b02-0e84-401f-a303-e2ab50a9d520).
-
-**Not recolor-only — a layout shift.** Nav moves from the top bar into a persistent sidebar, so the
-theme toggle swaps **layout + palette**. Everything is gated on a single `theme-modern` class on
-`<html>`, so Tekion renders byte-for-byte as today.
+Bring Naveen's org-wide Component → Sub-component → Scrum-team mapping (from
+`Tekion JIRA Book - 2025-26.xlsx`) into the app: an admin-maintained Jira Component/Sub-component
+catalog, per-team claiming of sub-components, per-track Jira Issue Type config (Roadmap/Tech
+Debt/Internal Bug/External Bug), Fix Version(s) on Sprint, and a dashboard "One-Click Sprint Start"
+action that generates a team's 4 filters against an **existing** Sprint — the Sprint itself stays
+admin-only to create, exactly as today; this feature never adds a way to create one. Requested by
+Naveen 2026-07-26; post-v1 (the migration plan is complete).
 
 ## Status
 
-**Done 2026-07-24 (Phases A–C), on `feature/modern-theme`.** A second **"Modern"** theme (blue
-`#2f6bff`, cool canvas, a dark left-nav **sidebar**, monochrome status chips, blue-re-hued ink hero)
-selectable from the top bar / admin header, alongside the **untouched Tekion** default.
+**Done 2026-07-26.** Full spec + Status/As-built notes: @context/features/one-click-sprint-start.md.
+Implemented as specced, including both post-draft corrections from Naveen (decisions 4 and 7 — no
+RBAC carve-out; External Bug scopes by the parent Component name, not sub-components).
 
-- **Phase A** — `@custom-variant modern` + additive `:root.theme-modern` tokens + hero/selection/
-  brand-glow re-hue in `globals.css`; no-FOUC boot script + `suppressHydrationWarning` in
-  `layout.jsx`; `ui/theme-toggle.jsx` (localStorage, imperative class flip).
-- **Phase B** — `ui/app-shell.jsx` + `ui/app-sidebar.jsx` (active-route highlight, collapse↔icon-rail
-  pref) wrapping `/`, `/rollup`, `/bugs`, `/admin`; CSS-reveal layout swap; top-bar nav hidden under
-  Modern.
-- **Phase C** — monochrome blue **status chips** (`.health-chip`/`.health-pill` override; semantic
-  color survives in matrix dots + card accents + breach counts); **theme-swap cross-fade**
-  (`.theme-transition`, `prefers-reduced-motion`-guarded); **responsive** — sidebar shows at `lg+`
-  (`modern:lg:flex`), Modern falls back to top-bar nav below `lg` (`modern:lg:hidden`).
+Added: 2 new Prisma models + 5 new `Team`/`Sprint` fields (one migration); 3 new pure modules
+(`issue-type-defaults.mjs`, `track-jql.mjs`, `accent-palette.mjs` — the last extracted out of
+`add-filter-dialog.jsx`); a shared `lib/filters/priority-insert.js`; 6 new API routes + a new
+`ConflictError` (409); 3 new UI components (admin Jira-components catalog, admin team create/edit
+dialog, dashboard Sprint-Start dialog) + `fixVersions` inputs on both Sprint forms.
 
-**Verified:** lint clean; **DB/env-free build green — 35 ƒ Dynamic (unchanged)**; Modern tokens +
-`modern:lg:*` responsive variants + monochrome-chip override + `theme-transition` + hero override +
-sidebar chunk all compiled into a clean rebuild; no-FOUC boot script served; routes 200/307. No
-schema/migration/route/dependency change; no new dependency.
+**Verified:** `yarn lint` clean; **9/9 pure-fixture checks** (DR_GM worked example incl. the
+parent-component External Bug clause, override precedence, JQL-quote escaping, accent wraparound);
+`prisma validate`/`migrate status` up to date; **DB/env-free cold build green — 41 ƒ Dynamic (35 →
+41)**, `.env` genuinely moved aside and restored; **30/30 SSR/API smoke checks** against a
+fabricated 3-team fixture (RBAC gates, 409 double-claim conflict, hand-verified JQL/sortOrder/
+accentColor, idempotent re-run, confirmed `POST/PATCH /api/sprints` untouched); fixture torn down
+to 0 leftovers. **Runtime smoke against Naveen's real data**: a minted admin cookie against `/admin`
+and `/` both 200, no errors, new UI rendered (render-only, no writes). A pre-existing stale
+`next-server` process on :3002 (unrelated to this change) was found and restarted mid-verification.
 
-⚠️ **Pending human acceptance (Naveen):** an authed visual pass in both themes — toggle Modern across
-board/roll-up/bugs/admin, check the sidebar/collapse, status chips, and the swap animation (the
-browser extension isn't connected, so the build validates structure, not the look). **Not committed.**
+**2026-07-27 update:** Naveen's real Jira acceptance run (the item flagged above) found the
+generated JQL was actually wrong — full details, corrected JQL shapes, and re-verification in
+@context/features/one-click-sprint-start.md's Status/As-built notes. Two fixes landed same day:
+(1) field naming/order/quoting/`ORDER BY` corrected to match his instance, and the team's own
+tracks now scope via a custom `"sub-component[dropdown]"` field, not the standard `component`
+field; (2) External Bug now ANDs the sub-component clause **alongside** the parent-Component
+clause (was parent-only), per Naveen's same-day amendment. Also added: a per-sprint "Edit" button
+in `/admin`'s Sprints list (fixVersions editable on any sprint, incl. ACTIVE, without leaving
+`/admin`) — Naveen had asked how to do this and there was no direct affordance. Separately, in the
+same session but **unrelated to this feature**: a real Tekion favicon/brand icon replaced the
+generic Next.js default (`app/icon.png` + regenerated `app/favicon.ico`), and the same icon now
+also appears at the top of the left-nav sidebar linking to `/` (see project-overview.md §11).
 
-**Next:** fold in Naveen's visual tweaks, then commit; remaining post-v1 ideas — export-embedded AI
-narrative, AI Q&A, stage suggestions, dark mode (trivial on this mechanism now).
+⚠️ **Still pending:** Naveen re-running the one-click flow against real Jira to confirm the
+corrected JQL (both fixes) actually returns the expected issues in each of the 4 tracks.
+
+**Next:** that live re-run confirmation, then commit; remaining post-v1 ideas — export-embedded AI
+narrative, AI Q&A, stage suggestions, PDF/share for `/bugs`, and a `/bugs` follow-up to call out
+ENG issues with no sub-component tag.
 
 ## Goals
 
-- **(a) Mechanism** — `theme-modern` class on `<html>`; `:root` = Tekion (untouched); additive
-  `:root.theme-modern` overrides; `localStorage` via `useLocalPref` + a no-FOUC boot script +
-  `suppressHydrationWarning` (carried from the reverted attempt — still the right mechanism).
-- **(b) Layout shift, CSS-driven** — a shared `AppShell` (dark sidebar + slim top bar + main) on the
-  four authenticated pages; the sidebar is revealed and the wrapper flips `flex-direction` under
-  `.theme-modern`, so the toggle stays **instant, flash-free, and server-change-free**.
-- **(c) Sidebar** — nav with active-route highlight + collapse↔icon-rail (a second `localStorage`
-  pref); avatar/logout/theme-toggle in its footer under Modern; top-bar nav CSS-hidden under Modern.
-- **(d) Modern tokens** — blue brand from the board; **monochrome status chips** (semantic color
-  survives only in matrix dots, KPI/metric accents, SLA-breach counts).
-- **Acceptance:** lint; DB/env-free build (ƒ Dynamic unchanged); Tekion pixel-identical; Modern shell
-  + palette across `/`, `/rollup`, `/bugs`, `/admin`; `/login` + `/share` stay Tekion; toggle instant
-  + persists + no hydration warning; visual pass vs the board.
+- A reusable admin catalog: `JiraComponent` (name + Jira project key) → many `JiraSubComponent`
+  (name), each claimed by at most one Team — manually entered, one at a time, no bulk import, no
+  live Jira discovery.
+- Per-track Jira Issue Type mapping as a global default with a per-team override (mirrors the
+  existing `storyPointsFieldId`/`sprintFieldId` pattern): Roadmap = `Story`, Tech Debt =
+  `Tech Story`, Internal Bug = `Bug` (team's own project); External Bug = project `ENG`, Issue Type
+  `Tap Ticket`, scoped by the parent Component name only.
+- `Sprint.fixVersions String[]` — manually typed Jira Fix Version name(s) a Gate spans.
+- A dashboard "One-Click Sprint Start" action (`TEAM_MANAGER_ROLES`, same gate as manual filter
+  creation) that, given an existing `PLANNING`/`ACTIVE` Sprint, generates the team's missing
+  Roadmap/Tech Debt/Internal Bug/External Bug filters from generated JQL (never duplicating ones
+  that already exist) and immediately syncs them.
+- **Acceptance:** pure-fixture tests for the JQL builder against a hand-computed DR_GM example;
+  lint/`prisma validate`/DB-env-free build green; SSR/API smoke incl. RBAC gates, 409 on
+  double-claimed sub-components, and idempotent re-run; a final human-acceptance run against
+  Naveen's real DR_GM/ENG Jira data.
 
 ## Notes
 
-- **Scope confirmed with Naveen 2026-07-23:** recolor **+ sidebar layout**, one unified dark labeled
-  sidebar (frame 01 = its collapsed icon-rail state); one synthesized-then-mockup-driven "Modern"
-  theme alongside Tekion; user-menu toggle backed by localStorage; dark mode still out of scope.
-- **Key architectural call (decision 3):** layout swap is **CSS-reveal** (both chromes in the DOM,
-  theme class shows one), not SSR — because the theme is a client-only localStorage value the server
-  can't see without a flash. Cookie+SSR is the deferred alternative.
-- **Deliberately NOT recolored:** PDF/PNG **exports** and the **validated bug-chart palette** stay
-  Tekion-branded; `/login` + `/share` stay Tekion (no sidebar).
-- **Decisions locked (2026-07-23):** persistence = localStorage + CSS-reveal; typography kept
-  (Manrope/Inter/JetBrains) — the **"wow" is an explicit goal**, carried by the shell + motion +
-  polish; sidebar collapse/expand is in v1.
-
+- Full data model, API routes, UI changes, and open risks are in
+  @context/features/one-click-sprint-start.md — kept as the single source of truth rather than
+  duplicated here.
+- **Modern theme work (previous feature) is Done and merged** — see the last History entries below
+  and @context/features/modern-theme.md. Naveen's real-browser visual pass on that arc is still
+  outstanding but does not block starting this feature.
 
 ## History
 
@@ -1265,3 +1272,130 @@ narrative, AI Q&A, stage suggestions, dark mode (trivial on this mechanism now).
   now and both themes correctly fall back to top-bar nav below `lg`; dev server restarted after
   the clobbering build. Screenshots + harness stayed in the session scratch dir, not the repo.
   **Not committed.**
+- 2026-07-26 — **Marked modern-theme Done** (finish-feature ritual, per Naveen). Re-ran the full
+  verify suite as the completion gate: `yarn lint` clean; `prisma validate` + `migrate status` up
+  to date (4 migrations, no schema change); **env-free cold `yarn build` green — 35 ƒ Dynamic,
+  unchanged** (`.env` genuinely moved aside via `mv` and restored, not just shell-unset); runtime
+  smoke against a freshly rebuilt dev server — unauthenticated `/` correctly serves the login page
+  rather than the dashboard, `/api/cron/daily` 401s on a bad bearer, `/api/health/db` reports a
+  live connection, and all four `AppShell` pages (`/`, `/rollup`, `/bugs`, `/admin`) return 200
+  authenticated. Doc-synced: `context/features/modern-theme.md` gained a proper `## Status` +
+  `## As-built notes (vs. the spec)` section (the file's own `Status:` line had said "Planned (not
+  started)" this entire time — Phases A–C landing 2026-07-24 was only ever recorded here in
+  current-feature.md, never in the spec itself — and the As-built notes now flag the two
+  spec-reversing deviations: the sidebar is no longer Modern-exclusive, and the dropdown rebuild
+  was never in the original scope at all); `context/project-overview.md` §11 gained a dated
+  **[BUILT 2026-07-26]** addendum after the 2026-07-24 Modern-theme note (append-don't-rewrite, per
+  the historical-note convention) plus a `Last reviewed` bump. This entry's Status block above and
+  the stale "Tekion pixel-identical" acceptance bullet in Goals were corrected in the same pass.
+  **Done.** **Mid-pass discovery:** `git status`/`log` turned up that Naveen had committed and
+  fast-forward-merged `feature/modern-theme` into `main` as `8240dce` ("UI Polish.") from a
+  parallel session while this verify pass was running — the code (including this session's
+  dropdown/sidebar change) was already on `main` by the time this entry was written, so the
+  Status block's and earlier entries' "Not committed" framing is corrected above rather than left
+  to mislead. Only this doc-sync pass itself (3 markdown files) remained uncommitted. ⚠️ Still
+  pending: Naveen's first real-browser visual pass across this entire arc (every verification
+  round, including this one, used headless capture — the browser extension has never been
+  connected). **Next:** that visual pass; remaining post-v1 ideas (export-embedded AI narrative,
+  AI Q&A, stage suggestions, dark mode) stay open after.
+- 2026-07-26 — Planning session (no code): Naveen shared ideation for **One-Click Sprint Start**
+  (two screenshots of a Component→Sub-component→Scrum-team mapping, an org spreadsheet
+  `Tekion JIRA Book - 2025-26.xlsx`) — automate onboarding a scrum team's 4 Jira filters
+  (Roadmap/Tech Debt/Internal Bug/External Bug) from a reusable admin catalog instead of hand-typed
+  JQL every sprint. Ran several rounds of clarifying questions, cross-checked the real spreadsheet
+  (confirmed: sub-components are literal flat Jira Component field values under a naming
+  convention, not a true hierarchy; Fix Versions follow `Release-YYYY.MM.X.Y`) and a Jira
+  screenshot (confirmed exact Issue Type names: `Story`/`Tech Story`/`Bug`, and the External Bug
+  project key `ENG`). Drafted @context/features/one-click-sprint-start.md; **Naveen corrected two
+  assumptions in the first draft** — no RBAC carve-out for Sprint creation (admin-only, no
+  exceptions) and External Bug scoping is parent-Component-only, not sub-component-level (both
+  folded into the spec's ratified decisions 4 and 7, see Status above). No schema/code changes yet.
+  modern-theme remains **Done** (merged as `8240dce`).
+- 2026-07-26 — Picked @context/features/one-click-sprint-start.md as the current feature.
+- 2026-07-26 — **Implemented one-click-sprint-start.** Added `JiraComponent`/`JiraSubComponent`
+  models + 4 per-track Issue Type override arrays on `Team` + `Sprint.fixVersions` (migration
+  `20260726111546_add_component_catalog_and_track_config`); pure
+  `lib/jira/issue-type-defaults.mjs` (global defaults + `resolveIssueTypes` override resolver,
+  mirroring the `storyPointsFieldId`/`sprintFieldId` pattern) and pure
+  `lib/sprint-start/track-jql.mjs` (`buildTrackJql`/`buildAllTrackJql`/
+  `groupSubComponentsByComponent`/`TRACK_NAMES`/`SPRINT_START_TRACKS`, following the
+  `quoteJql`/`IN (...)` idiom from `bug-report/matrix.mjs` — Roadmap/Tech Debt/Internal Bug scope
+  by the team's fine-grained sub-components, External Bug by the parent Component name only per
+  decision 7); extracted `lib/accent-palette.mjs` out of `add-filter-dialog.jsx` and
+  `lib/filters/priority-insert.js` out of the existing filters route (now shared by both routes).
+  New routes: `/api/jira-components[/…]` + `/api/jira-sub-components/[id]` (admin-only catalog
+  CRUD), `PATCH /api/teams/[teamId]/sub-components` (full-replacement claim set, `ConflictError`
+  409 on double-claim — new error class in `route-helpers.js`), `POST
+  /api/teams/[teamId]/sprint-start` (`TEAM_MANAGER_ROLES` — no RBAC change, per decision 4; 404
+  unknown/400 closed sprint, 400 zero sub-components, skips existing tracks, syncs immediately
+  without rolling back filters on sync failure). `dashboard-data.js` gained
+  `sprintStartConfig` (issue-type overrides + componentGroups) on the selected team. New admin UI:
+  `jira-components-config.jsx` (catalog, one-at-a-time add forms) + `team-config-dialog.jsx`
+  (create/edit, component picker + sub-component claim checklist + collapsed issue-type-override
+  section) wired into `admin-panel.jsx` (team cards gained an Edit button); `fixVersions` inputs
+  added to both the admin inline Sprint form and `SprintConfigDialog`. New dashboard UI:
+  `sprint-start-dialog.jsx` (existing-sprint dropdown only — never creates one; live JQL preview
+  computed client-side via the same pure `track-jql.mjs`) behind a new Hero "Sprint Start" button.
+  Verified: `yarn lint` clean (11 `react/no-unescaped-entities` fixes along the way); **9/9 plain-
+  Node fixtures** for `track-jql.mjs`/`accent-palette.mjs` (DR_GM worked example incl. the
+  parent-component External Bug clause, per-team override precedence, no-fixVersions,
+  multi-component-group `project IN (...)`, JQL-quote escaping, accent wraparound);
+  `prisma validate`/`migrate status` up to date; **DB/env-free cold build green — 41 ƒ Dynamic (35
+  → 41)**, `.env` genuinely moved aside via `mv` and restored; **30/30 SSR/API smoke checks**
+  against a fabricated 3-team/3-user fixture (RBAC gates incl. VIEWER/EM-non-ADMIN 403s, the 409
+  double-claim conflict, 404 unknown sprint, 400 closed sprint / zero sub-components, all 4
+  tracks' JQL hand-verified against the fixture's real component/sub-component names, sortOrder
+  following `WORKFLOWS` priority, 4 distinct `accentColor`s, an idempotent re-run creating 0 new
+  filters with exactly 4 `Filter` rows left in the DB, and confirmation `POST/PATCH /api/sprints`
+  are untouched — still admin-only); fixture torn down to 0 leftovers. **Runtime smoke against
+  Naveen's real production data** (render-only, no writes): a minted admin cookie against `/admin`
+  and `/` both returned 200 with no error markers, the new "Jira components" section and "Sprint
+  Start" button both rendered — this also surfaced that Naveen already has real scrum teams synced
+  (e.g. "GM PreCheckout", "Configurator & Website Setup"), useful for the pending human-acceptance
+  step. Found and restarted one pre-existing, unrelated stale `next-server` process on :3002 mid-
+  verification (holding an outdated Prisma client from before the migration — the same stale-dev-
+  server hazard this project has hit before). Doc-synced: `context/features/one-click-sprint-
+  start.md` Status + As-built notes; `project-overview.md` §5 (new feature row), §9 (schema blocks
+  + ER diagram + rationale bullet, byte-consistent with `schema.prisma`), §11 (new admin
+  catalog/dialog + dashboard action note), §13 (reaffirmed no RBAC change), §16 (new ratified
+  decision entry incl. both reversals), and the master migration plan's step-10 post-v1 clause.
+  **Done.** ⚠️ Pending human acceptance: Naveen claiming sub-components for a real team and running
+  the flow against real Jira. **Next:** fold in feedback, then commit.
+- 2026-07-27 — **Fixed two real JQL bugs from Naveen's live acceptance run, plus small follow-ups
+  (still on `feature/one-click-sprint-start`, uncommitted).** Naveen ran the actual one-click flow
+  against real Jira — the pending human-acceptance step from the prior entry — and reported the
+  generated JQL was wrong, supplying an accurate real sample:
+  `type = Story AND project = GM AND "sub-component[dropdown]" IN (DR_GM-Configurator,
+  DR_GM-WebsiteSetup) AND fixversion = Release-2026.08.1.0 ORDER BY issuetype ASC`. Root causes in
+  `track-jql.mjs`/`issue-type-defaults.mjs`: (1) his instance tags a team's own sub-components via
+  a **custom field** (`"sub-component[dropdown]"`, new `SUB_COMPONENT_FIELD` constant), not the
+  standard Jira `component` field the spec assumed; (2) field naming (`type`/`fixversion`, not
+  `issuetype`/`fixVersion`), clause order (`type → project → component(s) → fixversion`), quoting
+  (bare unless a value has whitespace — was always-quoted), and a trailing `ORDER BY issuetype ASC`
+  all needed to match his instance's real conventions. Fixed and **re-verified byte-for-byte
+  against his exact sample** via a standalone pure-fixture script (not committed). Naveen then sent
+  a same-day follow-up: *"Even the external filter should use subcomponent in the filter
+  creation"* — confirmed via a clarifying question as an **addition**, not a replacement, to
+  decision 7's parent-Component-only External Bug scoping. `buildTrackJql` was generalized from a
+  single `componentField`/`componentValues` pair to an ordered `componentClauses: [{ field,
+  values }]` list so External Bug now ANDs **both** `component = <parent>` and
+  `"sub-component[dropdown]" IN (<team's sub-components>)`; the other 3 tracks pass a
+  single-entry array, unaffected in shape. Also shipped, same session: a per-sprint **Edit** button
+  in `/admin`'s "Sprints (Gates)" list (Naveen asked how to edit `fixVersions` on an already-ACTIVE
+  sprint — it already worked via the dashboard's "Configure Sprint," but wasn't discoverable from
+  `/admin`; reused the existing `SprintConfigDialog` edit mode as-is, no server change). Verified:
+  `yarn lint` clean; `prisma validate`/`migrate status` up to date (still 5 migrations, no schema
+  change); **DB/env-free cold build green — 41 ƒ Dynamic unchanged**, `.env` genuinely moved aside
+  and restored; live dev-server smoke confirms the admin Sprints list renders exactly one "Edit"
+  button per sprint row. Doc-synced: `one-click-sprint-start.md` (pure-module section, worked
+  example, decision 7 amendment, Open risks, Status, new As-built-notes entries);
+  `project-overview.md` §5 row + §16 decision entry + master-plan step-10 clause (all
+  dated-addendum style, not rewritten) + `Last reviewed` bump to 2026-07-27. **Separately, same
+  session but unrelated to this feature:** replaced the generic default Next.js favicon with
+  Naveen's supplied Tekion icon (`app/icon.png` + regenerated `app/favicon.ico`), and put the same
+  icon (`public/app-icon.png`) at the top of the left-nav sidebar linking to `/` — verified via a
+  live `/_next/image` fetch (correct 64×64 render) and a minted-cookie SSR check of the sidebar's
+  `<a href="/" aria-label="Sprint Tracker — go to my board">`; doc-synced as a new dated
+  `project-overview.md` §11 note. **Still open:** Naveen re-running the live flow to confirm the
+  corrected JQL (both fixes) actually returns the right issues in Jira for all 4 tracks. **Next:**
+  that confirmation, then commit.

@@ -11,6 +11,31 @@ import { Role, SprintState } from "@/generated/prisma/client";
 import { aggregateRollup, combineSnapshotsByDay, computeSprintMetrics } from "@/lib/metrics.mjs";
 import { isAiConfigured } from "@/lib/ai/provider";
 import { TEAM_MANAGER_ROLES, TEAM_WRITER_ROLES } from "@/lib/rbac";
+import { groupSubComponentsByComponent } from "@/lib/sprint-start/track-jql.mjs";
+
+/**
+ * A team's one-click-sprint-start config (one-click-sprint-start.md): its per-track Issue Type
+ * overrides + claimed sub-components grouped by parent Component. `null` team ⇒ `componentGroups: []`
+ * so the dashboard can render "no sub-components configured yet" without a null check everywhere.
+ */
+async function getTeamSprintStartConfig(teamId) {
+  const team = await prisma.team.findUnique({
+    where: { id: teamId },
+    select: {
+      featureIssueTypes: true,
+      techDebtIssueTypes: true,
+      internalBugIssueTypes: true,
+      supportIssueTypes: true,
+      subComponents: {
+        orderBy: { name: "asc" },
+        select: { name: true, component: { select: { name: true, projectKey: true } } },
+      },
+    },
+  });
+  if (!team) return { issueTypeOverrides: null, componentGroups: [] };
+  const { subComponents, ...issueTypeOverrides } = team;
+  return { issueTypeOverrides, componentGroups: groupSubComponentsByComponent(subComponents) };
+}
 
 /** Whether any bug-report dashboard exists — drives the TopBar "Bugs" link (gm-bug-report.md (f)). */
 async function hasActiveBugReport() {
@@ -44,6 +69,7 @@ async function getSprintSelection(sprintId) {
       developmentStart: true,
       developmentEnd: true,
       releaseDate: true,
+      fixVersions: true,
     },
   });
   const selectedSprint =
@@ -114,6 +140,13 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
   const canManage = user.isAdmin || (myRole !== null && TEAM_MANAGER_ROLES.includes(myRole));
   const canConfigureSprint = user.isAdmin;
 
+  // One-click-sprint-start.md: the team's resolved project/sub-components/issue-types, used by the
+  // dialog's preview (client-side JQL preview via the same pure track-jql.mjs builder) — no new
+  // GET route needed.
+  const sprintStartConfig = selectedTeam
+    ? await getTeamSprintStartConfig(selectedTeam.id)
+    : { issueTypeOverrides: null, componentGroups: [] };
+
   return {
     user: serializeUser(user),
     teams: teams.map((team) => ({ ...team, myRole: roleByTeam.get(team.id) ?? null })),
@@ -125,6 +158,7 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
     filters,
     progressByKey,
     snapshots,
+    sprintStartConfig,
     // Request-time clock for the trend panel's "today" marker + projection — passed down so the
     // SSR render and the client hydration draw identical geometry (no client-side new Date()).
     asOf: new Date(),

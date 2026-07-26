@@ -22,6 +22,19 @@ export class ValidationError extends Error {
 }
 
 /**
+ * Thrown for a business-rule conflict that isn't a DB unique-constraint violation (e.g. claiming a
+ * JiraSubComponent already claimed by a different team, one-click-sprint-start.md). Maps to
+ * HTTP 409, with an optional `details` payload the route can attach for the client.
+ */
+export class ConflictError extends Error {
+  constructor(message = "Conflict", details) {
+    super(message);
+    this.name = "ConflictError";
+    this.details = details;
+  }
+}
+
+/**
  * Read the JSON body and validate it against a zod schema; throws {@link ValidationError} (→ 400)
  * on malformed JSON or schema failure.
  *
@@ -64,6 +77,12 @@ export function handleRouteError(error) {
   }
   if (error instanceof NotFoundError) {
     return Response.json({ error: error.message }, { status: 404 });
+  }
+  if (error instanceof ConflictError) {
+    return Response.json(
+      { error: error.message, ...(error.details ? { details: error.details } : {}) },
+      { status: 409 },
+    );
   }
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === "P2002") {

@@ -23,7 +23,7 @@ export default async function AdminPage() {
     notFound();
   }
 
-  const [teams, sprints] = await Promise.all([
+  const [teams, sprints, jiraComponents] = await Promise.all([
     prisma.team.findMany({
       orderBy: { name: "asc" },
       include: {
@@ -33,9 +33,22 @@ export default async function AdminPage() {
             user: { select: { id: true, email: true, displayName: true, avatarUrl: true } },
           },
         },
+        subComponents: {
+          orderBy: { name: "asc" },
+          include: { component: { select: { id: true, name: true, projectKey: true } } },
+        },
       },
     }),
     prisma.sprint.findMany({ orderBy: { developmentStart: "desc" } }),
+    prisma.jiraComponent.findMany({
+      orderBy: { name: "asc" },
+      include: {
+        subComponents: {
+          orderBy: { name: "asc" },
+          include: { team: { select: { id: true, name: true, key: true } } },
+        },
+      },
+    }),
   ]);
 
   // Bug-report config (gm-bug-report.md (h)). The vocabularies come from the cached issues, so the
@@ -47,6 +60,7 @@ export default async function AdminPage() {
       <AdminPanel
         teams={teams}
         sprints={sprints}
+        jiraComponents={jiraComponents}
         bugReports={bugData?.reports ?? []}
         bugConfig={bugData?.report ?? null}
         bugStatusVocabulary={bugData?.statusVocabulary ?? []}

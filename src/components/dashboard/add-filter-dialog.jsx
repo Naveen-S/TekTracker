@@ -13,12 +13,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { WORKFLOWS } from "@/lib/workflows.mjs";
+import { accentColorForIndex } from "@/lib/accent-palette.mjs";
 
 const WORKFLOW_OPTIONS = ["FEATURE", "TECH_DEBT", "SUPPORT", "INTERNAL_BUG"];
-
-/* Legacy accent palette (src/jiraService.js :236-244, red dropped) — assigned deterministically
-   by creation order instead of the prototype's random pick (ui-polish.md decision 7). */
-const ACCENT_PALETTE = ["#7c3aed", "#0891b2", "#ea580c", "#16a34a", "#f59e0b"];
 
 export function AddFilterDialog({ onAdd, onClose, busy, existingCount = 0 }) {
   const [workflowType, setWorkflowType] = useState("FEATURE");
@@ -39,7 +36,7 @@ export function AddFilterDialog({ onAdd, onClose, busy, existingCount = 0 }) {
       name: name.trim(),
       workflowType,
       sourceType,
-      accentColor: ACCENT_PALETTE[existingCount % ACCENT_PALETTE.length],
+      accentColor: accentColorForIndex(existingCount),
       ...(sourceType === "JIRA_FILTER"
         ? { jiraFilterId: jiraFilterId.trim() }
         : { jql: jql.trim() }),

@@ -10,7 +10,7 @@ import { prisma } from "@/lib/db";
 import { requireTeamRole, NotFoundError, TEAM_ALL_ROLES, TEAM_MANAGER_ROLES } from "@/lib/rbac";
 import { parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
 import { filterCreateSchema } from "@/lib/schemas/filter";
-import { WORKFLOWS } from "@/lib/workflows.mjs";
+import { insertFilterAtPriority } from "@/lib/filters/priority-insert";
 import { WorkflowType } from "@/generated/prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -67,30 +67,15 @@ export async function POST(request, { params }) {
     const fields = await resolveFilterFields(data, teamId);
     const workflowType = fields.workflowType ?? WorkflowType.FEATURE;
 
-    // Priority insertion (decision 7, ports the prototype's insertFilterInOrder): place the new
-    // filter after the last one of same-or-higher workflow priority, renumbering sortOrder 0..n.
-    const filter = await prisma.$transaction(async (tx) => {
-      const existing = await tx.filter.findMany({
-        where: { teamId, sprintId },
-        orderBy: { sortOrder: "asc" },
-        select: { id: true, workflowType: true },
-      });
-      const newPriority = WORKFLOWS[workflowType].priority;
-      let insertAt = existing.findIndex((f) => WORKFLOWS[f.workflowType].priority > newPriority);
-      if (insertAt === -1) {
-        insertAt = existing.length;
-      }
-      for (let i = 0; i < existing.length; i++) {
-        await tx.filter.update({
-          where: { id: existing[i].id },
-          data: { sortOrder: i < insertAt ? i : i + 1 },
-        });
-      }
-      return tx.filter.create({
-        data: { ...fields, workflowType, teamId, sprintId, sortOrder: insertAt },
-        include: { issues: true },
-      });
-    });
+    // Priority insertion (decision 7, ports the prototype's insertFilterInOrder; extracted into
+    // insertFilterAtPriority so this route and the sprint-start route share one implementation).
+    const filter = await prisma.$transaction((tx) =>
+      insertFilterAtPriority(
+        tx,
+        { ...fields, workflowType, teamId, sprintId },
+        { include: { issues: true } },
+      ),
+    );
     return Response.json(filter);
   } catch (error) {
     return handleRouteError(error);

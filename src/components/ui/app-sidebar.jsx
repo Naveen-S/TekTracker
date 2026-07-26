@@ -10,6 +10,8 @@
  * Nav owns the cross-page links at lg+ (the top bars hide theirs via `lg:hidden`).
  * Collapse ↔ icon-rail state is a third ephemeral localStorage pref (§17).
  */
+import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Bug, Layers, LayoutGrid, PanelLeft, PanelLeftClose, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -41,12 +43,24 @@ export function AppSidebar({ user, hasBugReport }) {
         collapsed ? "w-16" : "w-60",
       )}
     >
-      <div className={cn("flex h-14 items-center gap-2.5 px-3.5", collapsed && "justify-center px-0")}>
-        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-sm font-extrabold text-white">
-          T
-        </span>
+      <Link
+        href="/"
+        aria-label="Sprint Tracker — go to my board"
+        className={cn(
+          "flex h-14 items-center gap-2.5 px-3.5 transition-colors hover:bg-white/8",
+          collapsed && "justify-center px-0",
+        )}
+      >
+        <Image
+          src="/app-icon.png"
+          alt=""
+          width={32}
+          height={32}
+          priority
+          className="size-8 shrink-0 rounded-lg"
+        />
         {!collapsed && <span className="font-display text-sm font-bold whitespace-nowrap">Sprint Tracker</span>}
-      </div>
+      </Link>
 
       <nav className="mt-2 flex flex-col gap-1 px-2.5">
         {nav.map(({ href, label, icon: Icon, active }) => (

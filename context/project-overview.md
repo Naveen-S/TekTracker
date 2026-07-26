@@ -6,7 +6,7 @@
 > **[BUILT]**, **[PARTIAL]**, **[PLANNED]**, or **[GAP]** so the as-built state is never confused
 > with the target state.
 >
-> Last reviewed: 2026-07-25 · Owner: Naveen · Audience: engineers + Claude Code.
+> Last reviewed: 2026-07-27 · Owner: Naveen · Audience: engineers + Claude Code.
 >
 > **Path note (cutover, 2026-07-18):** the Next.js app was promoted from the `web/` subfolder to
 > the **repo root**, and the legacy Vite/Express app was backed up into **`legacy/`**. Historical
@@ -113,6 +113,7 @@ Key relationships:
 | Risk call-out comments + roll-up all-risks dialog | **[BUILT — 2026-07-21]** | `IssueProgress.riskComment` lets a Lead/EM annotate a called-out risk as known/agreed (e.g. a planned late QA hand-off) so it reaches ED/VP as managed context, not a fresh alarm — editable from the risk panel on `/` (writer roles), read-only everywhere else. `/rollup`'s risk panel now shows every team's comments/blocked reasons and a "View all risks" dialog listing every risky issue across teams (replacing an inaccurate "see the matrix below" line). See context/features/risk-comments-rollup-digest.md. |
 | Bug report dashboards (`/bugs`) | **[BUILT — 2026-07-21]** | Config-driven bug matrix + executive dashboard: rows = categories (ordered Jira **status** lists with a fallback category), columns = scope (External/Internal, each its own Jira universe) × priority band (P0–P4), cells = open count with an SLA-breach overlay. **Everything is admin config** — universes (saved filter id or JQL), category→status mapping, SLA days per (scope, priority), bands — so a second dashboard (e.g. Honda) is configuration, not code. Cached + nightly cron + manual Refresh; classification is read-time so config edits apply instantly. See context/features/gm-bug-report.md. |
 | Admin settings / RBAC | **[PARTIAL]** | Server-side RBAC live in the `web/` domain APIs (step 4, 2026-07-07): `User.isAdmin` + `TeamMembership.role` guards (`lib/rbac.js`) on teams/sprints/filters/progress. Admin UI exists for teams/members/sprints (step 6a) and **bug-report config (2026-07-21)**; broader settings UI still absent. |
+| One-Click Sprint Start | **[BUILT — 2026-07-26]** | Admin-maintained `JiraComponent`/`JiraSubComponent` catalog (a Jira project's Component field value → many literal Sub-components, each claimed by at most one Team) + per-team Jira Issue Type overrides + `Sprint.fixVersions`. A dashboard action (`TEAM_MANAGER_ROLES` — same gate as manual filter creation, **no RBAC change**) generates a team's missing Roadmap/Tech Debt/Internal Bug/External Bug filters against an **existing** Sprint (never creates one — Sprint stays admin-only) from generated JQL, skipping any track that already exists. External Bug scopes by the **parent Component name AND the team's sub-components** (both AND'd — amended below), not parent-only as first shipped. **[Corrected 2026-07-27]** Naveen's real Jira run caught two JQL bugs the spec got wrong: the team's own tracks scope via a *custom* Jira field (`"sub-component[dropdown]"`), not the standard `component` field; and field naming/order/quoting/a trailing `ORDER BY` all needed to match his instance's real conventions. Same day, Naveen also amended External Bug to AND the sub-component clause alongside the parent-Component clause (was parent-only). See context/features/one-click-sprint-start.md (Status + As-built notes). |
 
 ---
 
@@ -322,6 +323,15 @@ model Team {
   jiraProjectKeys    String[]                         // projects this team owns
   storyPointsFieldId String?                          // Jira custom field override (default customfield_10008)
   sprintFieldId      String?                          // Jira custom field override (default customfield_10020)
+  /// Per-track Jira Issue Type overrides (one-click-sprint-start.md). Empty ⇒ fall back to the
+  /// DEFAULT_*_ISSUE_TYPES constants in lib/jira/issue-type-defaults.mjs (mirrors the
+  /// storyPointsFieldId/sprintFieldId pattern). Arrays because a track may map to >1 Issue Type.
+  /// supportIssueTypes is the "External Bug" track; its PROJECT stays the fixed ENG default in v1
+  /// — only the issue-type list is per-team overridable.
+  featureIssueTypes     String[]
+  techDebtIssueTypes    String[]
+  internalBugIssueTypes String[]
+  supportIssueTypes     String[]
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
@@ -331,6 +341,7 @@ model Team {
   progress        IssueProgress[]
   snapshots       SprintSnapshot[]
   statusMappings  StatusStageMapping[]
+  subComponents   JiraSubComponent[]
 }
 
 model TeamMembership {
@@ -343,6 +354,44 @@ model TeamMembership {
   createdAt DateTime @default(now())
 
   @@unique([userId, teamId])
+  @@index([teamId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Jira component catalog (one-click-sprint-start.md)
+// ─────────────────────────────────────────────────────────────
+
+/// Master catalog of a Jira project's top-level Component field value, admin-entered by hand
+/// (v1: one at a time, no bulk import, no live Jira lookup). Jira has no true parent/child
+/// component hierarchy — "sub-component" is purely an org naming convention (`DR_GM-VSR` prefixed
+/// by parent `DR_GM`) over otherwise-flat Component field values.
+model JiraComponent {
+  id            String             @id @default(cuid())
+  name          String                              // parent Component's Jira value, e.g. "DR_GM"
+  projectKey    String                              // Jira project key hosting it, e.g. "GM"
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  subComponents JiraSubComponent[]
+
+  @@unique([projectKey, name])
+}
+
+/// A literal Jira Component field value scoped under a JiraComponent (e.g. "DR_GM-VSR"), entered
+/// one at a time. Claimed by AT MOST ONE Team — teamId = null means unassigned. Claiming also
+/// folds the parent's projectKey into Team.jiraProjectKeys (additive dedup; never pruned on
+/// unclaim — nothing else reads that field today).
+model JiraSubComponent {
+  id          String        @id @default(cuid())
+  componentId String
+  component   JiraComponent @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  name        String                                // e.g. "DR_GM-VSR"
+  teamId      String?
+  team        Team?         @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([componentId, name])
   @@index([teamId])
 }
 
@@ -366,6 +415,10 @@ model Sprint {
   developmentStart DateTime
   developmentEnd   DateTime
   releaseDate      DateTime?
+  /// Manually entered Jira Fix Version names this Gate spans (release train + hotfix patches),
+  /// e.g. ["Release-2026.07.1.0", "Release-2026.07.1.1"]. No live Jira lookup. JQL scopes with
+  /// `fixVersion in (...)`.
+  fixVersions      String[]
   state            SprintState @default(PLANNING)
   isGate           Boolean     @default(true)
   createdById      String?
@@ -707,6 +760,9 @@ erDiagram
     TEAM ||--o{ ISSUE_PROGRESS : "owns"
     TEAM |o--o{ STATUS_STAGE_MAPPING : "overrides"
     TEAM ||--o{ SPRINT_SNAPSHOT : "rolled up in"
+    TEAM |o--o{ JIRA_SUB_COMPONENT : "claims"
+
+    JIRA_COMPONENT ||--o{ JIRA_SUB_COMPONENT : "has"
 
     SPRINT ||--o{ FILTER : "scopes"
     SPRINT ||--o{ ISSUE_PROGRESS : "scopes"
@@ -749,11 +805,23 @@ erDiagram
         string teamId FK
         Role role
     }
+    JIRA_COMPONENT {
+        string id PK
+        string name
+        string projectKey
+    }
+    JIRA_SUB_COMPONENT {
+        string id PK
+        string componentId FK
+        string name
+        string teamId FK "null = unassigned"
+    }
     SPRINT {
         string id PK
         string name UK
         datetime developmentStart
         datetime developmentEnd
+        string_arr fixVersions
         SprintState state
         string createdById FK
     }
@@ -908,6 +976,15 @@ erDiagram
   current config, so an admin config edit re-renders the dashboard instantly with no Jira refresh.
   Snapshot rows are self-describing (key + label per dimension) so renaming or deleting a category
   never orphans history.
+- **The `JiraComponent`/`JiraSubComponent` cluster (added 2026-07-26) is a small, admin-maintained
+  catalog behind One-Click Sprint Start.** A `JiraSubComponent` is claimed by **at most one** `Team`
+  (`teamId` nullable — unassigned until claimed), mirroring the real org data where every scrum
+  team maps to a distinct, non-overlapping set of Jira Component field values. `Team` gained 4
+  per-track Issue Type override arrays (`featureIssueTypes`/`techDebtIssueTypes`/
+  `internalBugIssueTypes`/`supportIssueTypes`) following the existing
+  `storyPointsFieldId`/`sprintFieldId` override-with-hardcoded-default pattern, and `Sprint` gained
+  `fixVersions` (manually entered Jira Fix Version names a Gate spans — no live Jira lookup, same
+  as the sub-component catalog). See context/features/one-click-sprint-start.md.
 
 ---
 
@@ -987,6 +1064,17 @@ Jira** button. Footer: "Engineering Internal Tool @ Tekion Corp."
 > the PDF exports + validated bug-chart palette stay Tekion-branded. No schema/migration/route/
 > dependency change. See context/features/modern-theme.md.
 >
+> **[BUILT 2026-07-26 — sidebar promoted to Tekion too + dropdown redesign]** — the left-nav sidebar
+> is **no longer Modern-exclusive**: it now reveals at `lg+` in **both** themes (`hidden lg:flex`,
+> was `hidden modern:lg:flex`), so Tekion is **no longer byte-for-byte unchanged from pre-Modern-theme
+> Tekion** — both themes share the `AppShell`/sidebar layout, differentiated by token/palette only;
+> `bg-ink` plus the themed `--primary`/`--accent` tokens re-hue it automatically per theme with no
+> per-theme branching. `ui/select.jsx` was also rebuilt: a drawn chevron replaces the OS glyph
+> (`appearance-none`), hover/focus states now match `Input`/`Button`, and a real `cva`
+> `variant="onDark"` fixed a latent bug (the bug-report switcher had been passing the no-op
+> `className="onDark"` since it shipped). No schema/migration/route/dependency change. See
+> context/features/modern-theme.md As-built notes.
+>
 > **[BUILT in `web/` 2026-07-08, step 6b]** — **`/rollup`**, the ED/TPM/EM multi-team roll-up:
 > a read-only server page (one client leaf: sprint selector + "My board" + logout) rendering the
 > **combined `MetricGrid`** (via pure `aggregateRollup`) over an SSR **per-team summary table**
@@ -1063,6 +1151,30 @@ Jira** button. Footer: "Engineering Internal Tool @ Tekion Corp."
 > `DENSITY_KEY` localStorage pref, the collapse pref stays). New `--on-ink-success` token +
 > `sweep`/`blink` keyframes in `globals.css`; **no schema/migration/route/dependency change**. See
 > context/features/modern-theme.md and context/features/sprint-phases-delivery-lens.md.
+
+> **[BUILT 2026-07-26 — One-Click Sprint Start]** — a new **"Jira components"** catalog `SectionCard`
+> on `/admin` (Component name+projectKey → many Sub-components, each expandable with an
+> "Unassigned"/"Claimed by `<Team>`" badge, one-at-a-time add forms — no bulk import), plus the
+> admin **Team create/edit dialog** (`team-config-dialog.jsx` — the first team-edit affordance;
+> admin previously could only create, never edit) with a Component picker + sub-component claim
+> checklist and a collapsed "Advanced: Issue Type overrides" section. Both existing Sprint forms
+> (admin inline create, `SprintConfigDialog`) gained a `fixVersions` text input. On the dashboard, a
+> new Hero **"Sprint Start"** action (`TEAM_MANAGER_ROLES`, same gate as manual filter creation)
+> opens `sprint-start-dialog.jsx`: pick an existing `PLANNING`/`ACTIVE` Sprint (never creates one —
+> Sprint stays admin-only), preview the 4 tracks' generated JQL client-side (same pure builder the
+> server uses), submit to generate whichever of Roadmap/Tech Debt/Internal Bug/External Bug don't
+> already exist, syncing immediately. See context/features/one-click-sprint-start.md.
+
+> **[BUILT 2026-07-27 — real favicon + brand icon]** — the generic default Next.js favicon (never
+> replaced since the 2026-06-12 scaffold) is now the actual Tekion mark Naveen supplied: `app/
+> icon.png` (Next's auto-served special file) + a regenerated multi-size `app/favicon.ico`
+> (16/32/48px, packed via a throwaway `sharp` script, not committed) for legacy contexts. The same
+> image (`public/app-icon.png`, a plain static asset so it's decoupled from the favicon-specific
+> metadata convention) now also appears at the top of `ui/app-sidebar.jsx`, replacing the
+> hand-drawn CSS "T" tile placeholder from the modern-theme sidebar work — wrapped in a `next/link`
+> to `/`, matching the click-logo-to-go-home convention. No schema/migration/route/dependency
+> change (this is unrelated to One-Click Sprint Start; it landed in the same session as a separate,
+> small ask).
 
 ---
 
@@ -1152,7 +1264,11 @@ file store. Token is **plaintext on disk** in `.sessions/`. Acceptable for a loc
    "+ ED" idea is deferred: `Sprint` is global while `ED` is a team-scoped role, so there is no
    principled team to check it against). **UI-level gating landed with step 6a (2026-07-08)**:
    Configure Sprint is admin-only chrome, `/admin` 404s for non-admins, VIEWERs get a read-only
-   matrix — all still re-checked server-side per request.
+   matrix — all still re-checked server-side per request. **[Reaffirmed 2026-07-26,
+   one-click-sprint-start.md decision 4]** — Sprint creation stays global-admin-only with **no
+   carve-out**: the new "One-Click Sprint Start" dashboard action can only *select* an existing
+   Sprint, never create one, so it needs exactly the `TEAM_MANAGER_ROLES` gate that already governs
+   manual filter creation — zero new RBAC surface.
 4. **Share links**: short token, optional expiry, optional auth requirement; never embed the dataset.
    **[BUILT in `web/` 2026-07-12, step 8]** — `/share/[token]` over `SharedView`: app-generated
    192-bit token (the schema's cuid default is too guessable for a capability URL), read-time expiry,
@@ -1323,6 +1439,39 @@ All previously open decisions are now resolved:
   Follow-on calls: the **burndown / `SprintSnapshot` / trend stay all-work (throughput)** so the
   snapshot contract + history stay continuous (no schema change); the AI digest narrates the delivery
   lens. Metric *time math* is unchanged (delivery still measured against the dev cycle).
+- **One-Click Sprint Start (ratified 2026-07-26 with Naveen, drafted from his org spreadsheet +
+  a Jira screenshot).** Automates onboarding a scrum team's 4 Jira filters from a reusable admin
+  catalog instead of hand-typed JQL every sprint. Seven ratified points, **two of which reversed
+  the first draft plan** (flagged explicitly since they were caught by Naveen reviewing that draft,
+  not decided up front):
+  (1) a **manually admin-entered `JiraComponent`/`JiraSubComponent` catalog** — one at a time, no
+  bulk import, no live Jira discovery — each sub-component claimed by at most one Team;
+  (2) **per-track Jira Issue Type mapping is a global default, per-team overridable**, mirroring the
+  existing `storyPointsFieldId`/`sprintFieldId` pattern: Roadmap=`Story`, Tech Debt=`Tech Story`,
+  Internal Bug=`Bug` (team's own project), External Bug=fixed `ENG` project/`Tap Ticket` type;
+  (3) **`Sprint.fixVersions`** is manually typed, no live Jira version lookup, and can span
+  multiple versions (base + hotfix patches);
+  (4) **REVERSED from the first draft:** the dashboard action never creates a Sprint — *"There is
+  only one sprint for all, only admin creates the sprint, don't allow individual EM or lead create
+  the sprint"* — so there is **no RBAC carve-out**, the action needs exactly the
+  `TEAM_MANAGER_ROLES` gate manual filter creation already has;
+  (5) re-running the action is safe — existing tracks are skipped, never duplicated;
+  (6) with no `PLANNING`/`ACTIVE` sprint to select, the dialog just points at admin;
+  (7) **REVERSED from the first draft:** External Bug scopes by the team's **parent Component name
+  only**, not its fine-grained sub-components — *"ENG would be the project, DR_GM will be added as
+  a component, subComponent can be missing"* — a `/bugs`-tab follow-up (calling out ENG issues
+  with no sub-component tag) was flagged as a related but explicitly out-of-scope idea. See
+  context/features/one-click-sprint-start.md.
+  **Amended 2026-07-27 with Naveen, after his real Jira acceptance run:** two corrections to the
+  generated JQL itself. First, the team's own tracks (Roadmap/Tech Debt/Internal Bug) scope
+  sub-components via a **custom Jira field** (`"sub-component[dropdown]"`), not the standard
+  `component` field the spec assumed — plus field naming (`type`/`fixversion`), clause order, and
+  quoting all needed to match his instance's real JQL conventions (a literal is quoted only when it
+  contains whitespace), with a trailing `ORDER BY issuetype ASC`. Second, point (7) above is
+  **partially reversed again**: *"Even the external filter should use subcomponent in the filter
+  creation"* — confirmed as an addition, not a replacement, so External Bug now ANDs **both** the
+  parent-Component clause and the sub-component clause. See context/features/one-click-sprint-start.md
+  (Status + As-built notes) for the exact JQL shapes.
 
 ---
 
@@ -1354,4 +1503,4 @@ The plan — exact next steps, in order
 7. Background job — a cron on your internal infra hitting an internal route: refresh issue caches + write the daily per-team SprintSnapshot for active sprints. **[DONE 2026-07-09]** — secret-gated `POST /api/cron/daily` (`CRON_SECRET` bearer, timingSafeEqual over sha256 digests; first session-less route) → `lib/cron/daily.js` `runDailyJob`: per ACTIVE sprint, sequential per-team refresh via the step-5 engine with the `CRON_SYNC_USER_EMAIL` service credential (absent/dead → refresh skipped, snapshots still written; per-team errors isolated), then batched per-team metrics → UTC-midnight `SprintSnapshot` upsert; pure `snapshotValues` in `lib/metrics.mjs`. Verified: 23/23 pure fixtures, DB/env-free build, 30/30 live dev+Neon checks (gates, hand-computed rows, PLANNING/filterless skips, degrade path, idempotent re-run, unset-secret 500). Scheduling on Tekion infra is a deploy-time task. See context/features/background-sync-snapshots.md.
 8. Share view + export — SharedView token route (/share/[token], live or frozen, expiry) replacing the base64 URL; port PDF/PNG export. **[DONE 2026-07-12]** — public session-less `/share/[token]` (192-bit app-generated token, `robots: noindex`, generic invalid/expired state; live = current rows, frozen = input snapshot w/ metrics pinned to `capturedAt` via the new optional `asOf` clock threaded through `lib/metrics.mjs` + the MetricGrid/PlannerPanel/IssueRow props); writer-gated `POST/GET …/shares` (filterIds validated ⊆ team+sprint) + creator/admin `DELETE /api/shares/[shareId]`; ShareDialog (live/frozen, expiry presets, manage/revoke, clipboard+toast) + ExportDialog (filter toggles, paged preview, offscreen A4 pages → PDF/PNG) behind new Hero buttons. Deps `html2canvas-pro@2.2.3` (stock html2canvas can't parse the Tailwind-v4 oklch/`color-mix` theme — proven by a headless-Chrome capture spike) + `jspdf@2.5.2`, dynamic-imported (verified absent from the dashboard chunk). No schema change, no migration. Verified: lint; DB/env-free build (27 ƒ Dynamic); 25/25 asOf fixtures; 37/37 SSR smoke on dev+Neon incl. frozen-vs-live divergence, list scoping, revoke/expiry → generic page. Human acceptance (browser share open + real PDF/PNG) pending with the ui-polish eyeball. See context/features/share-view-export.md.
 9. Importer — one-time script that takes the localStorage JSON (sprintTracker_sprintData + config) and writes Sprint/Filter/IssueProgress rows so your current sprints carry over. **[SKIPPED 2026-07-18]** — Naveen no longer has older sprint data in localStorage (current work already lives in `web/` via real syncs), so there is nothing to import; decided with Naveen 2026-07-18. Spec draft kept for reference at context/features/seed.md.
-10. Cutover, then post-v1 — promote web/ to repo root, delete the Vite app; then burndown/trend UI from snapshots, then Gemini (risk call-outs + narrative first). **[DONE 2026-07-18 (cutover half)]** — two-phase `git mv` on `feature/cutover`: the Vite app (src/, server.js, docs/, lockfiles, untracked .env/node_modules/dist) **retired into `legacy/` instead of deleted** (ratified with Naveen 2026-07-18; startable there under Node 20 — verified :3000/:3001 answer) with plaintext-token `.sessions/` deleted; then `web/*` promoted to root (101 renames, history follows via `git log --follow`). Node 22 bump landed with it (`.nvmrc`, `engines >=22.12`, `.yarnrc` shim deleted, fresh install under 22.22.2). Config/docs: root `.gitignore` = web's + re-added `.claude/*` rules, `turbopack.root` pin kept (dual lockfile with `legacy/yarn.lock`), package renames (`sprint-tracker` / `sprint-tracker-legacy`), CLAUDE.md/AGENTS.md/README.md rewritten for the single-app root, `.claude/skills` `web/`-path sweep (+ `verify-web` renamed `verify`, per Naveen), `legacy/**` added to ESLint ignores (the only config-behavior change). Zero app-code changes; no schema change, no migration. Verified at root under Node 22: lint clean; `prisma validate` + `migrate status` up to date; **DB/env-free build green, 27 ƒ Dynamic (same as step 8)**; dev-server smoke on :3002 — unauth 307, login 200, unknown share → generic page, cron bad-bearer 401, `health/db` ok against Neon, minted-admin dashboard SSR with full chrome. **Deployment re-pointing (build from repo root) is a deploy-time task.** See context/features/cutover.md. *Post-v1 clause:* **trend/burndown UI DONE 2026-07-19** — snapshot-fed `TrendPanel` on `/` + `/rollup` with the trailing-7-day projection, plus the §12 velocity swap (`snapshotVelocity` override w/ naive fallback; share/export untouched); no schema change/migration/deps/routes (see context/features/trend-burndown.md). **AI insights (risk call-outs + narrative) DONE 2026-07-20** — provider-agnostic AI platform (`src/lib/ai/`: neutral `generateJson` + Gemini/Anthropic fetch adapters, env-switched with loud-fail config and a dormant unconfigured state) behind the on-demand "AI Digest" dialog on `/` (`POST …/ai-digest` — **28 ƒ Dynamic**); no schema change, no migration, no new deps (see context/features/ai-insights.md). **Risk comments + roll-up all-risks dialog + roll-up AI Digest DONE 2026-07-21** — `IssueProgress.riskComment` (one additive migration — the first schema change since `add_user_isadmin`) lets a known/agreed risk be communicated to leadership as managed context; `/rollup`'s risk panel now surfaces every team's comments/blocked reasons plus a "View all risks" dialog listing every risky issue across teams; the roll-up hero gained an AI Digest button (`POST /api/rollup/ai-digest` — **29 ƒ Dynamic**) generating a portfolio digest that compares teams and narrates commented risks as known/agreed (see context/features/risk-comments-rollup-digest.md). **Bug report dashboards DONE 2026-07-21** — the config-driven bug matrix + executive dashboard at `/bugs` (+ `/bugs/[slug]`): 7 new models + one migration (the largest schema change since `init`), 4 new API routes + 2 pages (**29 → 35 ƒ Dynamic**), and the **first non-sprint-scoped read path in the app**. Everything about a report is admin config — scope universes (saved filter id or JQL), category→status mapping with a fallback category, SLA days per (scope, priority), and P0–P4 bands — so a second dashboard (Honda) is configuration, not code; classification is read-time so config edits apply with no Jira refresh (see context/features/gm-bug-report.md). **Sprint timeline (dev → QA/UAT → release) + two-lens metrics DONE 2026-07-24** (implemented on the `feature/modern-theme` branch) — a sprint now ends at its release date, not dev end: phase-aware days-remaining pill (`"Dev cycle ended · QA/UAT · Nd to release"`), window-spelling eyebrows (`formatSprintWindow`), and a **hybrid** hero phase bar (completion drives the dev phases, then QA/UAT/Release light up by date); metrics split into a **delivery lens** (roadmap + tech debt, dev cycle → Sprint Health / Completion / At-Risk / risk call-outs) and a **throughput lens** (all work → velocity, now incl. support + bugs, + Issues-in-scope). Burndown/`SprintSnapshot`/trend deliberately stay all-work; **no schema/migration/route/dependency change**, 35 ƒ Dynamic unchanged (see context/features/sprint-phases-delivery-lens.md). **Hero timeline UI + live release countdown DONE 2026-07-25** (same branch, presentation only) — the flat days-remaining pill became a live animated **release countdown** (progress ring + ticking `d·h·m·s` clock, `ui/release-countdown.jsx`) repositioned to the hero top-right; the hero phase bar became a **sprint timeline** with two macro-cycle status chips (`✓ Dev cycle · Completed` → `● QA / UAT · In progress`) over partial-fill animated phase bars; and the **Relaxed/Dense view toggle was retired** (density fixed at "dense"). New `--on-ink-success` token + `sweep`/`blink` keyframes; no schema/migration/route/dependency change (see context/features/modern-theme.md). Remaining post-v1 ideas: export-embedded narrative, AI Q&A over sprint data, stage suggestions, and PDF/share for `/bugs`.
+10. Cutover, then post-v1 — promote web/ to repo root, delete the Vite app; then burndown/trend UI from snapshots, then Gemini (risk call-outs + narrative first). **[DONE 2026-07-18 (cutover half)]** — two-phase `git mv` on `feature/cutover`: the Vite app (src/, server.js, docs/, lockfiles, untracked .env/node_modules/dist) **retired into `legacy/` instead of deleted** (ratified with Naveen 2026-07-18; startable there under Node 20 — verified :3000/:3001 answer) with plaintext-token `.sessions/` deleted; then `web/*` promoted to root (101 renames, history follows via `git log --follow`). Node 22 bump landed with it (`.nvmrc`, `engines >=22.12`, `.yarnrc` shim deleted, fresh install under 22.22.2). Config/docs: root `.gitignore` = web's + re-added `.claude/*` rules, `turbopack.root` pin kept (dual lockfile with `legacy/yarn.lock`), package renames (`sprint-tracker` / `sprint-tracker-legacy`), CLAUDE.md/AGENTS.md/README.md rewritten for the single-app root, `.claude/skills` `web/`-path sweep (+ `verify-web` renamed `verify`, per Naveen), `legacy/**` added to ESLint ignores (the only config-behavior change). Zero app-code changes; no schema change, no migration. Verified at root under Node 22: lint clean; `prisma validate` + `migrate status` up to date; **DB/env-free build green, 27 ƒ Dynamic (same as step 8)**; dev-server smoke on :3002 — unauth 307, login 200, unknown share → generic page, cron bad-bearer 401, `health/db` ok against Neon, minted-admin dashboard SSR with full chrome. **Deployment re-pointing (build from repo root) is a deploy-time task.** See context/features/cutover.md. *Post-v1 clause:* **trend/burndown UI DONE 2026-07-19** — snapshot-fed `TrendPanel` on `/` + `/rollup` with the trailing-7-day projection, plus the §12 velocity swap (`snapshotVelocity` override w/ naive fallback; share/export untouched); no schema change/migration/deps/routes (see context/features/trend-burndown.md). **AI insights (risk call-outs + narrative) DONE 2026-07-20** — provider-agnostic AI platform (`src/lib/ai/`: neutral `generateJson` + Gemini/Anthropic fetch adapters, env-switched with loud-fail config and a dormant unconfigured state) behind the on-demand "AI Digest" dialog on `/` (`POST …/ai-digest` — **28 ƒ Dynamic**); no schema change, no migration, no new deps (see context/features/ai-insights.md). **Risk comments + roll-up all-risks dialog + roll-up AI Digest DONE 2026-07-21** — `IssueProgress.riskComment` (one additive migration — the first schema change since `add_user_isadmin`) lets a known/agreed risk be communicated to leadership as managed context; `/rollup`'s risk panel now surfaces every team's comments/blocked reasons plus a "View all risks" dialog listing every risky issue across teams; the roll-up hero gained an AI Digest button (`POST /api/rollup/ai-digest` — **29 ƒ Dynamic**) generating a portfolio digest that compares teams and narrates commented risks as known/agreed (see context/features/risk-comments-rollup-digest.md). **Bug report dashboards DONE 2026-07-21** — the config-driven bug matrix + executive dashboard at `/bugs` (+ `/bugs/[slug]`): 7 new models + one migration (the largest schema change since `init`), 4 new API routes + 2 pages (**29 → 35 ƒ Dynamic**), and the **first non-sprint-scoped read path in the app**. Everything about a report is admin config — scope universes (saved filter id or JQL), category→status mapping with a fallback category, SLA days per (scope, priority), and P0–P4 bands — so a second dashboard (Honda) is configuration, not code; classification is read-time so config edits apply with no Jira refresh (see context/features/gm-bug-report.md). **Sprint timeline (dev → QA/UAT → release) + two-lens metrics DONE 2026-07-24** (implemented on the `feature/modern-theme` branch) — a sprint now ends at its release date, not dev end: phase-aware days-remaining pill (`"Dev cycle ended · QA/UAT · Nd to release"`), window-spelling eyebrows (`formatSprintWindow`), and a **hybrid** hero phase bar (completion drives the dev phases, then QA/UAT/Release light up by date); metrics split into a **delivery lens** (roadmap + tech debt, dev cycle → Sprint Health / Completion / At-Risk / risk call-outs) and a **throughput lens** (all work → velocity, now incl. support + bugs, + Issues-in-scope). Burndown/`SprintSnapshot`/trend deliberately stay all-work; **no schema/migration/route/dependency change**, 35 ƒ Dynamic unchanged (see context/features/sprint-phases-delivery-lens.md). **Hero timeline UI + live release countdown DONE 2026-07-25** (same branch, presentation only) — the flat days-remaining pill became a live animated **release countdown** (progress ring + ticking `d·h·m·s` clock, `ui/release-countdown.jsx`) repositioned to the hero top-right; the hero phase bar became a **sprint timeline** with two macro-cycle status chips (`✓ Dev cycle · Completed` → `● QA / UAT · In progress`) over partial-fill animated phase bars; and the **Relaxed/Dense view toggle was retired** (density fixed at "dense"). New `--on-ink-success` token + `sweep`/`blink` keyframes; no schema/migration/route/dependency change (see context/features/modern-theme.md). **One-Click Sprint Start DONE 2026-07-26** — a config-driven answer to hand-typed onboarding: an admin-maintained `JiraComponent`/`JiraSubComponent` catalog (a Jira project's Component field value → many literal Sub-components, each claimed by at most one Team, entered one at a time — no bulk import, no live Jira lookup) plus per-team Jira Issue Type overrides and `Sprint.fixVersions`; a new dashboard "Sprint Start" action (`TEAM_MANAGER_ROLES` — same gate as manual filter creation, no RBAC change) generates a team's missing Roadmap/Tech Debt/Internal Bug/External Bug filters against an **existing** Sprint (never creates one — Sprint stays admin-only), skipping tracks that already exist; External Bug scopes by the parent Component name only, not the team's sub-components (2 new models + 5 new Team/Sprint fields, one migration, 6 new routes — **35 → 41 ƒ Dynamic**; see context/features/one-click-sprint-start.md). **[Corrected 2026-07-27]** Naveen's real Jira acceptance run caught the generated JQL was wrong (custom `"sub-component[dropdown]"` field, not standard `component`; field naming/order/quoting/a trailing `ORDER BY` all needed to match his instance) — fixed same day, plus an amendment ANDing the sub-component clause into External Bug too (was parent-Component-only); no schema/route change, 41 ƒ Dynamic unchanged (see context/features/one-click-sprint-start.md As-built notes). Remaining post-v1 ideas: export-embedded narrative, AI Q&A over sprint data, stage suggestions, PDF/share for `/bugs`, and a `/bugs` follow-up to call out ENG issues with no sub-component tag.

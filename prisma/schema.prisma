@@ -81,6 +81,15 @@ model Team {
   jiraProjectKeys    String[]                         // projects this team owns
   storyPointsFieldId String?                          // Jira custom field override (default customfield_10008)
   sprintFieldId      String?                          // Jira custom field override (default customfield_10020)
+  /// Per-track Jira Issue Type overrides (one-click-sprint-start.md). Empty ⇒ fall back to the
+  /// DEFAULT_*_ISSUE_TYPES constants in lib/jira/issue-type-defaults.mjs (mirrors the
+  /// storyPointsFieldId/sprintFieldId pattern). Arrays because a track may map to >1 Issue Type.
+  /// supportIssueTypes is the "External Bug" track; its PROJECT stays the fixed ENG default in v1
+  /// — only the issue-type list is per-team overridable.
+  featureIssueTypes     String[]
+  techDebtIssueTypes    String[]
+  internalBugIssueTypes String[]
+  supportIssueTypes     String[]
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
@@ -90,6 +99,7 @@ model Team {
   progress        IssueProgress[]
   snapshots       SprintSnapshot[]
   statusMappings  StatusStageMapping[]
+  subComponents   JiraSubComponent[]
 }
 
 model TeamMembership {
@@ -102,6 +112,44 @@ model TeamMembership {
   createdAt DateTime @default(now())
 
   @@unique([userId, teamId])
+  @@index([teamId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Jira component catalog (one-click-sprint-start.md)
+// ─────────────────────────────────────────────────────────────
+
+/// Master catalog of a Jira project's top-level Component field value, admin-entered by hand
+/// (v1: one at a time, no bulk import, no live Jira lookup). Jira has no true parent/child
+/// component hierarchy — "sub-component" is purely an org naming convention (`DR_GM-VSR` prefixed
+/// by parent `DR_GM`) over otherwise-flat Component field values.
+model JiraComponent {
+  id            String             @id @default(cuid())
+  name          String                              // parent Component's Jira value, e.g. "DR_GM"
+  projectKey    String                              // Jira project key hosting it, e.g. "GM"
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  subComponents JiraSubComponent[]
+
+  @@unique([projectKey, name])
+}
+
+/// A literal Jira Component field value scoped under a JiraComponent (e.g. "DR_GM-VSR"), entered
+/// one at a time. Claimed by AT MOST ONE Team — teamId = null means unassigned. Claiming also
+/// folds the parent's projectKey into Team.jiraProjectKeys (additive dedup; never pruned on
+/// unclaim — nothing else reads that field today).
+model JiraSubComponent {
+  id          String        @id @default(cuid())
+  componentId String
+  component   JiraComponent @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  name        String                                // e.g. "DR_GM-VSR"
+  teamId      String?
+  team        Team?         @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([componentId, name])
   @@index([teamId])
 }
 
@@ -125,6 +173,10 @@ model Sprint {
   developmentStart DateTime
   developmentEnd   DateTime
   releaseDate      DateTime?
+  /// Manually entered Jira Fix Version names this Gate spans (release train + hotfix patches),
+  /// e.g. ["Release-2026.07.1.0", "Release-2026.07.1.1"]. No live Jira lookup. JQL scopes with
+  /// `fixVersion in (...)`.
+  fixVersions      String[]
   state            SprintState @default(PLANNING)
   isGate           Boolean     @default(true)
   createdById      String?

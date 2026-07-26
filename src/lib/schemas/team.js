@@ -13,6 +13,8 @@ const jiraCustomFieldId = z
   .trim()
   .regex(/^customfield_\d+$/, "must look like customfield_12345");
 
+const issueTypeArray = z.array(z.string().trim().min(1)).optional();
+
 const teamFields = z.object({
   name: z.string().trim().min(1, "name is required").max(80),
   key: z
@@ -24,6 +26,12 @@ const teamFields = z.object({
   jiraProjectKeys: z.array(z.string().trim().min(1)).optional(),
   storyPointsFieldId: jiraCustomFieldId.nullish(),
   sprintFieldId: jiraCustomFieldId.nullish(),
+  // Per-track Jira Issue Type overrides (one-click-sprint-start.md); empty ⇒ use the
+  // DEFAULT_*_ISSUE_TYPES constants in lib/jira/issue-type-defaults.mjs.
+  featureIssueTypes: issueTypeArray,
+  techDebtIssueTypes: issueTypeArray,
+  internalBugIssueTypes: issueTypeArray,
+  supportIssueTypes: issueTypeArray,
 });
 
 export const teamCreateSchema = teamFields;

@@ -15,6 +15,10 @@ const sprintFields = z.object({
   developmentStart: z.coerce.date(),
   developmentEnd: z.coerce.date(),
   releaseDate: z.coerce.date().nullish(),
+  // Manually entered Jira Fix Version name(s) this Gate spans (one-click-sprint-start.md); no
+  // format regex — hotfix suffixes vary (.1.0, .1.1, .2.0) and over-validating would reject real
+  // values.
+  fixVersions: z.array(z.string().trim().min(1)).optional(),
   state: z.enum(Object.values(SprintState)).optional(),
   isGate: z.boolean().optional(),
 });

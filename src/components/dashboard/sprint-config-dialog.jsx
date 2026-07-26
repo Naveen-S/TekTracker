@@ -16,12 +16,17 @@ import { apiFetch } from "@/lib/api-client";
 
 const toDateInput = (value) => (value ? new Date(value).toISOString().slice(0, 10) : "");
 
+/** Comma/newline-separated text ⇄ a trimmed, deduped array of Jira Fix Version names. */
+const parseFixVersions = (text) =>
+  [...new Set(text.split(/[,\n]/).map((v) => v.trim()).filter(Boolean))];
+
 export function SprintConfigDialog({ mode, sprint, selectedTeamId, onClose, onSelect, onSaved }) {
   const router = useRouter();
   const [name, setName] = useState(sprint?.name ?? "");
   const [start, setStart] = useState(toDateInput(sprint?.developmentStart));
   const [end, setEnd] = useState(toDateInput(sprint?.developmentEnd));
   const [release, setRelease] = useState(toDateInput(sprint?.releaseDate));
+  const [fixVersionsText, setFixVersionsText] = useState((sprint?.fixVersions ?? []).join(", "));
   const [state, setState] = useState(sprint?.state ?? "PLANNING");
   const [error, setError] = useState("");
   // Transition keeps "Saving…" up until the refreshed server data has rendered — the dialog
@@ -36,6 +41,7 @@ export function SprintConfigDialog({ mode, sprint, selectedTeamId, onClose, onSe
       developmentStart: start,
       developmentEnd: end,
       releaseDate: release || null,
+      fixVersions: parseFixVersions(fixVersionsText),
       state,
     };
     startSaving(async () => {
@@ -141,6 +147,20 @@ export function SprintConfigDialog({ mode, sprint, selectedTeamId, onClose, onSe
               <option value="CLOSED">Closed</option>
             </Select>
           </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="sprint-fix-versions">Fix version(s)</Label>
+          <Input
+            id="sprint-fix-versions"
+            value={fixVersionsText}
+            onChange={(event) => setFixVersionsText(event.target.value)}
+            placeholder="e.g. Release-2026.07.1.0, Release-2026.07.1.1"
+            disabled={saving}
+          />
+          <p className="text-xs text-muted-foreground">
+            Comma-separated Jira Fix Version name(s) this Gate spans — scopes One-Click Sprint
+            Start&rsquo;s generated filters.
+          </p>
         </div>
         <p className="rounded-md border border-border-subtle bg-muted/40 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
           Renaming or re-dating affects every team. Closing a sprint is the supported alternative

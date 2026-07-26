@@ -1,8 +1,8 @@
 # Modern theme — a blue, sidebar-shell theme alongside Tekion
 
-**Status: Planned (not started) — 2026-07-23.** Post-v1. Requested by Naveen: *"modernize the app
-while keeping the current Tekion design as is; have an option in settings to switch themes."* The
-visual target is an approved 5-frame design board (see References) built from Naveen's own mockups.
+Post-v1. Requested by Naveen: *"modernize the app while keeping the current Tekion design as is;
+have an option in settings to switch themes."* The visual target is an approved 5-frame design
+board (see References) built from Naveen's own mockups.
 
 > **History note.** A first attempt (`feature/theme-switcher`, 2026-07-23) shipped a *recolor-only*
 > indigo theme. Once Naveen supplied mockups it was clear the real Modern theme is **blue + a left
@@ -17,6 +17,63 @@ monochrome status chips, retained dark hero), selectable from the user menu alon
 **untouched Tekion** default. Unlike the reverted attempt, Modern is **not** recolor-only — it is a
 **layout shift**: nav moves from the top bar into a persistent sidebar. Everything is gated on a
 single `theme-modern` class on `<html>`, so Tekion renders byte-for-byte as today.
+
+## Status
+
+**Done 2026-07-26.** Phases A–C (mechanism + tokens, app shell + sidebar, component parity)
+shipped 2026-07-24 as planned, then the branch (`feature/modern-theme`) carried a long run of
+Naveen-directed follow-ups through 2026-07-26 — see `context/current-feature.md`'s History for
+the dated, per-change detail (hero delivery phase bar, chart curve smoothing, the sprint-timeline
++ two-lens-metrics rework, a full UI/UX pass on `/bugs` + `/admin`, a chart-palette rebuild, a
+self-inflicted build-break fix, and finally the dropdown redesign + sidebar-in-Tekion change below).
+This spec's own `## Status` line was never updated when Phases A–C landed; it is corrected here
+rather than backfilled per-iteration.
+
+**Final verification (2026-07-26):** `yarn lint` clean; `prisma validate` + `migrate status` up to
+date (**no schema change across the entire arc**); **env-free cold `yarn build` green — 35 ƒ
+Dynamic, unchanged** from before Modern theme work began; runtime smoke against a freshly rebuilt
+dev server (unauthenticated `/` correctly serves the login page, not the dashboard; `/api/cron/daily`
+401s on a bad bearer; `/api/health/db` reports a live DB connection; all four `AppShell` pages — `/`,
+`/rollup`, `/bugs`, `/admin` — return 200 authenticated) plus a headless-Chrome (Playwright, system
+Chrome) visual pass across both themes at desktop and three responsive breakpoints, since the Claude
+browser extension was not connected for any capture in this arc.
+
+⚠️ **Pending human acceptance (Naveen):** an authed visual pass in a real browser across both themes
+has not happened for any point in this feature's history — every verification pass here and in the
+linked History entries used headless capture instead.
+
+**Committed and merged to `main`** as `8240dce` ("UI Polish.") — Naveen committed and
+fast-forward-merged `feature/modern-theme` from a parallel session mid-way through this session's
+own finish-feature pass, so the code (including this session's dropdown/sidebar work) landed on
+`main` before this Status section did.
+
+## As-built notes (vs. the spec)
+
+- **Sidebar promoted to both themes (2026-07-26), reversing decisions 3/4/6 and the "Tekion renders
+  pixel-identical to today" acceptance bullet below.** Per Naveen, the left-nav sidebar
+  (`ui/app-sidebar.jsx`) is no longer Modern-exclusive: visibility flipped from
+  `hidden modern:lg:flex` to `hidden lg:flex`, and the top bars' now-redundant nav links/brand block
+  flipped from `modern:lg:hidden` to `lg:hidden` (dashboard, roll-up, and bugs top bars; the admin
+  hero's back button; the bugs page footer link; the `SkeletonChrome` loading placeholder). Tekion
+  and Modern now share one shell, differentiated by palette/token only — not by layout. `bg-ink`
+  plus the themed `--primary`/`--accent` tokens re-hue the sidebar automatically (teal active state
+  under Tekion, blue under Modern) with no per-theme branching in the component.
+- **Dropdown component rebuilt (2026-07-26), not in the original scope.** `ui/select.jsx` gained a
+  drawn `ChevronDown` (replacing the OS glyph via `appearance-none`), hover/focus-ring treatment
+  matching `Input`/`Button`, and a real `cva`-based `variant="onDark"`. That variant closes a latent
+  bug found during the work: `bugs-actions.jsx`'s report switcher had been passing
+  `className="onDark"`, which is not a Tailwind utility and had silently done nothing since it
+  shipped. Native `<select>` is kept (the ui-port.md no-Radix decision still holds) — only the
+  trigger is custom; the OS option popup is unchanged.
+- **Substantial post-launch scope growth beyond the original Overview**, all "per Naveen" ad-hoc
+  requests riding this same branch rather than separate specs: a hero sprint-timeline/delivery
+  phase bar, monotone-cubic chart curve smoothing + gradient fills, a `/bugs` + `/admin` UI/UX pass
+  (hero instrumentation, matrix magnitude-heat, KPI hierarchy), and a dataviz-validated chart-palette
+  rebuild (see `context/features/sprint-phases-delivery-lens.md` for the timeline/two-lens-metrics
+  piece specifically, which is its own ratified spec layered on top of this one). Each iteration is
+  individually verified and logged in `current-feature.md`'s History rather than re-planned here.
+- **No dark mode, no schema/migration/route/dependency changes** across the entire arc — both
+  unchanged from the original plan.
 
 ## Decisions
 

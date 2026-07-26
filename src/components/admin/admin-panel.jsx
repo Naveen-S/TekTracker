@@ -26,6 +26,9 @@ import {
 } from "@/components/ui/hero-shell";
 import { apiFetch } from "@/lib/api-client";
 import { BugReportConfig } from "@/components/admin/bug-report-config";
+import { JiraComponentsConfig } from "@/components/admin/jira-components-config";
+import { TeamConfigDialog } from "@/components/admin/team-config-dialog";
+import { SprintConfigDialog } from "@/components/dashboard/sprint-config-dialog";
 import { formatSprintWindow } from "@/lib/metrics.mjs";
 import { cn } from "@/lib/utils";
 
@@ -80,7 +83,7 @@ function SectionEmpty({ children }) {
   );
 }
 
-function TeamCard({ team, run, busy }) {
+function TeamCard({ team, run, busy, onEdit }) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("MEMBER");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -103,16 +106,25 @@ function TeamCard({ team, run, busy }) {
           <span className="rounded border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground">
             {team.key}
           </span>
+          <Badge tone={(team.subComponents?.length ?? 0) > 0 ? "neutral" : "warn"}>
+            {team.subComponents?.length ?? 0} sub-component
+            {(team.subComponents?.length ?? 0) === 1 ? "" : "s"}
+          </Badge>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-danger-strong hover:bg-danger-soft hover:text-danger-strong"
-          disabled={busy}
-          onClick={() => setConfirmingDelete(true)}
-        >
-          Delete
-        </Button>
+        <div className="flex shrink-0 gap-1">
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => onEdit(team)}>
+            Edit
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-danger-strong hover:bg-danger-soft hover:text-danger-strong"
+            disabled={busy}
+            onClick={() => setConfirmingDelete(true)}
+          >
+            Delete
+          </Button>
+        </div>
       </div>
 
       {confirmingDelete && (
@@ -221,6 +233,7 @@ function TeamCard({ team, run, busy }) {
 export function AdminPanel({
   teams,
   sprints,
+  jiraComponents = [],
   bugReports = [],
   bugConfig = null,
   bugStatusVocabulary = [],
@@ -232,9 +245,15 @@ export function AdminPanel({
   const [busy, startRun] = useTransition();
   const [error, setError] = useState(null); // failures persist; successes toast
   const [toast, showToast] = useToast();
-  const [teamName, setTeamName] = useState("");
-  const [teamKey, setTeamKey] = useState("");
-  const [sprintForm, setSprintForm] = useState({ name: "", start: "", end: "", release: "" });
+  const [teamDialog, setTeamDialog] = useState(null); // { mode: "create" } | { mode: "edit", team }
+  const [editingSprint, setEditingSprint] = useState(null); // Sprint row being edited, or null
+  const [sprintForm, setSprintForm] = useState({
+    name: "",
+    start: "",
+    end: "",
+    release: "",
+    fixVersions: "",
+  });
 
   /**
    * Run a mutation. Success is a toast (the app's own non-blocking feedback, ui-polish decision 5)
@@ -314,7 +333,7 @@ export function AdminPanel({
 
       <SectionCard
         title="Teams"
-        subtitle="A scrum team owns its filters, progress, and memberships."
+        subtitle="A scrum team owns its filters, progress, memberships, and claimed Jira sub-components."
         icon={Users}
         tone="brand"
         count={teams.length}
@@ -328,43 +347,37 @@ export function AdminPanel({
           ) : (
             <div className="divide-y overflow-hidden rounded-lg border">
               {teams.map((team) => (
-                <TeamCard key={team.id} team={team} run={run} busy={busy} />
+                <TeamCard
+                  key={team.id}
+                  team={team}
+                  run={run}
+                  busy={busy}
+                  onEdit={(t) => setTeamDialog({ mode: "edit", team: t })}
+                />
               ))}
             </div>
           )}
-          <form
-            className="flex flex-wrap gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              run(`Create team ${teamKey}`, async () => {
-                await apiFetch("/api/teams", { method: "POST", body: { name: teamName, key: teamKey } });
-                setTeamName("");
-                setTeamKey("");
-              });
-            }}
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={busy}
+            onClick={() => setTeamDialog({ mode: "create" })}
           >
-            <Input
-              value={teamName}
-              onChange={(event) => setTeamName(event.target.value)}
-              placeholder="Team name (e.g. Growth & Monetization)"
-              required
-              disabled={busy}
-              className="min-w-60 flex-1"
-            />
-            <Input
-              value={teamKey}
-              onChange={(event) => setTeamKey(event.target.value.toUpperCase())}
-              placeholder="KEY"
-              required
-              disabled={busy}
-              className="w-28"
-            />
-            <Button type="submit" disabled={busy}>
-              Create team
-            </Button>
-          </form>
+            + New team
+          </Button>
         </div>
       </SectionCard>
+
+      <JiraComponentsConfig components={jiraComponents} />
+
+      {teamDialog && (
+        <TeamConfigDialog
+          mode={teamDialog.mode}
+          team={teamDialog.team}
+          jiraComponents={jiraComponents}
+          onClose={() => setTeamDialog(null)}
+        />
+      )}
 
       <SectionCard
         title="Sprints (Gates)"
@@ -412,12 +425,20 @@ export function AdminPanel({
                   <option value="ACTIVE">ACTIVE</option>
                   <option value="CLOSED">CLOSED</option>
                 </Select>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => setEditingSprint(sprint)}
+                >
+                  Edit
+                </Button>
               </li>
             ))}
           </ul>
         )}
         <form
-          className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-[1fr_auto_auto_auto_auto]"
+          className="mt-4 flex flex-col gap-2"
           onSubmit={(event) => {
             event.preventDefault();
             run(`Create sprint ${sprintForm.name}`, async () => {
@@ -428,60 +449,89 @@ export function AdminPanel({
                   developmentStart: sprintForm.start,
                   developmentEnd: sprintForm.end,
                   releaseDate: sprintForm.release || null,
+                  fixVersions: sprintForm.fixVersions
+                    .split(/[,\n]/)
+                    .map((v) => v.trim())
+                    .filter(Boolean),
                 },
               });
-              setSprintForm({ name: "", start: "", end: "", release: "" });
+              setSprintForm({ name: "", start: "", end: "", release: "", fixVersions: "" });
             });
           }}
         >
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="admin-sprint-name">Name</Label>
-            <Input
-              id="admin-sprint-name"
-              value={sprintForm.name}
-              onChange={(event) => setSprintForm((f) => ({ ...f, name: event.target.value }))}
-              placeholder="July 2026 Release"
-              required
-              disabled={busy}
-            />
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_auto_auto_auto]">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="admin-sprint-name">Name</Label>
+              <Input
+                id="admin-sprint-name"
+                value={sprintForm.name}
+                onChange={(event) => setSprintForm((f) => ({ ...f, name: event.target.value }))}
+                placeholder="July 2026 Release"
+                required
+                disabled={busy}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="admin-sprint-start">Development start</Label>
+              <Input
+                id="admin-sprint-start"
+                type="date"
+                value={sprintForm.start}
+                onChange={(event) => setSprintForm((f) => ({ ...f, start: event.target.value }))}
+                required
+                disabled={busy}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="admin-sprint-end">Development end</Label>
+              <Input
+                id="admin-sprint-end"
+                type="date"
+                value={sprintForm.end}
+                onChange={(event) => setSprintForm((f) => ({ ...f, end: event.target.value }))}
+                required
+                disabled={busy}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="admin-sprint-release">Release date (optional)</Label>
+              <Input
+                id="admin-sprint-release"
+                type="date"
+                value={sprintForm.release}
+                onChange={(event) => setSprintForm((f) => ({ ...f, release: event.target.value }))}
+                disabled={busy}
+              />
+            </div>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="admin-sprint-start">Development start</Label>
-            <Input
-              id="admin-sprint-start"
-              type="date"
-              value={sprintForm.start}
-              onChange={(event) => setSprintForm((f) => ({ ...f, start: event.target.value }))}
-              required
-              disabled={busy}
-            />
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex min-w-60 flex-1 flex-col gap-1.5">
+              <Label htmlFor="admin-sprint-fix-versions">Fix version(s)</Label>
+              <Input
+                id="admin-sprint-fix-versions"
+                value={sprintForm.fixVersions}
+                onChange={(event) =>
+                  setSprintForm((f) => ({ ...f, fixVersions: event.target.value }))
+                }
+                placeholder="Release-2026.07.1.0, Release-2026.07.1.1"
+                disabled={busy}
+              />
+            </div>
+            <Button type="submit" disabled={busy}>
+              Create sprint
+            </Button>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="admin-sprint-end">Development end</Label>
-            <Input
-              id="admin-sprint-end"
-              type="date"
-              value={sprintForm.end}
-              onChange={(event) => setSprintForm((f) => ({ ...f, end: event.target.value }))}
-              required
-              disabled={busy}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="admin-sprint-release">Release date (optional)</Label>
-            <Input
-              id="admin-sprint-release"
-              type="date"
-              value={sprintForm.release}
-              onChange={(event) => setSprintForm((f) => ({ ...f, release: event.target.value }))}
-              disabled={busy}
-            />
-          </div>
-          <Button type="submit" disabled={busy} className="self-end">
-            Create sprint
-          </Button>
         </form>
       </SectionCard>
+
+      {editingSprint && (
+        <SprintConfigDialog
+          mode="edit"
+          sprint={editingSprint}
+          onClose={() => setEditingSprint(null)}
+          onSaved={() => setEditingSprint(null)}
+        />
+      )}
 
       <BugReportConfig
         reports={bugReports}

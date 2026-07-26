@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Layers, Link2, ListChecks, Sparkles, TrendingUp } from "lucide-react";
+import { Download, Layers, Link2, ListChecks, Rocket, Sparkles, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   HeroCopy,
@@ -27,6 +27,7 @@ export function Hero({
   onShare,
   onExport,
   onAiDigest,
+  onSprintStart,
 }) {
   if (showWelcome) {
     return (
@@ -80,6 +81,11 @@ export function Hero({
           </HeroCopy>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {onSprintStart && (
+            <Button variant="onDark" size="sm" onClick={onSprintStart}>
+              <Rocket /> Sprint Start
+            </Button>
+          )}
           {onAiDigest && (
             <Button variant="onDark" size="sm" onClick={onAiDigest}>
               <Sparkles /> AI Digest

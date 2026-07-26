@@ -24,6 +24,7 @@ import { FilterPanel } from "./filter-panel";
 import { PlannerPanel } from "./planner-panel";
 import { AddFilterDialog } from "./add-filter-dialog";
 import { SprintConfigDialog } from "./sprint-config-dialog";
+import { SprintStartDialog } from "./sprint-start-dialog";
 import { RiskCommentDialog } from "./risk-comment-dialog";
 import { AiDigestDialog } from "./ai-digest-dialog";
 import { ShareDialog } from "./share-dialog";
@@ -57,6 +58,7 @@ export function Dashboard({
   filters,
   progressByKey,
   snapshots,
+  sprintStartConfig,
   asOf,
   metrics,
   jiraBaseUrl,
@@ -71,6 +73,7 @@ export function Dashboard({
   const [showShare, setShowShare] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showAiDigest, setShowAiDigest] = useState(false);
+  const [showSprintStart, setShowSprintStart] = useState(false);
   const [editingRiskIssue, setEditingRiskIssue] = useState(null);
   const [sprintDialogMode, setSprintDialogMode] = useState(null); // null | "create" | "edit"
   const [syncing, setSyncing] = useState(false);
@@ -291,6 +294,7 @@ export function Dashboard({
               onShare={can.write && base ? () => setShowShare(true) : null}
               onExport={() => setShowExport(true)}
               onAiDigest={aiEnabled && base && !showWelcome ? () => setShowAiDigest(true) : null}
+              onSprintStart={can.manage ? () => setShowSprintStart(true) : null}
             />
 
             {!showWelcome && metrics && (
@@ -396,6 +400,19 @@ export function Dashboard({
           onClose={() => setSprintDialogMode(null)}
           onSelect={select}
           onSaved={() => showToast("Sprint saved")}
+        />
+      )}
+      {showSprintStart && selectedTeam && (
+        <SprintStartDialog
+          teamId={selectedTeam.id}
+          sprints={sprints}
+          selectedSprintId={selectedSprint?.id}
+          sprintStartConfig={sprintStartConfig}
+          onClose={() => setShowSprintStart(false)}
+          onSuccess={() => {
+            router.refresh();
+            showToast("Sprint filters generated");
+          }}
         />
       )}
       <PageLoader show={busy || syncing} label={syncing ? "Syncing Jira…" : "Updating…"} />
