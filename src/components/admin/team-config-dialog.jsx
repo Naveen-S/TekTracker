@@ -27,6 +27,9 @@ export function TeamConfigDialog({ mode, team, jiraComponents, onClose }) {
   const [name, setName] = useState(team?.name ?? "");
   const [key, setKey] = useState(team?.key ?? "");
   const [description, setDescription] = useState(team?.description ?? "");
+  const [developerCount, setDeveloperCount] = useState(
+    team?.developerCount != null ? String(team.developerCount) : "",
+  );
   const [featureIssueTypes, setFeatureIssueTypes] = useState(
     (team?.featureIssueTypes ?? []).join(", "),
   );
@@ -71,6 +74,7 @@ export function TeamConfigDialog({ mode, team, jiraComponents, onClose }) {
       name: name.trim(),
       key: key.trim(),
       description: description.trim() || null,
+      developerCount: developerCount.trim() === "" ? null : Number(developerCount),
       featureIssueTypes: parseIssueTypes(featureIssueTypes),
       techDebtIssueTypes: parseIssueTypes(techDebtIssueTypes),
       internalBugIssueTypes: parseIssueTypes(internalBugIssueTypes),
@@ -151,6 +155,24 @@ export function TeamConfigDialog({ mode, team, jiraComponents, onClose }) {
             placeholder="What this scrum team owns"
             disabled={saving}
           />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="team-developer-count">Team size (developers)</Label>
+          <Input
+            id="team-developer-count"
+            type="number"
+            min="1"
+            max="200"
+            value={developerCount}
+            onChange={(event) => setDeveloperCount(event.target.value)}
+            placeholder="e.g. 8"
+            disabled={saving}
+            className="w-28"
+          />
+          <p className="text-xs text-muted-foreground">
+            Used as the Velocity Leaderboard&rsquo;s points &divide; developers divisor. Leave
+            blank to exclude this team from the team leaderboard&rsquo;s ranking.
+          </p>
         </div>
 
         <fieldset className="flex flex-col gap-2.5 rounded-lg border p-3">

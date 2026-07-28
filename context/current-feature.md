@@ -1,84 +1,79 @@
 # Current Feature
 
-**One-Click Sprint Start** — full spec: @context/features/one-click-sprint-start.md
+**Velocity / LeaderBoard** — full spec: @context/features/leaderboard.md
 
-Bring Naveen's org-wide Component → Sub-component → Scrum-team mapping (from
-`Tekion JIRA Book - 2025-26.xlsx`) into the app: an admin-maintained Jira Component/Sub-component
-catalog, per-team claiming of sub-components, per-track Jira Issue Type config (Roadmap/Tech
-Debt/Internal Bug/External Bug), Fix Version(s) on Sprint, and a dashboard "One-Click Sprint Start"
-action that generates a team's 4 filters against an **existing** Sprint — the Sprint itself stays
-admin-only to create, exactly as today; this feature never adds a way to create one. Requested by
-Naveen 2026-07-26; post-v1 (the migration plan is complete).
+A gamified "healthy competition" screen: a team velocity leaderboard (total story points delivered
+÷ an admin-entered developer headcount, ranked) and an overall developer leaderboard across every
+scrum team — both sprint-scoped and all-time. Requested by Naveen 2026-07-26; post-v1 (the
+migration plan is complete).
 
 ## Status
 
-**Done 2026-07-26.** Full spec + Status/As-built notes: @context/features/one-click-sprint-start.md.
-Implemented as specced, including both post-draft corrections from Naveen (decisions 4 and 7 — no
-RBAC carve-out; External Bug scopes by the parent Component name, not sub-components).
+**Done 2026-07-27.** Full spec, ratified decisions, as-built notes, and open risks:
+@context/features/leaderboard.md.
 
-Added: 2 new Prisma models + 5 new `Team`/`Sprint` fields (one migration); 3 new pure modules
-(`issue-type-defaults.mjs`, `track-jql.mjs`, `accent-palette.mjs` — the last extracted out of
-`add-filter-dialog.jsx`); a shared `lib/filters/priority-insert.js`; 6 new API routes + a new
-`ConflictError` (409); 3 new UI components (admin Jira-components catalog, admin team create/edit
-dialog, dashboard Sprint-Start dialog) + `fixVersions` inputs on both Sprint forms.
+Implemented as specced: `Team.developerCount` (one migration); the sync-gate bugfix (rejecting
+manual sync of a `CLOSED` sprint, 409); four new pure functions in `metrics.mjs`
+(`aggregateByDeveloper`, `teamVelocityPerDeveloper`, `aggregateTeamAllTime`,
+`aggregateDeveloperAllTime`, `rankBy`); a new `src/lib/leaderboard-data.js` (org-wide, 3 batched
+queries for cross-sprint history — no new snapshot table needed); a new `LEADERBOARD_ROLES` group +
+`hasLeaderboardAccess()` in `rbac.js`; the new `/leaderboard` page + `TeamLeaderboard`/
+`DeveloperLeaderboard`/`LeaderboardTopBar`; a shared `AvatarChip` (retrofit into 3 existing inline
+copies) and `RankBadge` (Crown/Medal/Award podium treatment); `MyStatsCard` on `/` for LEAD/MEMBER;
+the `developerCount` admin field; sidebar/`AppShell` wiring across all 5 pages.
 
-**Verified:** `yarn lint` clean; **9/9 pure-fixture checks** (DR_GM worked example incl. the
-parent-component External Bug clause, override precedence, JQL-quote escaping, accent wraparound);
-`prisma validate`/`migrate status` up to date; **DB/env-free cold build green — 41 ƒ Dynamic (35 →
-41)**, `.env` genuinely moved aside and restored; **30/30 SSR/API smoke checks** against a
-fabricated 3-team fixture (RBAC gates, 409 double-claim conflict, hand-verified JQL/sortOrder/
-accentColor, idempotent re-run, confirmed `POST/PATCH /api/sprints` untouched); fixture torn down
-to 0 leftovers. **Runtime smoke against Naveen's real data**: a minted admin cookie against `/admin`
-and `/` both 200, no errors, new UI rendered (render-only, no writes). A pre-existing stale
-`next-server` process on :3002 (unrelated to this change) was found and restarted mid-verification.
+**Verified:** `yarn lint` clean; `prisma validate`/`migrate status` up to date (**6 migrations**);
+**DB/env-free cold build green — 42 ƒ Dynamic (41 → 42)**, `.env` genuinely moved aside (twice) and
+restored; **26/26 pure-fixture checks** for the new `metrics.mjs` functions; **24/24 SSR/API smoke
+checks** against a fabricated multi-team/multi-sprint fixture (RBAC gate incl. the TPM exclusion,
+the sync-gate 409, hand-verified sprint + all-time team/developer math, `MyStatsCard`'s figures
+with no rank/comparison leakage, the admin `developerCount` PATCH taking effect live); fixture torn
+down to 0 leftovers. A design pass (`impeccable` `bolder` playbook) added the podium treatment,
+confirmed via headless-Chrome screenshots in **both themes** (Tekion teal / Modern blue) — the
+accent-token reuse re-hues automatically with no per-theme branching.
 
-**2026-07-27 update:** Naveen's real Jira acceptance run (the item flagged above) found the
-generated JQL was actually wrong — full details, corrected JQL shapes, and re-verification in
-@context/features/one-click-sprint-start.md's Status/As-built notes. Two fixes landed same day:
-(1) field naming/order/quoting/`ORDER BY` corrected to match his instance, and the team's own
-tracks now scope via a custom `"sub-component[dropdown]"` field, not the standard `component`
-field; (2) External Bug now ANDs the sub-component clause **alongside** the parent-Component
-clause (was parent-only), per Naveen's same-day amendment. Also added: a per-sprint "Edit" button
-in `/admin`'s Sprints list (fixVersions editable on any sprint, incl. ACTIVE, without leaving
-`/admin`) — Naveen had asked how to do this and there was no direct affordance. Separately, in the
-same session but **unrelated to this feature**: a real Tekion favicon/brand icon replaced the
-generic Next.js default (`app/icon.png` + regenerated `app/favicon.ico`), and the same icon now
-also appears at the top of the left-nav sidebar linking to `/` (see project-overview.md §11).
+**As-built discovery, not a bug in this feature**: smoke testing surfaced a pre-existing Next
+16.2.9 + Turbopack dev-mode quirk where both `redirect()` and `notFound()` resolve to HTTP 200
+(correct content, wrong status code) under `curl`/`fetch` — reproduces identically on untouched
+routes (`/`, `/admin`, `/rollup`). Worked around by asserting on body content instead of status
+code; noted in the spec's As-built notes for future dev-mode smoke testing in this repo.
 
-⚠️ **Still pending:** Naveen re-running the one-click flow against real Jira to confirm the
-corrected JQL (both fixes) actually returns the expected issues in each of the 4 tracks.
-
-**Next:** that live re-run confirmation, then commit; remaining post-v1 ideas — export-embedded AI
-narrative, AI Q&A, stage suggestions, PDF/share for `/bugs`, and a `/bugs` follow-up to call out
-ENG issues with no sub-component tag.
+**Next:** that live re-run confirmation for one-click-sprint-start (tracked separately, does not
+block this feature); remaining post-v1 ideas — export-embedded AI narrative, AI Q&A, stage
+suggestions, PDF/share for `/bugs`, a `/bugs` follow-up for ENG issues with no sub-component tag,
+and leaderboard rank-delta ("moved since last sprint") arrows, deliberately deferred out of v1.
 
 ## Goals
 
-- A reusable admin catalog: `JiraComponent` (name + Jira project key) → many `JiraSubComponent`
-  (name), each claimed by at most one Team — manually entered, one at a time, no bulk import, no
-  live Jira discovery.
-- Per-track Jira Issue Type mapping as a global default with a per-team override (mirrors the
-  existing `storyPointsFieldId`/`sprintFieldId` pattern): Roadmap = `Story`, Tech Debt =
-  `Tech Story`, Internal Bug = `Bug` (team's own project); External Bug = project `ENG`, Issue Type
-  `Tap Ticket`, scoped by the parent Component name only.
-- `Sprint.fixVersions String[]` — manually typed Jira Fix Version name(s) a Gate spans.
-- A dashboard "One-Click Sprint Start" action (`TEAM_MANAGER_ROLES`, same gate as manual filter
-  creation) that, given an existing `PLANNING`/`ACTIVE` Sprint, generates the team's missing
-  Roadmap/Tech Debt/Internal Bug/External Bug filters from generated JQL (never duplicating ones
-  that already exist) and immediately syncs them.
-- **Acceptance:** pure-fixture tests for the JQL builder against a hand-computed DR_GM example;
-  lint/`prisma validate`/DB-env-free build green; SSR/API smoke incl. RBAC gates, 409 on
-  double-claimed sub-components, and idempotent re-run; a final human-acceptance run against
-  Naveen's real DR_GM/ENG Jira data.
+- **Team velocity leaderboard**: teams ranked by `completedPoints ÷ Team.developerCount` (a new
+  admin-entered field, not a dynamically-derived assignee count), both for a selected sprint and
+  all-time. Teams without `developerCount` set are excluded from the ranking but still show their
+  developers individually on the developer board.
+- **Developer leaderboard**: individual developers ranked by points delivered, aggregated across
+  every scrum team, both sprint-scoped and all-time — matched by `Issue.assigneeAccountId`.
+- **Visibility**: gated to EM + ED + VIEWER roles only (global admin bypasses); TPM and LEAD/MEMBER
+  are deliberately excluded from the full board. LEAD/MEMBER instead get a personal, non-competitive
+  "my stats" card (their own points only, no rank, no comparison) on their existing `/` dashboard.
+- **Bundled bugfix**: gate the manual "Sync Jira" action away from already-`CLOSED` sprints —
+  closes a real data-integrity gap this feature's historical accuracy depends on.
+- **Acceptance**: pure-fixture tests for the new `metrics.mjs` aggregation/ranking functions against
+  hand-computed examples; lint/`prisma validate`/DB-env-free build green; SSR/API smoke incl. RBAC
+  gates (EM/ED/VIEWER/admin see the board, LEAD/MEMBER/TPM see only their personal card, the
+  sync-gate 409 on a `CLOSED` sprint); a final human-acceptance run + visual pass against Naveen's
+  real synced teams/sprints.
 
 ## Notes
 
-- Full data model, API routes, UI changes, and open risks are in
-  @context/features/one-click-sprint-start.md — kept as the single source of truth rather than
-  duplicated here.
-- **Modern theme work (previous feature) is Done and merged** — see the last History entries below
-  and @context/features/modern-theme.md. Naveen's real-browser visual pass on that arc is still
-  outstanding but does not block starting this feature.
+- Full data model, API routes, UI changes, decisions, and open risks are in
+  @context/features/leaderboard.md — kept as the single source of truth rather than duplicated
+  here.
+- **One-Click Sprint Start (previous feature) is Done**, with one item still open: Naveen
+  re-running the live flow to confirm the corrected JQL (both 2026-07-27 fixes) against real Jira —
+  see the last History entries below and @context/features/one-click-sprint-start.md. This does not
+  block starting the Leaderboard feature.
+- Naveen asked that design skills be used for this one — the plan calls for the `impeccable` skill
+  (or `emil-design-eng`'s polish principles for micro-interactions) during the build, per the
+  dribbble references shared alongside the spec.
 
 ## History
 
@@ -1399,3 +1394,169 @@ ENG issues with no sub-component tag.
   `project-overview.md` §11 note. **Still open:** Naveen re-running the live flow to confirm the
   corrected JQL (both fixes) actually returns the right issues in Jira for all 4 tracks. **Next:**
   that confirmation, then commit.
+- 2026-07-27 — Planning session (no code): drafted @context/features/leaderboard.md for the
+  handwritten "Velocity / LeaderBoard" spec (`context/SprintTracker - Project Spec/
+  Velocity:LeaderBoard.jpg`) — a team velocity leaderboard (points ÷ developers) + an overall
+  developer leaderboard, both gamified. Ran a clarifying-question pass (3 background Explore
+  agents + a Plan-agent design pass) rather than guessing, since the handwritten spec is two
+  sentences and left every architecture-determining decision open. Ratified with Naveen: delivered
+  points = the existing weighted stage-completion metric (not Jira status); work scope = all work
+  (throughput lens); team divisor = a new admin-entered `Team.developerCount` field, not a
+  dynamically-derived assignee count; both sprint-scoped and all-time views for both boards;
+  visibility gated to a new, deliberately narrower `LEADERBOARD_ROLES = [EM, ED, VIEWER]` (TPM
+  excluded, unlike every other role group in `rbac.js`); LEAD/MEMBER get a personal "my stats" card
+  only, no rank; and a bundled bugfix (gate manual sync away from `CLOSED` sprints) that turns out
+  to eliminate the need for any new snapshot table entirely — `Issue`/`IssueProgress` rows already
+  persist per closed sprint, so historical per-developer/per-team data can be computed live once
+  that one gap is closed. Full decisions + open risks in the spec file. Picked
+  @context/features/leaderboard.md as the current feature. one-click-sprint-start remains **Done**
+  (pending Naveen's live JQL re-run confirmation, tracked separately in its own spec file).
+- 2026-07-27 — **Implemented leaderboard.md (Velocity / LeaderBoard).** Schema: `Team.developerCount
+  Int?` (migration `add_team_developercount`, byte-synced to §9). RBAC: `LEADERBOARD_ROLES = [EM,
+  ED, VIEWER]` (deliberately excludes TPM, unlike every other role group) + `hasLeaderboardAccess()`
+  in `rbac.js` — page-level, any-team, admin-bypass. Bugfix: `syncTeamSprint` now rejects a `CLOSED`
+  sprint with `ConflictError` (409) before touching Jira — protects the frozen historical data this
+  whole feature depends on. `metrics.mjs` gained 5 pure functions (`aggregateByDeveloper`,
+  `teamVelocityPerDeveloper`, `aggregateTeamAllTime`, `aggregateDeveloperAllTime`, `rankBy`); new
+  `lib/leaderboard-data.js` (org-wide reads, 3 batched queries for cross-sprint history — the
+  architecture insight that no new snapshot table was needed held up in practice). New page
+  `/leaderboard` + `components/leaderboard/{team-leaderboard,developer-leaderboard,
+  leaderboard-top-bar}.jsx`; new shared `ui/avatar-chip.jsx` (retrofit into the 3 previously
+  copy-pasted inline avatar circles) + `ui/rank-badge.jsx`; new `dashboard/my-stats-card.jsx` wired
+  into `/` for LEAD/MEMBER (computed in `app/page.jsx` to avoid a circular import with
+  `dashboard-data.js`); `developerCount` admin field in `team-config-dialog.jsx`; sidebar/`AppShell`
+  wiring (`hasLeaderboardAccess` threaded through all 5 pages). A design pass via the `impeccable`
+  skill's `bolder` playbook added a genuine podium treatment for rank 1 on both boards (accent wash,
+  bigger `RankBadge` reusing the house "sweep" sheen from `release-countdown.jsx`, bigger display
+  numeral) — reusing only existing tone tokens, so it re-hues correctly under both themes with zero
+  new primitives. **Verified:** `yarn lint` clean; `prisma validate`/`migrate status` up to date (6
+  migrations); **DB/env-free cold build green — 42 ƒ Dynamic (41 → 42)**, `.env` genuinely moved
+  aside twice (pre- and post-design-pass) and restored both times; **26/26 pure-fixture checks**
+  for the new metrics functions (hand-computed developer aggregation, all-time sums, rank ties);
+  **24/24 SSR/API smoke checks** against a fabricated multi-team/multi-sprint fixture — RBAC gate
+  (EM/ED/VIEWER/admin see the board; TPM/LEAD/MEMBER don't), the sync-gate 409 vs. a non-409 on an
+  ACTIVE sprint, sprint- and all-time team/developer math hand-verified, the unconfigured-team
+  footnote, `MyStatsCard` with no rank/comparison leakage, and the admin `developerCount` PATCH
+  taking effect live — fixture torn down to 0 leftovers; visual confirmation via headless-Chrome
+  screenshots (temporary `playwright` install, fully removed after) in both Tekion and Modern
+  themes. **Found and fixed one real, pre-existing bug along the way** (the sync-gate issue itself
+  — flagged during planning, fixed as decision 7) and **discovered one pre-existing, unrelated dev-
+  mode quirk** (Next 16.2.9 + Turbopack resolves `redirect()`/`notFound()` to HTTP 200 with correct
+  content under `curl`/`fetch` — worked around in the smoke script via content assertions; see the
+  spec's As-built notes). **Done.** **Next:** remaining post-v1 ideas — export-embedded AI
+  narrative, AI Q&A, stage suggestions, PDF/share for `/bugs`, the `/bugs` ENG-sub-component
+  follow-up, and leaderboard rank-delta arrows (all deliberately deferred, not forgotten).
+- 2026-07-28 — **Three post-leaderboard fixes/polish items from Naveen, still on
+  `feature/velocity-leaderboard` (uncommitted).** (1) **Fixed a real health-status bug**: a sprint
+  past its dev-cycle `developmentEnd` could still badge issues "On Track"/"Ahead" and the sprint
+  overall "Excellent" even with incomplete work — Naveen's screenshot showed a 93%-complete issue
+  reading "On Track" days after the deadline. `getHealthStatus` (`metrics.mjs`) now special-cases
+  `asOf > developmentEnd`: an incomplete issue reads **At Risk** (≥90%) or **Behind** (<90%), never
+  On Track/Ahead — this cascades correctly into `bandSprintHealth` with zero changes needed there,
+  since it already bands off the (now-corrected) per-issue counts. (2) **Replaced the misleading
+  "2/7 delivery on track" line** with a full worst-first breakdown (Blocked/Behind/At Risk/On
+  Track/Ahead/Done counts) in `MetricGrid`'s Sprint Health card — mirrors the icon+count vocabulary
+  `rollup/team-summary-table.jsx`'s `BANDS` already established — plus the same fix in the PDF/PNG
+  export's `OverallCard` detail line. (3) **Fixed a missing loader on team/sprint switch**:
+  `dashboard.jsx`'s `select()` called `router.push` unwrapped, so `busy` never flipped and the
+  `PageLoader` never showed while Next fetched the new board — wrapped in the existing
+  `startMutation` transition (the same house pattern `bugs-actions.jsx` already used), and applied
+  the identical fix to `rollup-top-bar.jsx`'s and `leaderboard-top-bar.jsx`'s sprint/view selects,
+  which had the same gap. (4) **Built the `impeccable`-guided "Story Points Delivered" highlight**
+  Naveen asked for by name, with a mid-build clarifying question (placement) that surfaced a
+  requirement I hadn't planned for — he wants **Planned points highlighted too, not just
+  Delivered** — synthesized into one card showing both as peer-sized numerals (Delivered gets the
+  extra glow/count-up per bolder.md's "one decisive move"; Planned stays real-sized but quieter).
+  New `StoryPointsHighlight` (server-safe; `bg-accent`/`shadow-brand`/the house "sweep" sheen —
+  the proven leaderboard-podium treatment, reused not reinvented) on `/`, `/rollup` (portfolio-wide,
+  labeled "N teams"), and `/share/[token]`; all-work `completedPoints`/`points` (matches the
+  Leaderboard's basis, not the delivery-lens-only number the old Completion card showed). New
+  `useCountTransition` hook + shared `ui/animated-number.jsx`: animates only on a value CHANGE
+  while mounted (sync landing, team switch) — first paint (SSR + first hydration pass) always
+  renders the real static number with no JS required (animate.md: "keep content visible in the
+  default state"), avoiding any flash-then-recount jank; retrofit into `TeamLeaderboard`,
+  `DeveloperLeaderboard`, and `MyStatsCard`'s numerals too for one consistent motion language.
+  **Hit and fixed a real lint violation along the way**: the hook's first draft mutated a ref and
+  called `Date.now()` as bare statements in the hook body, which this repo's React Compiler rules
+  (`react-hooks/refs`, `react-hooks/purity`) reject outright — moved all of it inside the
+  `subscribe`/`getSnapshot` closures passed to `useSyncExternalStore` (the same escape hatch
+  `release-countdown.jsx`'s `useLiveNow` already relies on), which lint accepts. **Verified:**
+  `yarn lint` clean; cold DB/env-free `yarn build` green twice (before and after the animation
+  work) — **42 ƒ Dynamic unchanged**; hand-computed `getHealthStatus`/`computeSprintMetrics`
+  fixture reproducing the screenshot scenario (93%+past-deadline → At Risk, aggregate → At Risk,
+  not Excellent); live smoke against Naveen's real synced data via a minted admin cookie on `/`,
+  `/rollup`, `/leaderboard` in both themes at desktop and mobile widths (headless Chromium,
+  temporary `playwright` install fully removed after); the health/breakdown fix confirmed live
+  (Sprint Health correctly reads "Critical" with a `⊘1 ↓4 ⚠1 ✓10` breakdown against real data that
+  previously would have shown a rosier picture). **The count-up transition itself** couldn't be
+  exercised through the real team-switch UI — headless Chromium's native `<select>` didn't accept
+  synthetic changes reliably (confirmed via an A/B revert that the identical unmodified code showed
+  the same symptom, ruling out a regression) — so it was isolated and proven via a throwaway test
+  route driving `AnimatedNumber` off a plain button click (reliable in headless mode): counted
+  smoothly 59→93→131→...→222 with visible ease-out deceleration, then settled exactly at 222; the
+  route was deleted after. No schema/migration/route change. **Done.** **Next:** fold these into
+  the pending leaderboard commit, then the still-open one-click-sprint-start live re-run and the
+  remaining post-v1 ideas listed above.
+- 2026-07-28 — **Story Points → Original Estimate fallback (per Naveen: "if a issue/jira item
+  doesn't have Story Point we should consider original estimate field from jira").** Real gap:
+  `transformJiraIssue` (`lib/jira/transform.js`) defaulted an unpointed issue straight to `0`,
+  which silently zeroed it out of velocity, completion %, and — the highest-stakes consumer now
+  that it exists — the Leaderboard, understating anyone whose team leaves Story Points blank and
+  tracks effort via Original Estimate instead. Asked Naveen to pin the one real ambiguity (time is
+  not points) before writing code: he chose **hours ÷ 8 = points (1 point ≈ 1 working day)**. New
+  `resolveStoryPoints(rawPoints, rawOriginalEstimateSeconds)`: an explicit, truthy Story Points
+  value always wins; otherwise falls back to Jira's standard `timeoriginalestimate` field
+  (seconds) → hours ÷ `HOURS_PER_STORY_POINT` (8), rounded to 2 decimals; neither present → `0`
+  as before. **An explicit `0` in Story Points is treated the same as "not set"** and still falls
+  back — Jira doesn't distinguish blank from a typed zero on this field, and a 0-point issue
+  carries no signal either way, so there was nothing to lose by folding that case in. Added
+  `timeoriginalestimate` to `buildIssueFields`'s requested field list (it wasn't being fetched at
+  all before). Standard Jira field, not per-team configurable like `storyPointsFieldId` — no
+  schema/admin change. Applies automatically on next sync (`Issue` cache rows are fully replaced
+  every sync, §9) — no backfill needed. Verified: **8/8 plain-Node fixture checks** (explicit
+  points win over estimate, fallback math for a 16h/2-day estimate, explicit-0 falls back,
+  legacy `customfield_10016` still honored before the fallback, nothing present → 0, partial-day
+  rounding for a 3h estimate → 0.38, garbage/negative estimate ignored → 0, `buildIssueFields`
+  requests the new field); `yarn lint` clean; **DB/env-free cold build green — 42 ƒ Dynamic
+  unchanged** (`.env` genuinely moved aside and restored — no route/schema surface changed, so
+  this was mainly confirming the transform still type-checks cleanly through the build). **Done.**
+  Rides on `feature/velocity-leaderboard`, folds into the same pending commit as the other
+  post-leaderboard fixes above.
+- 2026-07-27/2026-07-28 — **Extended the hybrid-seed `StatusStageMapping` defaults with six more
+  terminal Jira statuses, in three rounds, each requested directly by Naveen while reading the
+  Delivery Matrix against real synced issues** (ad hoc, not planned via `plan-feature` — closes
+  decision 2's "rest ships as defaults" gap in bootstrap-seed.md one real status at a time).
+  Round 1: `UAT` (FEATURE + TECH_DEBT) and `OEM Review` (SUPPORT + INTERNAL_BUG). Round 2:
+  `Close as Duplicate` (SUPPORT + INTERNAL_BUG) and `Support Validation` (SUPPORT only). Round 3:
+  `Not Applicable` (FEATURE + SUPPORT + INTERNAL_BUG) and a correction to the pre-existing
+  `Testing` row for FEATURE (stageIndex 6 → 9 — it was already the terminal stage for the other
+  three workflows via `FOUR_STAGE_STATUS_MAP`, so only FEATURE needed changing). **Before writing
+  any row, checked live Tekion Jira** (`searchJiraIssuesUsingJql`) for which issue type/project
+  each status actually appears on, rather than guessing — e.g. this is what caught that
+  `Support Validation` is exclusive to `Tap Ticket`/ENG (SUPPORT only, not INTERNAL_BUG too, unlike
+  its round-2 sibling). For round 1, ratified two scope questions with Naveen up front via
+  `AskUserQuestion`: **seed-only** (only newly-synced issues get seeded to Done; the hybrid model's
+  "manual edits win" invariant for already-tracked issues stays untouched — no force-override on
+  every sync) and **workflow mapping as found in live Jira**, both carried through rounds 2–3
+  without re-asking. Pure data change to `prisma/seed.mjs`'s `STATUS_STAGE_SEED` table — **no
+  schema, migration, route, or sync-engine code change**; `SUPPORT`/`INTERNAL_BUG` diverged from
+  the shared `FOUR_STAGE_STATUS_MAP` alias into two explicit arrays once `Support Validation` made
+  them genuinely different. Global `StatusStageMapping` row count: 35 → 39 → 42 → 45. **Verified**
+  after every round: `yarn db:seed` against Neon (delete-then-recreate of the `teamId = null` set,
+  confirmed via a direct DB read each time) and `yarn lint` clean; closed out with a full
+  finish-feature `/verify` pass — `prisma validate` + `migrate status` up to date (6 migrations,
+  unchanged), env-free cold `yarn build` green (**42 ƒ Dynamic unchanged**), and a **15/15
+  pure-fixture functional check** — not just "the row exists," but `buildSeededStages` +
+  `calculateWeightedCompletion` run against the live-persisted mappings and the real `WORKFLOWS`
+  weights, asserting every new/changed `(workflow, status)` pair actually resolves to 100%
+  completion, plus one sanity control (`Groomed` still does *not* seed to Done). Doc-synced
+  @context/features/bootstrap-seed.md (the canonical spec for these defaults, per its own §17
+  pointer) — Status extended with the three-round summary, the proposed-defaults tables rewritten
+  to match `seed.mjs` exactly, a new As-built note. `project-overview.md` needed no edits — pure
+  seed data inside an already-`[BUILT]` hybrid model, no status tag/schema/roadmap-step affected.
+  **Done.** Rides on `feature/velocity-leaderboard` as its own isolated, unrelated diff
+  (`prisma/seed.mjs` only, touching nothing else on the branch) — not committed, ready as its own
+  focused commit whenever Naveen folds in the branch's accumulated work. **Next:** commit
+  housekeeping for everything sitting uncommitted on this branch (leaderboard, the three
+  post-leaderboard fixes, the story-points fallback, and this), then the still-open
+  one-click-sprint-start live re-run and the remaining post-v1 ideas.

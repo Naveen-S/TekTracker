@@ -339,8 +339,21 @@ function SummaryPage({ sprint, selectedFilters, exportIssues, exportMetrics, vel
     exportMetrics.deliveryPoints > 0
       ? Math.round((exportMetrics.deliveryCompletedPoints / exportMetrics.deliveryPoints) * 100)
       : 0;
-  const deliveryOnTrack =
-    exportMetrics.deliveryHealthCounts.onTrack + exportMetrics.deliveryHealthCounts.ahead;
+  // Worst-first breakdown (mirrors metric-grid.jsx's DELIVERY_BANDS) — replaces the old
+  // on-track-only count, which could read "on track" or even "Excellent" overall while most of
+  // the sprint's delivery issues sat un-shown in Done/At Risk/Behind.
+  const deliveryBreakdown =
+    [
+      ["blocked", "blocked"],
+      ["behind", "behind"],
+      ["atRisk", "at risk"],
+      ["onTrack", "on track"],
+      ["ahead", "ahead"],
+      ["done", "done"],
+    ]
+      .filter(([key]) => exportMetrics.deliveryHealthCounts[key] > 0)
+      .map(([key, label]) => `${exportMetrics.deliveryHealthCounts[key]} ${label}`)
+      .join(" · ") || "no delivery issues";
 
   const generatedOn = new Date().toLocaleDateString("en-US", {
     weekday: "long",
@@ -441,7 +454,7 @@ function SummaryPage({ sprint, selectedFilters, exportIssues, exportMetrics, vel
           tone={healthTone}
           label="Sprint health"
           value={healthStatus}
-          detail={`${deliveryOnTrack}/${exportMetrics.totalDeliveryIssues} delivery on track`}
+          detail={deliveryBreakdown}
         />
         <OverallCard
           tone="completion"

@@ -12,6 +12,7 @@
  */
 import { prisma } from "@/lib/db";
 import { NotFoundError } from "@/lib/rbac";
+import { ConflictError } from "@/lib/api/route-helpers";
 import { owningWorkflowType } from "@/lib/workflows.mjs";
 import { buildSeededStages, reshapeStageCompletion } from "@/lib/sync/seeding.mjs";
 import {
@@ -27,7 +28,7 @@ import {
   DEFAULT_STORY_POINTS_FIELD,
   DEFAULT_SPRINT_FIELD,
 } from "@/lib/jira/transform";
-import { FilterSourceType } from "@/generated/prisma/client";
+import { FilterSourceType, SprintState } from "@/generated/prisma/client";
 
 /** Refresh one filter's Issue cache atomically; returns the added/removed diff (decision 4). */
 async function refreshFilterCache(filter, rows, filterUpdate) {
@@ -73,8 +74,19 @@ async function refreshFilterCache(filter, rows, filterUpdate) {
 export async function syncTeamSprint({ teamId, sprintId, userId }) {
   const team = await prisma.team.findUnique({ where: { id: teamId } });
   if (!team) throw new NotFoundError("Team not found");
-  const sprint = await prisma.sprint.findUnique({ where: { id: sprintId }, select: { id: true } });
+  const sprint = await prisma.sprint.findUnique({
+    where: { id: sprintId },
+    select: { id: true, state: true },
+  });
   if (!sprint) throw new NotFoundError("Sprint not found");
+  // Guards the leaderboard's core invariant (leaderboard.md decision 7): a CLOSED sprint's Issue/
+  // IssueProgress rows must stay frozen so historical per-developer/per-team data can be computed
+  // live. The cron already only ever selects ACTIVE sprints — this only affects manual sync.
+  if (sprint.state === SprintState.CLOSED) {
+    throw new ConflictError(
+      "Cannot sync a CLOSED sprint — its historical data is frozen for the leaderboard and history views",
+    );
+  }
   const filters = await prisma.filter.findMany({
     where: { teamId, sprintId },
     orderBy: { sortOrder: "asc" },

@@ -17,6 +17,8 @@ import { AppShell } from "@/components/ui/app-shell";
 import { Toast, useToast } from "@/components/ui/toast";
 import { TopBar } from "./top-bar";
 import { Hero } from "./hero";
+import { MyStatsCard } from "./my-stats-card";
+import { StoryPointsHighlight } from "./story-points-highlight";
 import { MetricGrid } from "./metric-grid";
 import { TrendPanel } from "./trend-panel";
 import { RiskCalloutsPanel } from "./risk-callouts-panel";
@@ -64,6 +66,8 @@ export function Dashboard({
   jiraBaseUrl,
   aiEnabled,
   hasBugReport,
+  hasLeaderboardAccess,
+  myStats,
 }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -99,7 +103,9 @@ export function Dashboard({
     const params = new URLSearchParams();
     if (teamId) params.set("team", teamId);
     if (sprintId) params.set("sprint", sprintId);
-    router.push(`/?${params.toString()}`);
+    // Wrapped in the same transition as every mutation below (house pattern) — without it, `busy`
+    // never flips while Next fetches the new team/sprint's board, so switching teams looked inert.
+    startMutation(() => router.push(`/?${params.toString()}`));
   };
 
   /** Run a mutation, refresh server data, surface failures in the alert modal. */
@@ -240,7 +246,7 @@ export function Dashboard({
     : null;
 
   return (
-    <AppShell user={user} hasBugReport={hasBugReport}>
+    <AppShell user={user} hasBugReport={hasBugReport} hasLeaderboardAccess={hasLeaderboardAccess}>
       <div className="flex min-h-screen flex-col">
       <TopBar
         user={user}
@@ -297,8 +303,14 @@ export function Dashboard({
               onSprintStart={can.manage ? () => setShowSprintStart(true) : null}
             />
 
+            <MyStatsCard myStats={myStats} />
+
             {!showWelcome && metrics && (
               <>
+                <StoryPointsHighlight
+                  completedPoints={metrics.completedPoints}
+                  totalPoints={metrics.points}
+                />
                 <MetricGrid
                   metrics={metrics}
                   sprint={selectedSprint}

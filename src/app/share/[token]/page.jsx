@@ -19,6 +19,7 @@ import {
   HeroTitle,
 } from "@/components/ui/hero-shell";
 import { MetricGrid } from "@/components/dashboard/metric-grid";
+import { StoryPointsHighlight } from "@/components/dashboard/story-points-highlight";
 import { PlannerPanel } from "@/components/dashboard/planner-panel";
 
 export const dynamic = "force-dynamic";
@@ -112,6 +113,8 @@ export default async function SharePage({ params }) {
             </span>
           )}
         </HeroShell>
+
+        <StoryPointsHighlight completedPoints={metrics.completedPoints} totalPoints={metrics.points} />
 
         <MetricGrid metrics={metrics} sprint={sprint} asOf={asOf ?? undefined} />
 

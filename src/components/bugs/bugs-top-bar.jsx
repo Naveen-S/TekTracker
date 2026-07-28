@@ -9,8 +9,8 @@ import { NavLink } from "@/components/ui/nav-link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { AvatarChip } from "@/components/ui/avatar-chip";
 import { apiFetch } from "@/lib/api-client";
-import { initials } from "@/lib/utils";
 
 export function BugsTopBar({ user }) {
   const router = useRouter();
@@ -45,12 +45,7 @@ export function BugsTopBar({ user }) {
           </Button>
         )}
         <ThemeToggle />
-        <span
-          className="grid size-8 shrink-0 place-items-center rounded-full bg-ink text-[11px] font-bold text-white"
-          title={user.displayName}
-        >
-          {initials(user.displayName)}
-        </span>
+        <AvatarChip name={user.displayName} />
         <Button variant="ghost" onClick={handleLogout}>
           Logout
         </Button>

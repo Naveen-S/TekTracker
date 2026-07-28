@@ -41,6 +41,14 @@ export const TEAM_WRITER_ROLES = [...TEAM_MANAGER_ROLES, Role.MEMBER];
 export const TEAM_ALL_ROLES = [...TEAM_WRITER_ROLES, Role.VIEWER];
 
 /**
+ * Roles that unlock the org-wide Velocity/Leaderboard page (leaderboard.md decision 5) — a
+ * deliberately NEW, narrower group. NOT reused from TEAM_MANAGER_ROLES/TEAM_ALL_ROLES: TPM sits
+ * inside TEAM_MANAGER_ROLES everywhere else in the app but is intentionally excluded here, and
+ * LEAD/MEMBER get the personal "my stats" card instead of the full board (decision 6).
+ */
+export const LEADERBOARD_ROLES = [Role.EM, Role.ED, Role.VIEWER];
+
+/**
  * Require an authenticated **global admin** (`User.isAdmin`).
  * @returns {Promise<import("@/generated/prisma/client").User>}
  */
@@ -80,4 +88,22 @@ export async function requireTeamRole(teamId, allowedRoles) {
     throw new ForbiddenError();
   }
   return { user, membership };
+}
+
+/**
+ * Whether `user` may view the org-wide Velocity/Leaderboard: global admin, OR holds one of
+ * LEADERBOARD_ROLES on ANY team — NOT scoped to the viewer's own teams (decision 5; mirrors the
+ * existing `teams.length >= 2 || isAdmin` looseness of the "Roll-up" nav link). Page-level, not
+ * team-scoped — unlike `requireTeamRole` this takes no `teamId` and never throws.
+ *
+ * @param {import("@/generated/prisma/client").User} user
+ * @returns {Promise<boolean>}
+ */
+export async function hasLeaderboardAccess(user) {
+  if (user.isAdmin) return true;
+  const membership = await prisma.teamMembership.findFirst({
+    where: { userId: user.id, role: { in: LEADERBOARD_ROLES } },
+    select: { id: true },
+  });
+  return membership !== null;
 }

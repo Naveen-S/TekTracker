@@ -10,7 +10,7 @@ import { prisma } from "@/lib/db";
 import { Role, SprintState } from "@/generated/prisma/client";
 import { aggregateRollup, combineSnapshotsByDay, computeSprintMetrics } from "@/lib/metrics.mjs";
 import { isAiConfigured } from "@/lib/ai/provider";
-import { TEAM_MANAGER_ROLES, TEAM_WRITER_ROLES } from "@/lib/rbac";
+import { TEAM_MANAGER_ROLES, TEAM_WRITER_ROLES, hasLeaderboardAccess } from "@/lib/rbac";
 import { groupSubComponentsByComponent } from "@/lib/sprint-start/track-jql.mjs";
 
 /**
@@ -37,8 +37,12 @@ async function getTeamSprintStartConfig(teamId) {
   return { issueTypeOverrides, componentGroups: groupSubComponentsByComponent(subComponents) };
 }
 
-/** Whether any bug-report dashboard exists — drives the TopBar "Bugs" link (gm-bug-report.md (f)). */
-async function hasActiveBugReport() {
+/**
+ * Whether any bug-report dashboard exists — drives the TopBar "Bugs" link (gm-bug-report.md (f)).
+ * Exported for `leaderboard-data.js` (leaderboard.md), which needs the same flag for its own
+ * TopBar.
+ */
+export async function hasActiveBugReport() {
   return (await prisma.bugReport.count({ where: { isActive: true } })) > 0;
 }
 
@@ -58,8 +62,12 @@ async function getMembershipContext(user) {
   return { roleByTeam, teams };
 }
 
-/** All sprints (Gates are global) + the selection default: requested, else ACTIVE, else latest. */
-async function getSprintSelection(sprintId) {
+/**
+ * All sprints (Gates are global) + the selection default: requested, else ACTIVE, else latest.
+ * Exported for `leaderboard-data.js` (leaderboard.md) — the sprint selector there follows the same
+ * default rule as `/` and `/rollup`; kept here rather than duplicated so the three never drift.
+ */
+export async function getSprintSelection(sprintId) {
   const sprints = await prisma.sprint.findMany({
     orderBy: { developmentStart: "desc" },
     select: {
@@ -80,7 +88,8 @@ async function getSprintSelection(sprintId) {
   return { sprints, selectedSprint };
 }
 
-function serializeUser(user) {
+/** Exported for `leaderboard-data.js` (leaderboard.md) — the same trimmed user shape everywhere. */
+export function serializeUser(user) {
   return {
     displayName: user.displayName,
     email: user.email,
@@ -167,6 +176,8 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
     // UI affordance only (ai-insights.md decision 3) — the ai-digest route re-checks per request.
     aiEnabled: isAiConfigured(),
     hasBugReport: await hasActiveBugReport(),
+    // Sidebar nav visibility only (leaderboard.md) — /leaderboard re-checks per request.
+    hasLeaderboardAccess: await hasLeaderboardAccess(user),
   };
 }
 
@@ -314,6 +325,8 @@ export async function getRollupData(user, { sprintId } = {}) {
     // re-checks per request.
     aiEnabled: isAiConfigured(),
     hasBugReport: await hasActiveBugReport(),
+    // Sidebar nav visibility only (leaderboard.md) — /leaderboard re-checks per request.
+    hasLeaderboardAccess: await hasLeaderboardAccess(user),
   };
 }
 

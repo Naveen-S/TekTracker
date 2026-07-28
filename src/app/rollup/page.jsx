@@ -21,6 +21,7 @@ import {
   HeroTitle,
 } from "@/components/ui/hero-shell";
 import { MetricGrid } from "@/components/dashboard/metric-grid";
+import { StoryPointsHighlight } from "@/components/dashboard/story-points-highlight";
 import { TrendPanel } from "@/components/dashboard/trend-panel";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { RollupTopBar } from "@/components/rollup/rollup-top-bar";
@@ -49,7 +50,11 @@ export default async function RollupPage({ searchParams }) {
   const velocityOverride = trend ? snapshotVelocity(trend.points, selectedSprint, asOf) : null;
 
   return (
-    <AppShell user={data.user} hasBugReport={data.hasBugReport}>
+    <AppShell
+      user={data.user}
+      hasBugReport={data.hasBugReport}
+      hasLeaderboardAccess={data.hasLeaderboardAccess}
+    >
       <div className="flex min-h-screen flex-col">
       <RollupTopBar
         user={data.user}
@@ -97,6 +102,11 @@ export default async function RollupPage({ searchParams }) {
               </div>
             </HeroShell>
 
+            <StoryPointsHighlight
+              completedPoints={combined.completedPoints}
+              totalPoints={combined.points}
+              scope={`this sprint · ${perTeam.length} ${perTeam.length === 1 ? "team" : "teams"}`}
+            />
             <MetricGrid
               metrics={combined}
               sprint={selectedSprint}

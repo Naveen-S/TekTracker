@@ -45,6 +45,21 @@ function MetricCard({ label, icon: Icon, tone = "neutral", children }) {
   );
 }
 
+/**
+ * Full delivery-health breakdown, worst-first (mirrors rollup/team-summary-table.jsx's BANDS so
+ * the same icon/label vocabulary reads identically everywhere in the app). Replaces the old
+ * "X/Y delivery on track" line, which only ever surfaced the on-track count and hid Done/At
+ * Risk/Behind entirely — the reason a sprint at "2/7 on track" could still badge "Excellent".
+ */
+const DELIVERY_BANDS = [
+  { key: "blocked", icon: "⊗", label: "Blocked", className: "text-danger-strong" },
+  { key: "behind", icon: "↓", label: "Behind", className: "text-danger-strong" },
+  { key: "atRisk", icon: "⚠", label: "At Risk", className: "text-warn-strong" },
+  { key: "onTrack", icon: "→", label: "On Track", className: "text-info-strong" },
+  { key: "ahead", icon: "↗", label: "Ahead", className: "text-success-strong" },
+  { key: "done", icon: "✓", label: "Done", className: "text-success-strong" },
+];
+
 function Metric({ label, icon, value, detail, tone }) {
   return (
     <MetricCard label={label} icon={icon} tone={tone}>
@@ -84,11 +99,25 @@ export function MetricGrid({ metrics, sprint, asOf, velocityOverride }) {
             {metrics.sprintHealth.icon} {metrics.sprintHealth.status}
           </Badge>
         </div>
-        <p className="text-xs text-muted-foreground">
-          {metrics.deliveryHealthCounts.ahead + metrics.deliveryHealthCounts.onTrack}/
-          {metrics.totalDeliveryIssues} delivery on track · {metrics.deliveryHealthCounts.blocked}{" "}
-          blocked
-        </p>
+        {metrics.totalDeliveryIssues === 0 ? (
+          <p className="mt-1.5 text-xs text-muted-foreground">no delivery issues yet</p>
+        ) : (
+          <>
+            <p className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs font-semibold tabular-nums">
+              {DELIVERY_BANDS.filter((band) => metrics.deliveryHealthCounts[band.key] > 0).map(
+                (band) => (
+                  <span key={band.key} className={band.className} title={band.label}>
+                    {band.icon} {metrics.deliveryHealthCounts[band.key]}
+                  </span>
+                ),
+              )}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {metrics.totalDeliveryIssues} delivery issue
+              {metrics.totalDeliveryIssues === 1 ? "" : "s"} tracked
+            </p>
+          </>
+        )}
       </MetricCard>
       <Metric
         label="Issues in scope"

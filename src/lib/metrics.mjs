@@ -52,21 +52,33 @@ export function calculateWeightedCompletion(stageCompletion, weights) {
  * Per-issue health vs the time-elapsed expectation (§12 bands). `asOf` (Date or ISO string,
  * default: now) is the explicit clock — frozen shared views pass their `capturedAt` so health
  * doesn't drift after capture (share-view-export.md decision 6).
+ *
+ * Once `asOf` is past the dev cycle's `developmentEnd`, the committed delivery deadline has
+ * already passed — an incomplete issue can never read as "On Track"/"Ahead" again (that language
+ * implies pacing toward a deadline that still lies ahead). This is what let a 93%-complete issue
+ * read "On Track" — and the sprint overall read "Excellent" — well after its dev cycle had ended.
  */
 export function getHealthStatus(completionPercent, isBlocked, sprint, asOf) {
   if (isBlocked) return { status: "Blocked", tone: "danger", icon: "⊗" };
+  if (completionPercent === 100) return { status: "Done", tone: "success", icon: "✓" };
 
   const today = asOf ? new Date(asOf) : new Date();
   const startDate = new Date(sprint.developmentStart);
   const endDate = new Date(sprint.developmentEnd);
   const totalDays = (endDate - startDate) / DAY_MS;
   const elapsedDays = (today - startDate) / DAY_MS;
+  const isPastDeadline = today > endDate;
   const expectedProgress = Math.max(0, Math.min(100, (elapsedDays / totalDays) * 100));
   const progressDelta = completionPercent - expectedProgress;
 
-  if (completionPercent === 100) return { status: "Done", tone: "success", icon: "✓" };
   if (completionPercent === 0 && expectedProgress < 5)
     return { status: "Not Started", tone: "neutral", icon: "○" };
+
+  if (isPastDeadline) {
+    if (completionPercent >= 90) return { status: "At Risk", tone: "warn", icon: "⚠" };
+    return { status: "Behind", tone: "danger", icon: "↓" };
+  }
+
   if (progressDelta >= 10) return { status: "Ahead", tone: "success", icon: "↗" };
   if (progressDelta >= -10) return { status: "On Track", tone: "info", icon: "→" };
   if (progressDelta >= -25) return { status: "At Risk", tone: "warn", icon: "⚠" };
@@ -247,6 +259,137 @@ export function aggregateRollup(perTeamMetrics) {
     riskCount:
       deliveryHealthCounts.blocked + deliveryHealthCounts.behind + deliveryHealthCounts.atRisk,
   };
+}
+
+/**
+ * Per-developer weighted-point aggregation over one team+sprint's ALREADY-RESOLVED issues (the
+ * `issues` array `computeSprintMetrics` returns — same ALL-WORK throughput scope as
+ * `velocityPoints`/`velocityCompletedPoints`, leaderboard.md decision 2 "everything counts").
+ * Reuses the per-issue `percent`/`storyPoints` `computeSprintMetrics` already resolved — no
+ * re-derivation of the delivery/throughput lens split, no re-running `calculateWeightedCompletion`.
+ * Unassigned issues (`assigneeAccountId` null/undefined) are SKIPPED (decision 8) — they already
+ * count toward the team total via `computeSprintMetrics.completedPoints`, which this function does
+ * not touch.
+ *
+ * @param {Array} issues — `computeSprintMetrics(...).issues`
+ * @returns {Array<{ assigneeAccountId: string, assigneeName: string, totalPoints: number,
+ *   completedPoints: number, issueCount: number }>} unsorted, one row per distinct account id.
+ */
+export function aggregateByDeveloper(issues) {
+  const byDeveloper = new Map();
+  for (const issue of issues) {
+    if (!issue.assigneeAccountId) continue;
+    const entry = byDeveloper.get(issue.assigneeAccountId) ?? {
+      assigneeAccountId: issue.assigneeAccountId,
+      assigneeName: issue.assigneeName ?? "Unknown",
+      totalPoints: 0,
+      completedPoints: 0,
+      issueCount: 0,
+    };
+    entry.totalPoints += issue.storyPoints;
+    entry.completedPoints += issue.storyPoints * (issue.percent / 100);
+    entry.issueCount += 1;
+    byDeveloper.set(issue.assigneeAccountId, entry);
+  }
+  return [...byDeveloper.values()];
+}
+
+/**
+ * Team-velocity-per-developer — `completedPoints ÷ developerCount` (leaderboard.md decisions 1 + 3:
+ * numerator is the SAME weighted-completion metric as everywhere else, denominator is the
+ * admin-entered `Team.developerCount`). `null` when `developerCount` is unset/≤0 — the caller
+ * excludes the team from the ranked board but still shows its developers individually.
+ *
+ * @param {number} completedPoints
+ * @param {number|null|undefined} developerCount
+ * @returns {number|null}
+ */
+export function teamVelocityPerDeveloper(completedPoints, developerCount) {
+  if (!developerCount || developerCount <= 0) return null;
+  return completedPoints / developerCount;
+}
+
+/**
+ * All-time cross-sprint TEAM totals — sums the all-work throughput fields
+ * (`velocityPoints`/`velocityCompletedPoints`) over every (team, sprint) `computeSprintMetrics`
+ * result the caller ran (one row per team+sprint pair that had ≥1 filter).
+ *
+ * @param {Array<{ teamId: string, metrics: object }>} historyRows
+ * @returns {Array<{ teamId: string, totalPoints: number, completedPoints: number,
+ *   sprintsCounted: number }>}
+ */
+export function aggregateTeamAllTime(historyRows) {
+  const byTeam = new Map();
+  for (const { teamId, metrics } of historyRows) {
+    const entry = byTeam.get(teamId) ?? {
+      teamId,
+      totalPoints: 0,
+      completedPoints: 0,
+      sprintsCounted: 0,
+    };
+    entry.totalPoints += metrics.velocityPoints;
+    entry.completedPoints += metrics.velocityCompletedPoints;
+    entry.sprintsCounted += 1;
+    byTeam.set(teamId, entry);
+  }
+  return [...byTeam.values()];
+}
+
+/**
+ * All-time cross-sprint DEVELOPER totals — sums `aggregateByDeveloper` over the same
+ * `historyRows`, across every team (the developer board is ORG-WIDE regardless of the viewer's own
+ * teams, decision 5). A developer who appears under more than one team (a loaned engineer, Open
+ * Risk 3) has their points summed correctly; the `teamId` tag reflects whichever row was LAST
+ * encountered for that developer, so callers should pass `historyRows` in a stable, meaningful
+ * order (e.g. sprint ascending, so the tag reads as "most recent team") — this is a display
+ * simplification, not a scoring one.
+ *
+ * @param {Array<{ teamId: string, metrics: object }>} historyRows
+ * @returns {Array<{ assigneeAccountId: string, assigneeName: string, teamId: string,
+ *   totalPoints: number, completedPoints: number, issueCount: number }>}
+ */
+export function aggregateDeveloperAllTime(historyRows) {
+  const byDeveloper = new Map();
+  for (const { teamId, metrics } of historyRows) {
+    for (const row of aggregateByDeveloper(metrics.issues)) {
+      const entry = byDeveloper.get(row.assigneeAccountId) ?? {
+        assigneeAccountId: row.assigneeAccountId,
+        assigneeName: row.assigneeName,
+        teamId,
+        totalPoints: 0,
+        completedPoints: 0,
+        issueCount: 0,
+      };
+      entry.totalPoints += row.totalPoints;
+      entry.completedPoints += row.completedPoints;
+      entry.issueCount += row.issueCount;
+      entry.teamId = teamId;
+      byDeveloper.set(row.assigneeAccountId, entry);
+    }
+  }
+  return [...byDeveloper.values()];
+}
+
+/**
+ * Attach 1-based competition rank to `rows` sorted DESC by `metricKey` — ties share a rank, the
+ * next distinct value skips (1, 2, 2, 4). Pure; keeps full float precision, rounds only at render
+ * time (the MetricGrid convention).
+ *
+ * @param {Array<object>} rows
+ * @param {{ metricKey: string }} opts
+ * @returns {Array<object & { rank: number }>}
+ */
+export function rankBy(rows, { metricKey }) {
+  const sorted = [...rows].sort((a, b) => b[metricKey] - a[metricKey]);
+  let rank = 0;
+  let lastValue = null;
+  return sorted.map((row, index) => {
+    if (lastValue === null || row[metricKey] !== lastValue) {
+      rank = index + 1;
+      lastValue = row[metricKey];
+    }
+    return { ...row, rank };
+  });
 }
 
 /**

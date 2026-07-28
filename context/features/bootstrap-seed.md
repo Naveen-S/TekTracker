@@ -35,6 +35,34 @@ TECH_DEBT/SUPPORT/INTERNAL_BUG 8 each; CUSTOM skipped). Verified idempotent (re-
 35 rows, no duplicates), the out-of-range `stageIndex` guard fails loudly before any write, and
 `yarn lint` + `yarn build` stay green and DB-free. See **As-built deviations**.
 
+**Extended 2026-07-27/2026-07-28** (ad hoc, requested directly by Naveen while reading the Delivery
+Matrix against real synced issues — not a re-plan, just closing decision 2's "rest ships as
+defaults" gap one real status at a time). Every addition was **grounded against live Tekion Jira**
+(`searchJiraIssuesUsingJql`, never guessed) before being added to the seed, confirming which
+issue type(s)/workflow(s) each status actually appears on:
+
+- **`UAT`** — Story/Tech Story only → `FEATURE` + `TECH_DEBT`, mapped to each workflow's final
+  stage (Done).
+- **`OEM Review`**, **`Close as Duplicate`** — Bug-type statuses seen on both `Tap Ticket` (ENG,
+  the External Bugs project) and `Bug` (team projects) → `SUPPORT` + `INTERNAL_BUG`, final stage.
+- **`Support Validation`** — exclusive to `Tap Ticket`/ENG → `SUPPORT` only, final stage.
+- **`Not Applicable`** — seen on `Story`, `Tap Ticket`, and `Bug` → `FEATURE` + `SUPPORT` +
+  `INTERNAL_BUG`, final stage.
+- **`Testing`** (pre-existing row) — corrected for `FEATURE` from stageIndex 6 ("QA/PM demo") to 9
+  (Done); it was already the terminal stage for `TECH_DEBT`/`SUPPORT`/`INTERNAL_BUG` via
+  `FOUR_STAGE_STATUS_MAP`, so those three needed no change.
+
+Global `StatusStageMapping` row count: **35 → 39 → 42 → 45** across the three rounds. Re-verified
+after each round: `yarn db:seed` against Neon (delete-then-recreate of the `teamId = null` set,
+per-team overrides untouched), a direct DB read confirming the exact new rows, `yarn lint` clean,
+`prisma validate` + `migrate status` up to date (6 migrations, **no schema change — pure seed
+data**), and a **15/15 pure-fixture functional check** (not just "the row exists" — for every new/
+changed `(workflow, status)` pair, `buildSeededStages` + `calculateWeightedCompletion` against the
+live-persisted mappings and the real `WORKFLOWS` weights were asserted to equal 100%, plus one
+sanity control proving an unmapped status like `Groomed` still does *not* seed to Done). Env-free
+`yarn build` re-verified green after the final round, **42 ƒ Dynamic unchanged** (no routes touched
+— this is pure seed data consumed by the existing sync engine, `src/lib/sync/engine.js`).
+
 ## Decisions (ratified 2026-06-15) & remaining validation
 
 1. **Global ADMIN → resolved: add `User.isAdmin`.** Split out as the prerequisite
@@ -76,7 +104,9 @@ TECH_DEBT/SUPPORT/INTERNAL_BUG 8 each; CUSTOM skipped). Verified idempotent (re-
 - `stageIndex` checks that stage **and auto-checks `0..n`** (the checklist rule), so map each status
   to the **highest** lifecycle stage it implies. Statuses meaning "not started" get **no row**
   (issue seeds to all-false). Seed `FEATURE`, `TECH_DEBT`, `SUPPORT`, `INTERNAL_BUG`; skip `CUSTOM`.
-- **Proposed defaults (PROPOSED — confirm against real statuses, Open question 2):**
+- **Defaults, current as of 2026-07-28** (originally proposed 2026-06-15; every status below is now
+  either Naveen-confirmed or live-Jira-confirmed — see the Status section's 2026-07-27/28 entry for
+  which):
 
   `FEATURE` (stages 0–9: PM clarification, HLD/LLD, API contracts, Working APIs, FE integration, E2E
   testing, QA/PM demo, PR approved, Release ready, 1st Stage Env deployment)
@@ -85,22 +115,34 @@ TECH_DEBT/SUPPORT/INTERNAL_BUG 8 each; CUSTOM skipped). Verified idempotent (re-
   | Groomed / Ready for Dev | 0 | PM clarification |
   | In Progress / In Development | 3 | Working APIs |
   | Code Review / In Review | 5 | E2E testing |
-  | Testing / In QA | 6 | QA/PM demo |
-  | Done / Released / Closed | 9 | 1st Stage Env deployment |
+  | In QA | 6 | QA/PM demo |
+  | Testing / UAT / Not Applicable / Done / Released / Closed | 9 | 1st Stage Env deployment |
 
-  > Code Review → 5 and Testing/In QA → 6 are **confirmed by Naveen (2026-06-15)**; the mapping is now
-  > monotonic. `Groomed→0`, `In Progress→3`, `Done→9` remain best-effort defaults pending validation
-  > against real Tekion statuses (decision 2 above).
+  > Code Review → 5 and In QA → 6 confirmed by Naveen (2026-06-15). `Testing` moved from 6 → 9
+  > (2026-07-28) — it's terminal on Story issues in practice, not mid-lifecycle. `UAT` and
+  > `Not Applicable` added 2026-07-27/28, both confirmed live as Story-issue statuses.
 
-  `TECH_DEBT` / `SUPPORT` / `INTERNAL_BUG` (stages 0–3: Triaged, In Progress, Code Review, In QA) —
-  clean and monotonic:
+  `TECH_DEBT` (stages 0–3: Triaged, In Progress, Code Review, In QA) — the base 4-stage map plus one
+  addition:
   | Jira status | → stageIndex |
   |---|---|
   | Triaged | 0 |
   | In Progress | 1 |
   | Code Review / In Review | 2 |
-  | In QA / Testing | 3 |
-  | Done / Closed | 3 |
+  | In QA / Testing / Done / Closed / UAT | 3 |
+
+  `SUPPORT` (External Bugs) and `INTERNAL_BUG` — the base 4-stage map plus bug-terminal statuses;
+  the two diverge on `Support Validation`, which only ever appears on `Tap Ticket` (ENG):
+  | Jira status | → stageIndex | SUPPORT | INTERNAL_BUG |
+  |---|---|---|---|
+  | Triaged | 0 | ✓ | ✓ |
+  | In Progress | 1 | ✓ | ✓ |
+  | Code Review / In Review | 2 | ✓ | ✓ |
+  | In QA / Testing / Done / Closed | 3 | ✓ | ✓ |
+  | OEM Review | 3 | ✓ | ✓ |
+  | Close as Duplicate | 3 | ✓ | ✓ |
+  | Not Applicable | 3 | ✓ | ✓ |
+  | Support Validation | 3 | ✓ | — |
 
 ### Mechanism
 
@@ -177,6 +219,12 @@ TECH_DEBT/SUPPORT/INTERNAL_BUG 8 each; CUSTOM skipped). Verified idempotent (re-
 - **Status synonyms are separate rows.** Each "A / B" cell in the proposed tables expands to one row
   per status name (35 total: FEATURE 11, the three 4-stage workflows 8 each), since matching is per
   raw status name.
+- **SUPPORT and INTERNAL_BUG no longer share one literal array (2026-07-27).** They still both
+  spread the same `FOUR_STAGE_STATUS_MAP` base, but `Support Validation` is SUPPORT-only (it's
+  exclusive to `Tap Ticket`/ENG in real Jira data) — the two workflow entries in
+  `STATUS_STAGE_SEED` diverged from the original `FOUR_STAGE_STATUS_MAP` alias to two explicit
+  arrays. `TECH_DEBT` stayed a spread (`[...FOUR_STAGE_STATUS_MAP, ["UAT", 3]]`) since it only
+  gained one addition.
 
 ## References
 

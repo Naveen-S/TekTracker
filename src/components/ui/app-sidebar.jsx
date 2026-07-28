@@ -13,14 +13,14 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Bug, Layers, LayoutGrid, PanelLeft, PanelLeftClose, Settings } from "lucide-react";
+import { Bug, Layers, LayoutGrid, PanelLeft, PanelLeftClose, Settings, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NavLink } from "./nav-link";
 import { useLocalPref } from "@/lib/use-local-pref";
 
 const COLLAPSE_KEY = "sprintTracker_sidebarCollapsed";
 
-export function AppSidebar({ user, hasBugReport }) {
+export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess }) {
   const pathname = usePathname();
   const [collapsedPref, setCollapsedPref] = useLocalPref(COLLAPSE_KEY, "false");
   const collapsed = collapsedPref === "true";
@@ -28,6 +28,16 @@ export function AppSidebar({ user, hasBugReport }) {
   const nav = [
     { href: "/", label: "My board", icon: LayoutGrid, active: pathname === "/" },
     { href: "/rollup", label: "Roll-up", icon: Layers, active: pathname.startsWith("/rollup") },
+    ...(hasLeaderboardAccess
+      ? [
+          {
+            href: "/leaderboard",
+            label: "Leaderboard",
+            icon: Trophy,
+            active: pathname.startsWith("/leaderboard"),
+          },
+        ]
+      : []),
     ...(hasBugReport
       ? [{ href: "/bugs", label: "Bug report", icon: Bug, active: pathname.startsWith("/bugs") }]
       : []),

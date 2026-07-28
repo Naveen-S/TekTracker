@@ -56,7 +56,11 @@ export default async function AdminPage() {
   const bugData = await getBugReportData(undefined, new Date());
 
   return (
-    <AppShell user={user} hasBugReport={(bugData?.reports?.length ?? 0) > 0}>
+    <AppShell
+      user={user}
+      hasBugReport={(bugData?.reports?.length ?? 0) > 0}
+      hasLeaderboardAccess
+    >
       <AdminPanel
         teams={teams}
         sprints={sprints}

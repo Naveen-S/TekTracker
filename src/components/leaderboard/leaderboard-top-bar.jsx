@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * The roll-up page's only client leaf (ed-rollup.md decision 7): sprint selection travels in
- * `?sprint=` via router.push; everything else on /rollup is server-rendered and read-only.
+ * The leaderboard page's only client leaf (leaderboard.md): time-scope (This sprint / All-time) and
+ * sprint selection travel in `?view=&sprint=` via router.push; everything else on `/leaderboard` is
+ * server-rendered and read-only.
  */
 import Image from "next/image";
 import { useTransition } from "react";
@@ -15,7 +16,7 @@ import { AvatarChip } from "@/components/ui/avatar-chip";
 import { PageLoader } from "@/components/ui/spinner";
 import { apiFetch } from "@/lib/api-client";
 
-export function RollupTopBar({ user, sprints, selectedSprint, hasBugReport }) {
+export function LeaderboardTopBar({ user, sprints, selectedSprint, view, hasBugReport }) {
   const router = useRouter();
   const [switching, startSwitch] = useTransition();
 
@@ -28,6 +29,13 @@ export function RollupTopBar({ user, sprints, selectedSprint, hasBugReport }) {
     }
   };
 
+  const navigate = ({ view: nextView, sprint: nextSprint }) => {
+    const params = new URLSearchParams();
+    params.set("view", nextView);
+    if (nextView === "sprint" && nextSprint) params.set("sprint", nextSprint);
+    startSwitch(() => router.push(`/leaderboard?${params.toString()}`));
+  };
+
   return (
     <header className="sticky top-0 z-40 flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b bg-card px-4 py-2 shadow-xs md:flex-nowrap md:gap-4 md:px-6 md:py-0">
       <div className="flex items-center gap-3 lg:hidden">
@@ -35,20 +43,27 @@ export function RollupTopBar({ user, sprints, selectedSprint, hasBugReport }) {
         <span className="hidden h-5.5 w-px bg-border sm:block" aria-hidden="true" />
         <div className="hidden leading-tight sm:block">
           <p className="font-display text-sm font-bold">Sprint Tracker</p>
-          <p className="text-[11px] text-muted-foreground">Multi-team roll-up</p>
+          <p className="text-[11px] text-muted-foreground">Leaderboard</p>
         </div>
       </div>
 
-      {sprints.length > 0 && (
+      <Select
+        aria-label="Time scope"
+        value={view}
+        disabled={switching}
+        onChange={(event) => navigate({ view: event.target.value, sprint: selectedSprint?.id })}
+        className="w-auto"
+      >
+        <option value="sprint">This sprint</option>
+        <option value="allTime">All-time</option>
+      </Select>
+
+      {view === "sprint" && sprints.length > 0 && (
         <Select
           aria-label="Sprint"
           value={selectedSprint?.id ?? ""}
           disabled={switching}
-          onChange={(event) =>
-            startSwitch(() =>
-              router.push(`/rollup?sprint=${encodeURIComponent(event.target.value)}`),
-            )
-          }
+          onChange={(event) => navigate({ view: "sprint", sprint: event.target.value })}
         >
           {sprints.map((sprint) => (
             <option key={sprint.id} value={sprint.id}>
@@ -61,6 +76,9 @@ export function RollupTopBar({ user, sprints, selectedSprint, hasBugReport }) {
       <div className="ml-auto flex items-center gap-2">
         <Button variant="ghost" size="sm" className="lg:hidden" asChild>
           <NavLink href="/">My board</NavLink>
+        </Button>
+        <Button variant="ghost" size="sm" className="lg:hidden" asChild>
+          <NavLink href="/rollup">Roll-up</NavLink>
         </Button>
         {hasBugReport && (
           <Button variant="ghost" size="sm" className="lg:hidden" asChild>

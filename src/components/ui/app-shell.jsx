@@ -11,10 +11,10 @@
  */
 import { AppSidebar } from "./app-sidebar";
 
-export function AppShell({ user, hasBugReport = false, children }) {
+export function AppShell({ user, hasBugReport = false, hasLeaderboardAccess = false, children }) {
   return (
     <div className="app-shell flex min-h-screen">
-      <AppSidebar user={user} hasBugReport={hasBugReport} />
+      <AppSidebar user={user} hasBugReport={hasBugReport} hasLeaderboardAccess={hasLeaderboardAccess} />
       <div className="app-main flex min-w-0 flex-1 flex-col">{children}</div>
     </div>
   );

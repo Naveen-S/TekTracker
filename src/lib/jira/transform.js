@@ -17,6 +17,8 @@
 export const DEFAULT_STORY_POINTS_FIELD = "customfield_10008";
 export const LEGACY_STORY_POINTS_FIELD = "customfield_10016";
 export const DEFAULT_SPRINT_FIELD = "customfield_10020";
+export const ORIGINAL_ESTIMATE_FIELD = "timeoriginalestimate"; // standard Jira field, seconds
+export const HOURS_PER_STORY_POINT = 8; // 1 point ≈ 1 working day, for the Original Estimate fallback
 
 /**
  * The `fields` list requested from Jira search — everything the transform reads, nothing more.
@@ -31,11 +33,31 @@ export function buildIssueFields({ storyPointsFieldId, sprintFieldId }) {
     "issuetype",
     storyPointsFieldId,
     LEGACY_STORY_POINTS_FIELD,
+    ORIGINAL_ESTIMATE_FIELD,
     "duedate",
     "priority",
     sprintFieldId,
     "fixVersions",
   ];
+}
+
+/**
+ * Story points, falling back to Original Estimate (`timeoriginalestimate`, seconds) when the
+ * issue has no story points set — `HOURS_PER_STORY_POINT` converts estimate hours to a
+ * points-equivalent (1 point ≈ 1 working day). An explicit 0 is treated the same as "not set":
+ * Jira issues left unpointed report 0/blank indistinguishably here, and a 0-point issue carries
+ * no useful signal for velocity/leaderboard either way.
+ */
+function resolveStoryPoints(rawPoints, rawOriginalEstimateSeconds) {
+  const explicit = Number(rawPoints);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+
+  const estimateHours = Number(rawOriginalEstimateSeconds) / 3600;
+  if (Number.isFinite(estimateHours) && estimateHours > 0) {
+    return Math.round((estimateHours / HOURS_PER_STORY_POINT) * 100) / 100;
+  }
+
+  return 0;
 }
 
 /**
@@ -72,7 +94,10 @@ export function transformJiraIssue(raw, fieldIds = {}) {
   } = fieldIds;
   const fields = raw.fields ?? {};
 
-  const points = Number(fields[storyPointsFieldId] ?? fields[LEGACY_STORY_POINTS_FIELD] ?? 0);
+  const points = resolveStoryPoints(
+    fields[storyPointsFieldId] ?? fields[LEGACY_STORY_POINTS_FIELD],
+    fields[ORIGINAL_ESTIMATE_FIELD],
+  );
 
   const fixVersions =
     Array.isArray(fields.fixVersions) && fields.fixVersions.length > 0
@@ -86,7 +111,7 @@ export function transformJiraIssue(raw, fieldIds = {}) {
     jiraStatus: fields.status?.name ?? "Unknown",
     assigneeName: fields.assignee?.displayName ?? fields.assignee?.name ?? null,
     assigneeAccountId: fields.assignee?.accountId ?? null,
-    storyPoints: Number.isFinite(points) ? points : 0,
+    storyPoints: points,
     priority: fields.priority?.name ?? null,
     dueDate: fields.duedate ? new Date(fields.duedate) : null,
     jiraSprintName: extractSprintName(fields[sprintFieldId]),

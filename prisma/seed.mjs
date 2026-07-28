@@ -47,15 +47,36 @@ const STATUS_STAGE_SEED = {
     ["In Development", 3],
     ["Code Review", 5],
     ["In Review", 5],
-    ["Testing", 6],
     ["In QA", 6],
+    // Testing/Not Applicable are terminal on Story issues (confirmed live 2026-07-28) — Done, not
+    // the mid-lifecycle "QA/PM demo" stage Testing used to imply.
+    ["Testing", 9],
+    ["UAT", 9],
+    ["Not Applicable", 9],
     ["Done", 9],
     ["Released", 9],
     ["Closed", 9],
   ],
-  TECH_DEBT: FOUR_STAGE_STATUS_MAP,
-  SUPPORT: FOUR_STAGE_STATUS_MAP,
-  INTERNAL_BUG: FOUR_STAGE_STATUS_MAP,
+  // UAT is a real Tekion Jira status on Story/Tech Story issues (confirmed live 2026-07-27) —
+  // FEATURE and TECH_DEBT only, not the bug workflows.
+  TECH_DEBT: [...FOUR_STAGE_STATUS_MAP, ["UAT", 3]],
+  // OEM Review / Close as Duplicate / Support Validation / Not Applicable are real terminal Tekion
+  // Jira statuses (confirmed live 2026-07-27/28) — SUPPORT (External Bugs, Tap Ticket in ENG) and
+  // INTERNAL_BUG (Bug in the team's own project), except Support Validation which only appears on
+  // Tap Ticket. Testing already lands on FOUR_STAGE_STATUS_MAP's last stage for both.
+  SUPPORT: [
+    ...FOUR_STAGE_STATUS_MAP,
+    ["OEM Review", 3],
+    ["Close as Duplicate", 3],
+    ["Support Validation", 3],
+    ["Not Applicable", 3],
+  ],
+  INTERNAL_BUG: [
+    ...FOUR_STAGE_STATUS_MAP,
+    ["OEM Review", 3],
+    ["Close as Duplicate", 3],
+    ["Not Applicable", 3],
+  ],
 };
 
 /** zod row shape; `stageIndex` bounds are checked against the workflow's stage count below. */

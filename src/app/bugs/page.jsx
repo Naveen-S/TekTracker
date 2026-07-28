@@ -5,6 +5,7 @@
  */
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
+import { hasLeaderboardAccess } from "@/lib/rbac";
 import { BugsTopBar } from "@/components/bugs/bugs-top-bar";
 import { BugsPage } from "@/components/bugs/bugs-page";
 import { AppShell } from "@/components/ui/app-shell";
@@ -16,9 +17,10 @@ export default async function BugsRoute() {
   if (!user) {
     redirect("/login");
   }
+  const canSeeLeaderboard = await hasLeaderboardAccess(user);
 
   return (
-    <AppShell user={user} hasBugReport>
+    <AppShell user={user} hasBugReport hasLeaderboardAccess={canSeeLeaderboard}>
       <div className="flex min-h-screen flex-col">
         <BugsTopBar user={user} />
         <BugsPage user={user} />

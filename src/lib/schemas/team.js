@@ -32,6 +32,9 @@ const teamFields = z.object({
   techDebtIssueTypes: issueTypeArray,
   internalBugIssueTypes: issueTypeArray,
   supportIssueTypes: issueTypeArray,
+  // Leaderboard.md decision 3: the team velocity leaderboard's points ÷ developers divisor.
+  // null/unset ⇒ excluded from the team leaderboard's ranking.
+  developerCount: z.coerce.number().int().min(1).max(200).nullish(),
 });
 
 export const teamCreateSchema = teamFields;

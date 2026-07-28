@@ -6,7 +6,7 @@ import { Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
-import { initials } from "@/lib/utils";
+import { AvatarChip } from "@/components/ui/avatar-chip";
 
 export function TopBar({
   user,
@@ -40,6 +40,7 @@ export function TopBar({
           <Select
             aria-label="Scrum team"
             value={selectedTeam?.id ?? ""}
+            disabled={busy}
             onChange={(event) => onSelect(event.target.value, selectedSprint?.id)}
           >
             {teams.map((team) => (
@@ -53,6 +54,7 @@ export function TopBar({
           <Select
             aria-label="Sprint"
             value={selectedSprint?.id ?? ""}
+            disabled={busy}
             onChange={(event) => onSelect(selectedTeam?.id, event.target.value)}
           >
             {sprints.map((sprint) => (
@@ -92,12 +94,10 @@ export function TopBar({
           </Button>
         )}
         <ThemeToggle />
-        <div
-          className="flex size-8 items-center justify-center rounded-full bg-ink text-xs font-bold text-white"
+        <AvatarChip
+          name={user.displayName || user.email}
           title={`${user.displayName} · ${user.email}`}
-        >
-          {initials(user.displayName || user.email)}
-        </div>
+        />
         <Button variant="ghost" size="sm" onClick={onLogout} title="Sign out">
           Logout
         </Button>

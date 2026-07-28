@@ -90,6 +90,13 @@ model Team {
   techDebtIssueTypes    String[]
   internalBugIssueTypes String[]
   supportIssueTypes     String[]
+  /// Admin-entered scrum-team headcount — the Team Velocity Leaderboard's "points ÷ developers"
+  /// divisor (leaderboard.md decision 3). Mirrors storyPointsFieldId/sprintFieldId: a per-team,
+  /// admin-entered value, not derived from Jira/distinct assignees (headcount should include
+  /// people on leave/ramping who still count toward capacity, and shouldn't fluctuate with Jira
+  /// assignment noise). `null` ⇒ the team is excluded from the TEAM leaderboard's ranking (its
+  /// developers still appear individually on the developer leaderboard).
+  developerCount        Int?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 

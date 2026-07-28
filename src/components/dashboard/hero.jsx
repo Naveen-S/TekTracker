@@ -46,6 +46,11 @@ export function Hero({
           ) : (
             <HeroCopy>A team Lead/EM adds the Jira filters — nothing here yet.</HeroCopy>
           )}
+          {onSprintStart && (
+            <Button variant="onDark" onClick={onSprintStart}>
+              <Rocket /> Sprint Start
+            </Button>
+          )}
           {onConfigureSprint && (
             <Button variant="onDark" onClick={onConfigureSprint}>
               Configure Sprint
