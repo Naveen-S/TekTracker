@@ -112,6 +112,10 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
   let filters = [];
   let progressByKey = {};
   let snapshots = [];
+  // committed-unplanned-work.md — admin-configured Committed-points target for this team+sprint.
+  // A sibling of `metrics` (never folded into computeSprintMetrics), since it's an admin-entered
+  // value, not derived from issues; `null` when unconfigured (decision 3).
+  let capacity = null;
   if (selectedTeam && selectedSprint) {
     filters = await prisma.filter.findMany({
       where: { teamId: selectedTeam.id, sprintId: selectedSprint.id },
@@ -142,6 +146,11 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
         totalIssues: true,
       },
     });
+    const capacityRow = await prisma.sprintCapacity.findUnique({
+      where: { sprintId_teamId: { sprintId: selectedSprint.id, teamId: selectedTeam.id } },
+      select: { committedPoints: true },
+    });
+    capacity = capacityRow ? { committedPoints: capacityRow.committedPoints } : null;
   }
 
   // UI affordances only — every mutation is re-checked server-side by the step-4/5 routes.
@@ -167,6 +176,7 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
     filters,
     progressByKey,
     snapshots,
+    capacity,
     sprintStartConfig,
     // Request-time clock for the trend panel's "today" marker + projection — passed down so the
     // SSR render and the client hydration draw identical geometry (no client-side new Date()).
@@ -254,6 +264,7 @@ export async function getRollupData(user, { sprintId } = {}) {
 
   let perTeam = [];
   let combinedSnapshots = [];
+  let combinedCapacity = null;
   if (selectedSprint && teams.length > 0) {
     const teamIds = teams.map((team) => team.id);
     const filters = await prisma.filter.findMany({
@@ -291,6 +302,23 @@ export async function getRollupData(user, { sprintId } = {}) {
     });
     combinedSnapshots = combineSnapshotsByDay(snapshotRows);
 
+    // committed-unplanned-work.md — one batched (no-N+1) read, attached per team below and summed
+    // into a portfolio total. `configuredTeamCount`/`totalTeamCount` drive the roll-up's "N of M
+    // teams configured" caveat (decision 8) rather than hiding the total for partial configuration.
+    const capacityRows = await prisma.sprintCapacity.findMany({
+      where: { teamId: { in: teamIds }, sprintId: selectedSprint.id },
+      select: { teamId: true, committedPoints: true },
+    });
+    const capacityByTeam = new Map(capacityRows.map((row) => [row.teamId, row.committedPoints]));
+    combinedCapacity =
+      capacityRows.length > 0
+        ? {
+            committedPoints: capacityRows.reduce((sum, row) => sum + row.committedPoints, 0),
+            configuredTeamCount: capacityRows.length,
+            totalTeamCount: teams.length,
+          }
+        : null;
+
     perTeam = teams.map((team) => {
       const teamFilters = filters.filter((filter) => filter.teamId === team.id);
       const progressByKey = Object.fromEntries(
@@ -304,6 +332,9 @@ export async function getRollupData(user, { sprintId } = {}) {
         myRole: roleByTeam.get(team.id) ?? null,
         filters: teamFilters,
         metrics: computeSprintMetrics(teamFilters, progressByKey, selectedSprint),
+        capacity: capacityByTeam.has(team.id)
+          ? { committedPoints: capacityByTeam.get(team.id) }
+          : null,
         lastSyncedAt:
           syncTimes.length > 0
             ? new Date(Math.max(...syncTimes.map((value) => value.getTime())))
@@ -319,6 +350,7 @@ export async function getRollupData(user, { sprintId } = {}) {
     selectedSprint,
     perTeam,
     combinedSnapshots,
+    combinedCapacity,
     combined: selectedSprint ? aggregateRollup(perTeam.map((entry) => entry.metrics)) : null,
     jiraBaseUrl: process.env.JIRA_BASE_URL?.trim().replace(/\/+$/, "") ?? null,
     // UI affordance only (ai-insights.md decision 3 precedent) — the rollup ai-digest route
@@ -335,12 +367,15 @@ export const VIEWER_ROLE = Role.VIEWER;
 
 /**
  * Freeze the INPUTS of a shared view (share-view-export.md decision 5): filters (with cached
- * issues), progress rows, and the sprint window as of capture. Stored in `SharedView.snapshot`;
- * the share page recomputes metrics from these with `asOf = capturedAt`, so a frozen share's
- * numbers never drift — not even if an admin later edits the sprint dates. The JSON round-trip
+ * issues), progress rows, the sprint window as of capture, and — committed-unplanned-work.md —
+ * the team's committed capacity as of capture. Stored in `SharedView.snapshot`; the share page
+ * recomputes metrics from these with `asOf = capturedAt`, so a frozen share's numbers never drift —
+ * not even if an admin later edits the sprint dates or the capacity matrix. The JSON round-trip
  * turns Dates into ISO strings (metrics/format helpers coerce them back).
+ *
+ * @param {object|null} capacity `{ committedPoints } | null`, as returned by getDashboardData.
  */
-export function buildShareSnapshot(filters, progressRows, sprint) {
+export function buildShareSnapshot(filters, progressRows, sprint, capacity) {
   return JSON.parse(
     JSON.stringify({
       capturedAt: new Date(),
@@ -352,6 +387,7 @@ export function buildShareSnapshot(filters, progressRows, sprint) {
       },
       filters,
       progress: progressRows,
+      capacity: capacity ?? null,
     }),
   );
 }
@@ -390,6 +426,7 @@ export async function getShareData(token) {
       filters: snapshot.filters,
       progressByKey,
       metrics: computeSprintMetrics(snapshot.filters, progressByKey, sprint, asOf),
+      capacity: snapshot.capacity ?? null,
       asOf,
       lastSyncedAt: null,
     };
@@ -410,6 +447,10 @@ export async function getShareData(token) {
   });
   const progressByKey = Object.fromEntries(progress.map((row) => [row.jiraKey, row]));
   const syncTimes = filters.map((filter) => filter.lastSyncedAt).filter((value) => value !== null);
+  const capacityRow = await prisma.sprintCapacity.findUnique({
+    where: { sprintId_teamId: { sprintId: share.sprintId, teamId } },
+    select: { committedPoints: true },
+  });
   return {
     isLive: true,
     viewDensity: share.viewDensity,
@@ -418,6 +459,7 @@ export async function getShareData(token) {
     filters,
     progressByKey,
     metrics: computeSprintMetrics(filters, progressByKey, share.sprint),
+    capacity: capacityRow ? { committedPoints: capacityRow.committedPoints } : null,
     asOf: null,
     lastSyncedAt:
       syncTimes.length > 0

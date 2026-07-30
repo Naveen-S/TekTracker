@@ -60,6 +60,7 @@ export function Dashboard({
   filters,
   progressByKey,
   snapshots,
+  capacity,
   sprintStartConfig,
   asOf,
   metrics,
@@ -310,6 +311,21 @@ export function Dashboard({
                 <StoryPointsHighlight
                   completedPoints={metrics.completedPoints}
                   totalPoints={metrics.points}
+                  breakdown={{
+                    committed: {
+                      points: metrics.committedPoints,
+                      completedPoints: metrics.committedCompletedPoints,
+                    },
+                    techDebt: {
+                      points: metrics.techDebtPoints,
+                      completedPoints: metrics.techDebtCompletedPoints,
+                    },
+                    unplanned: {
+                      points: metrics.unplannedPoints,
+                      completedPoints: metrics.unplannedCompletedPoints,
+                    },
+                  }}
+                  capacity={capacity}
                 />
                 <MetricGrid
                   metrics={metrics}
@@ -400,6 +416,7 @@ export function Dashboard({
           sprint={selectedSprint}
           filters={filters}
           progressByKey={progressByKey}
+          capacity={capacity}
           onClose={() => setShowExport(false)}
           showToast={showToast}
         />

@@ -14,8 +14,8 @@
  */
 import { useCountTransition } from "@/lib/use-count-transition";
 
-export function AnimatedNumber({ value, decimals = 0, className }) {
-  const displayed = useCountTransition(value);
+export function AnimatedNumber({ value, decimals = 0, className, countOnMount = false }) {
+  const displayed = useCountTransition(value, { countOnMount });
   return (
     <span aria-hidden="true" className={className}>
       {decimals > 0 ? displayed.toFixed(decimals) : Math.round(displayed)}

@@ -53,10 +53,17 @@ export async function POST(request, { params }) {
         where: { teamId, sprintId },
         select: { jiraKey: true, workflowType: true, stageCompletion: true, blocked: true, blockedReason: true },
       });
+      // committed-unplanned-work.md — pin the team's committed capacity as of share creation, same
+      // asOf-pinning invariant as the sprint window/progress above.
+      const capacityRow = await prisma.sprintCapacity.findUnique({
+        where: { sprintId_teamId: { sprintId, teamId } },
+        select: { committedPoints: true },
+      });
       snapshot = buildShareSnapshot(
         filters,
         progress.filter((row) => keysInScope.has(row.jiraKey)),
         sprint,
+        capacityRow ? { committedPoints: capacityRow.committedPoints } : null,
       );
     }
 

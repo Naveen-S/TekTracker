@@ -21,13 +21,13 @@ import {
   HeroTitle,
 } from "@/components/ui/hero-shell";
 import { MetricGrid } from "@/components/dashboard/metric-grid";
-import { StoryPointsHighlight } from "@/components/dashboard/story-points-highlight";
 import { TrendPanel } from "@/components/dashboard/trend-panel";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { RollupTopBar } from "@/components/rollup/rollup-top-bar";
 import { TeamSummaryTable } from "@/components/rollup/team-summary-table";
 import { RollupRiskSection } from "@/components/rollup/rollup-risk-section";
 import { RollupDigestButton } from "@/components/rollup/rollup-digest-button";
+import { RollupStoryPoints } from "@/components/rollup/rollup-story-points";
 import { AppShell } from "@/components/ui/app-shell";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +42,8 @@ export default async function RollupPage({ searchParams }) {
   const data = await getRollupData(user, {
     sprintId: typeof sprint === "string" ? sprint : undefined,
   });
-  const { teams, sprints, selectedSprint, perTeam, combinedSnapshots, combined } = data;
+  const { teams, sprints, selectedSprint, perTeam, combinedSnapshots, combinedCapacity, combined } =
+    data;
   // Request-time "as of" for the server-rendered staleness labels — deterministic, no client clock.
   const asOf = new Date();
   // Combined burndown over the per-day summed snapshots (trend-burndown.md decisions 6–7).
@@ -102,10 +103,25 @@ export default async function RollupPage({ searchParams }) {
               </div>
             </HeroShell>
 
-            <StoryPointsHighlight
+            <RollupStoryPoints
               completedPoints={combined.completedPoints}
               totalPoints={combined.points}
               scope={`this sprint · ${perTeam.length} ${perTeam.length === 1 ? "team" : "teams"}`}
+              breakdown={{
+                committed: {
+                  points: combined.committedPoints,
+                  completedPoints: combined.committedCompletedPoints,
+                },
+                techDebt: {
+                  points: combined.techDebtPoints,
+                  completedPoints: combined.techDebtCompletedPoints,
+                },
+                unplanned: {
+                  points: combined.unplannedPoints,
+                  completedPoints: combined.unplannedCompletedPoints,
+                },
+              }}
+              capacity={combinedCapacity}
             />
             <MetricGrid
               metrics={combined}

@@ -8,7 +8,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarRange, Users, X } from "lucide-react";
+import { CalendarRange, Target, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,7 @@ import {
 import { apiFetch } from "@/lib/api-client";
 import { BugReportConfig } from "@/components/admin/bug-report-config";
 import { JiraComponentsConfig } from "@/components/admin/jira-components-config";
+import { SprintCapacityConfig } from "@/components/admin/sprint-capacity-config";
 import { TeamConfigDialog } from "@/components/admin/team-config-dialog";
 import { SprintConfigDialog } from "@/components/dashboard/sprint-config-dialog";
 import { formatSprintWindow } from "@/lib/metrics.mjs";
@@ -234,6 +235,7 @@ export function AdminPanel({
   teams,
   sprints,
   jiraComponents = [],
+  capacityRows = [],
   bugReports = [],
   bugConfig = null,
   bugStatusVocabulary = [],
@@ -532,6 +534,21 @@ export function AdminPanel({
           onSaved={() => setEditingSprint(null)}
         />
       )}
+
+      <SectionCard
+        title="Committed Capacity"
+        subtitle="The Committed (Roadmap) point target per team, per sprint — compared against actual committed points on the dashboard."
+        icon={Target}
+        tone="warn"
+      >
+        <SprintCapacityConfig
+          teams={teams}
+          sprints={sprints}
+          capacityRows={capacityRows}
+          run={run}
+          busy={busy}
+        />
+      </SectionCard>
 
       <BugReportConfig
         reports={bugReports}

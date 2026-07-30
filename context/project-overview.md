@@ -6,7 +6,7 @@
 > **[BUILT]**, **[PARTIAL]**, **[PLANNED]**, or **[GAP]** so the as-built state is never confused
 > with the target state.
 >
-> Last reviewed: 2026-07-28 · Owner: Naveen · Audience: engineers + Claude Code.
+> Last reviewed: 2026-07-30 · Owner: Naveen · Audience: engineers + Claude Code.
 >
 > **Path note (cutover, 2026-07-18):** the Next.js app was promoted from the `web/` subfolder to
 > the **repo root**, and the legacy Vite/Express app was backed up into **`legacy/`**. Historical
@@ -115,6 +115,7 @@ Key relationships:
 | Admin settings / RBAC | **[PARTIAL]** | Server-side RBAC live in the `web/` domain APIs (step 4, 2026-07-07): `User.isAdmin` + `TeamMembership.role` guards (`lib/rbac.js`) on teams/sprints/filters/progress. Admin UI exists for teams/members/sprints (step 6a) and **bug-report config (2026-07-21)**; broader settings UI still absent. |
 | One-Click Sprint Start | **[BUILT — 2026-07-26]** | Admin-maintained `JiraComponent`/`JiraSubComponent` catalog (a Jira project's Component field value → many literal Sub-components, each claimed by at most one Team) + per-team Jira Issue Type overrides + `Sprint.fixVersions`. A dashboard action (`TEAM_MANAGER_ROLES` — same gate as manual filter creation, **no RBAC change**) generates a team's missing Roadmap/Tech Debt/Internal Bug/External Bug filters against an **existing** Sprint (never creates one — Sprint stays admin-only) from generated JQL, skipping any track that already exists. External Bug scopes by the **parent Component name AND the team's sub-components** (both AND'd — amended below), not parent-only as first shipped. **[Corrected 2026-07-27]** Naveen's real Jira run caught two JQL bugs the spec got wrong: the team's own tracks scope via a *custom* Jira field (`"sub-component[dropdown]"`), not the standard `component` field; and field naming/order/quoting/a trailing `ORDER BY` all needed to match his instance's real conventions. Same day, Naveen also amended External Bug to AND the sub-component clause alongside the parent-Component clause (was parent-only). See context/features/one-click-sprint-start.md (Status + As-built notes). |
 | Velocity / LeaderBoard (`/leaderboard`) | **[BUILT — 2026-07-27]** | A gamified "healthy competition" screen: a **team velocity leaderboard** (teams ranked by `completedPoints ÷ Team.developerCount`, a new admin-entered field — not a dynamically-derived assignee count) and an **org-wide developer leaderboard** (individuals ranked by points delivered, aggregated across every scrum team via `Issue.assigneeAccountId`), both with a sprint-scoped view (default: active sprint) and an all-time cumulative view. **No new snapshot table** — unlike `SprintSnapshot`'s daily-cron pattern, history here is computed **live** from the already-persisted `Issue`/`IssueProgress` rows, made safe by a bundled bugfix gating the manual "Sync Jira" action away from `CLOSED` sprints (their historical data must stay frozen). Gated to a new, deliberately narrower `LEADERBOARD_ROLES = [EM, ED, VIEWER]` (global admin bypasses; **TPM is excluded**, unlike everywhere else TPM is grouped with ED) — Leads/Members instead see a personal, non-competitive "my stats" card (their own points only, no rank) on `/`. See context/features/leaderboard.md. |
+| Committed / Tech Debt / Unplanned work breakdown + per-sprint capacity | **[BUILT — 2026-07-29]** | A three-way story-point composition breakdown — **Committed** (`FEATURE`/Roadmap only), **Tech Debt** (`TECH_DEBT`), **Unplanned Bugs** (`SUPPORT` + `INTERNAL_BUG`) — badged as "two types" (Committed alone vs. Tech Debt + Unplanned Bugs grouped), shown next to every "total story points" figure on `/`, `/rollup`, `/share/[token]`, and the PDF/PNG export. **Purely additive/display-only** — never wired into Sprint Health, Completion %, At-Risk, or the existing delivery/throughput lens (§12). Paired with a new admin-configurable, **per-team-per-sprint** `SprintCapacity` target (a Committed-points-only budget, e.g. "Configurator + Website Setup: 24") — a per-sprint join table rather than a static `Team` field like `developerCount`, since committed scope can shift release to release — edited via a new admin matrix screen (one sprint at a time, all teams, plus a "duplicate to another sprint" action). Admin-only, no RBAC change. `/leaderboard` deliberately untouched. **[Redesigned 2026-07-29, same day]** — the breakdown's chip row was replaced by a full **delivery scoreboard** on an ink surface (composition rail whose segment width = share of planned scope and solid fill = delivered, in `condensed`/`relaxed` variants; `/rollup` gets the only per-card Condensed/Relaxed toggle). Presentation only — 44 ƒ Dynamic unchanged, no schema/route/dependency change. See context/features/committed-unplanned-work.md. |
 
 ---
 
@@ -348,6 +349,7 @@ model Team {
   snapshots       SprintSnapshot[]
   statusMappings  StatusStageMapping[]
   subComponents   JiraSubComponent[]
+  capacities      SprintCapacity[]
 }
 
 model TeamMembership {
@@ -436,6 +438,7 @@ model Sprint {
   progress         IssueProgress[]
   snapshots        SprintSnapshot[]
   sharedViews      SharedView[]
+  capacities       SprintCapacity[]
 
   @@index([state])
 }
@@ -598,6 +601,27 @@ model SprintSnapshot {
   totalIssues     Int
 
   @@unique([sprintId, teamId, capturedOn])
+  @@index([sprintId])
+}
+
+/// Admin-configured "planned/dedicated track capacity" (committed-unplanned-work.md) — the
+/// Committed (FEATURE workflow) point target for one team in one sprint. Cadence is PER SPRINT:
+/// unlike Team.developerCount, committed capacity can change release to release, so it is NOT a
+/// static per-team constant — it lives on this join row, mirroring SprintSnapshot's (team, sprint)
+/// shape minus the daily capturedOn axis. No row for a (team, sprint) ⇒ capacity is UNCONFIGURED,
+/// not zero — only Committed work is ever compared against a target; Tech Debt/Unplanned Bugs
+/// never have one.
+model SprintCapacity {
+  id              String   @id @default(cuid())
+  sprintId        String
+  sprint          Sprint   @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  teamId          String
+  team            Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  committedPoints Float
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([sprintId, teamId])
   @@index([sprintId])
 }
 
@@ -991,6 +1015,13 @@ erDiagram
   `storyPointsFieldId`/`sprintFieldId` override-with-hardcoded-default pattern, and `Sprint` gained
   `fixVersions` (manually entered Jira Fix Version names a Gate spans — no live Jira lookup, same
   as the sub-component catalog). See context/features/one-click-sprint-start.md.
+- **`SprintCapacity` (added 2026-07-29) mirrors `SprintSnapshot`'s (team, sprint) shape minus the
+  daily axis** — one row per team per sprint, not one per day. Deliberately **not** a `Team` column
+  like `developerCount`: committed capacity is a per-*sprint* budget (a team's non-negotiable
+  customer-committed scope can differ release to release), so it needed its own join table. A
+  missing row means unconfigured, not zero — the Committed/Tech Debt/Unplanned Bugs breakdown it
+  feeds is a display-only composition lens and never an input to Sprint Health/Completion/velocity.
+  See context/features/committed-unplanned-work.md.
 
 ---
 
@@ -1215,6 +1246,66 @@ Jira** button. Footer: "Engineering Internal Tool @ Tekion Corp."
 > mounted — first paint always renders the true static value with no JS required — and were
 > retrofit into the Leaderboard's and `MyStatsCard`'s numerals for one consistent motion language.
 > No schema/migration/route change.
+
+> **[BUILT 2026-07-29 — Committed / Tech Debt / Unplanned breakdown + per-sprint capacity]** — per
+> Naveen's handwritten "work division" notes, `StoryPointsHighlight` (on `/`, `/rollup`, and
+> `/share/[token]`) gained a new chip row below its Delivered/Planned pair: a standalone
+> **Committed** figure (Roadmap/`FEATURE` only) and a **Tech Debt** + **Unplanned Bugs**
+> (`SUPPORT`+`INTERNAL_BUG`) pair grouped under one bordered pill — "two types" at the headline
+> level without losing the tech-debt-vs-bugs distinction the notes draw. When a team's new
+> admin-configured committed capacity is set, the Committed chip appends "· N capacity" (and
+> `/rollup`'s portfolio figure appends an "N of M teams configured" caveat when not every team has
+> one set yet). `team-summary-table.jsx` gained one "Committed / Cap" column; the PDF/PNG export's
+> `SummaryPage` gained a matching three-box row. New admin "Committed Capacity" `SectionCard`: a
+> sprint picker + one capacity input per team, saved as one batched `PUT`, plus a "duplicate to
+> another sprint" action. **Purely additive** — Sprint Health, Completion %, At-Risk, and the
+> existing delivery/throughput lens (§12) are untouched; `/leaderboard` is untouched too. See
+> context/features/committed-unplanned-work.md.
+
+> **[BUILT 2026-07-29 — `StoryPointsHighlight` redesigned as the delivery scoreboard]** — same day,
+> per Naveen ("extremely important section… every detail in it is represented well"), the card
+> above was **replaced, not tweaked**: the chip row it describes is gone. Presentation only — no
+> schema/migration/route/dependency change, **44 ƒ Dynamic unchanged**, and all three call sites
+> (`/`, `/rollup`, `/share/[token]`) keep their existing props. Seven choices ratified with Naveen
+> before any code: full scoreboard footprint · **ink surface** (the hero's material, not the pale
+> accent tint — this is the number leadership opens the page for) · totals lead · one authored
+> arrival · **Committed branded, the other two neutral** · over-capacity flagged · hover reveals
+> precision. As built: a headline `256 / 319` pair with a **composition rail** whose segment WIDTH
+> is each type's share of planned scope and whose solid FILL is what's delivered — so the rail's
+> lit area *is* the headline %, composition and completion in one shape. **Two variants** (Naveen,
+> same day: "it's occupying a lot of real estate" / "in the Rollup screen keep this view, but give
+> an option to have condense/relax"): `condensed` (the default — `/` and `/share/[token]`) puts the
+> headline beside the rail and prints the per-type detail as a one-line legend, landing at **148px,
+> down from 428px**; `relaxed` stacks them and gives each type a full-scale track. `/rollup` — where
+> the portfolio breakdown IS the page and nothing below competes for the fold — defaults to
+> `relaxed` and is the ONLY screen with a **Condensed/Relaxed toggle**, a new client leaf
+> `rollup/rollup-story-points.jsx` over `useLocalPref` (§17 ephemeral-pref rules; note this is a
+> per-card control, NOT a revival of the app-wide density toggle retired 2026-07-25).
+> **Palette (measured, two channels).** The first cut gave Tech Debt and Unplanned Bugs two greys;
+> at 6.7:1 and 4.2:1 on ink they read as background, not as categories. They are now two new
+> theme-neutral tokens — `--on-ink-cat-2` **gold `#e3a72f`** (Naveen: "can we use this colour, I
+> really like these", pointing at the `/bugs` Ageing ramp) and `--on-ink-cat-3` **rose `#f2a8b6`**.
+> The Ageing ramp is deliberately **not** reused verbatim: it was authored against a white card, so
+> on ink its two darkest steps collapse to 3.4:1 and 2.2:1 — `--age-*` is untouched and this is the
+> same hue re-pitched for the opposite background. **Unplanned Bugs stays hatched** (`.sp-stripe`,
+> now tinted cat-3) because brand↔cat-3 is the one pair colour alone cannot carry (worst-case ΔE 4.8
+> under deuteranopia in Tekion); texture is that pair's second channel and must not be "simplified"
+> away. Knock-on: the over-capacity marker was amber, which sits ΔE 6.4 from the new gold and would
+> have read as a fourth category — so `--on-ink-warn` became **`--on-ink-alert` red `#ff5f56`**,
+> clearing every categorical slot by ΔE ≥ 8.1. On the rail the capacity tick is drawn **only when committed scope has overrun the
+> target** — under target there is nothing to point at, and a tick pinned to the segment's edge
+> would imply capacity equals scope; the legend states the headroom in words instead. Hovering any
+> work type dims the other two — **pure CSS `:has()`, so the card stays a server component** — and
+> nothing is hover-only: every figure is also static text. Motion is one ~0.8s sequence (scope
+> drawn → fills grow → capacity marker drops) using new `sp-draw`/`sp-fill`/`sp-mark` keyframes,
+> all with `backwards` fill so they hand the property back and never outrank the hover rule.
+> `useCountTransition` gained an opt-in `countOnMount` (the first-paint-is-truth guarantee is
+> preserved for every other caller, and the reset-to-zero is hidden under the numeral's entrance
+> fade, so the flash the 2026-07-28 pass avoided still cannot occur) and, in the same pass, **a
+> real bug fix**: its `getSnapshot` sampled the clock on every call, which React flags as "the
+> result of getSnapshot should be cached to avoid an infinite loop". The eased value is now
+> computed once per rAF frame and cached, with `getSnapshot` only reading it back — this fixes
+> every caller (both leaderboards and `MyStatsCard`), not just the scoreboard.
 
 ---
 
@@ -1552,6 +1643,43 @@ All previously open decisions are now resolved:
   Design pass used the `impeccable` skill's `bolder` playbook to add a podium treatment for rank 1,
   reusing only existing tone tokens and the house "sweep" motif — no new design primitives. See
   context/features/leaderboard.md.
+- **Committed / Tech Debt / Unplanned work breakdown + per-sprint capacity (ratified 2026-07-28/29
+  with Naveen, drafted from two handwritten "work division" notebook pages via several
+  clarifying-question rounds).** Ten ratified points: (1) **three-way segmentation, badged as two
+  types** — Committed = `FEATURE` only (non-negotiable, customer-committed); Tech Debt =
+  `TECH_DEBT` (planned ahead of time, internally but not customer-committed) as its own visible
+  segment; Unplanned Bugs = `SUPPORT` + `INTERNAL_BUG` merged into one segment; displayed as
+  Committed standing alone vs. Tech Debt + Unplanned Bugs grouped, delivering "two types" at the
+  headline level; (2) **display-only, additive** — zero change to Sprint Health, Completion %,
+  At-Risk, or the existing delivery/throughput lens (§12); a before/after fixture diff proved every
+  pre-existing `metrics.mjs` field byte-identical; (3) **capacity compares Committed only** — Tech
+  Debt and Unplanned Bugs never get a configured target; (4) **screens** = `/`, `/rollup`,
+  `/share/[token]`, Export — explicitly **NOT** `/leaderboard`, which stays a single all-work
+  points ranking; (5) **capacity is per-team PER SPRINT**, a new `SprintCapacity` join model —
+  deliberately not a static `Team` field like `developerCount`, since committed scope can shift
+  release to release; (6) **one admin matrix screen** (sprint picker + one row per team, one
+  batched save) plus a **"duplicate to another sprint"** action, explicitly requested so admins
+  don't retype every release; (7) **admin-only RBAC**, matching Sprint config's existing
+  global-admin-only gate — no carve-out, no new role group; (8) the roll-up's portfolio capacity
+  total **sums whatever teams ARE configured**, with an "N of M teams configured" caveat, rather
+  than hiding the comparison for partial configuration; (9) `team-summary-table.jsx` gets **one new
+  column** (Committed/Capacity), not a full per-team three-way breakdown — the fuller split stays
+  portfolio-level; (10) the duplicate action **confirms before overwriting** a target sprint that
+  already has configured rows, but proceeds silently into an empty one. See
+  context/features/committed-unplanned-work.md.
+  **Amended 2026-07-29 with Naveen (presentation only — no ratified decision reversed):** the
+  headline UI the ten points above were planned against (a **chip row** under Delivered/Planned) was
+  **replaced the same day** by the full **delivery scoreboard** — seven further choices ratified
+  before any code (full scoreboard footprint · ink surface · totals lead · one authored arrival ·
+  Committed branded with the other two neutral · over-capacity flagged · hover reveals precision),
+  plus **two variants** (`condensed` default on `/` and `/share/[token]`; `relaxed` default on
+  `/rollup`, the only screen with a per-card Condensed/Relaxed toggle — deliberately NOT a revival of
+  the app-wide density toggle retired 2026-07-25). Two new measured palette tokens were required
+  (`--on-ink-cat-2` gold, `--on-ink-cat-3` rose) and `--on-ink-warn` was renamed
+  `--on-ink-alert` red, because amber sat ΔE 6.4 from the new gold and would have read as a fourth
+  category; **`.sp-stripe` hatching on Unplanned Bugs is load-bearing for CVD** (brand↔cat-3 is
+  ΔE 4.8 worst-case under deuteranopia), not decoration. Decisions 1–10 above are unchanged; only
+  the presentation is. See §11's dated note and the feature spec's "Second pass" Status section.
 
 ---
 
@@ -1583,4 +1711,4 @@ The plan — exact next steps, in order
 7. Background job — a cron on your internal infra hitting an internal route: refresh issue caches + write the daily per-team SprintSnapshot for active sprints. **[DONE 2026-07-09]** — secret-gated `POST /api/cron/daily` (`CRON_SECRET` bearer, timingSafeEqual over sha256 digests; first session-less route) → `lib/cron/daily.js` `runDailyJob`: per ACTIVE sprint, sequential per-team refresh via the step-5 engine with the `CRON_SYNC_USER_EMAIL` service credential (absent/dead → refresh skipped, snapshots still written; per-team errors isolated), then batched per-team metrics → UTC-midnight `SprintSnapshot` upsert; pure `snapshotValues` in `lib/metrics.mjs`. Verified: 23/23 pure fixtures, DB/env-free build, 30/30 live dev+Neon checks (gates, hand-computed rows, PLANNING/filterless skips, degrade path, idempotent re-run, unset-secret 500). Scheduling on Tekion infra is a deploy-time task. See context/features/background-sync-snapshots.md.
 8. Share view + export — SharedView token route (/share/[token], live or frozen, expiry) replacing the base64 URL; port PDF/PNG export. **[DONE 2026-07-12]** — public session-less `/share/[token]` (192-bit app-generated token, `robots: noindex`, generic invalid/expired state; live = current rows, frozen = input snapshot w/ metrics pinned to `capturedAt` via the new optional `asOf` clock threaded through `lib/metrics.mjs` + the MetricGrid/PlannerPanel/IssueRow props); writer-gated `POST/GET …/shares` (filterIds validated ⊆ team+sprint) + creator/admin `DELETE /api/shares/[shareId]`; ShareDialog (live/frozen, expiry presets, manage/revoke, clipboard+toast) + ExportDialog (filter toggles, paged preview, offscreen A4 pages → PDF/PNG) behind new Hero buttons. Deps `html2canvas-pro@2.2.3` (stock html2canvas can't parse the Tailwind-v4 oklch/`color-mix` theme — proven by a headless-Chrome capture spike) + `jspdf@2.5.2`, dynamic-imported (verified absent from the dashboard chunk). No schema change, no migration. Verified: lint; DB/env-free build (27 ƒ Dynamic); 25/25 asOf fixtures; 37/37 SSR smoke on dev+Neon incl. frozen-vs-live divergence, list scoping, revoke/expiry → generic page. Human acceptance (browser share open + real PDF/PNG) pending with the ui-polish eyeball. See context/features/share-view-export.md.
 9. Importer — one-time script that takes the localStorage JSON (sprintTracker_sprintData + config) and writes Sprint/Filter/IssueProgress rows so your current sprints carry over. **[SKIPPED 2026-07-18]** — Naveen no longer has older sprint data in localStorage (current work already lives in `web/` via real syncs), so there is nothing to import; decided with Naveen 2026-07-18. Spec draft kept for reference at context/features/seed.md.
-10. Cutover, then post-v1 — promote web/ to repo root, delete the Vite app; then burndown/trend UI from snapshots, then Gemini (risk call-outs + narrative first). **[DONE 2026-07-18 (cutover half)]** — two-phase `git mv` on `feature/cutover`: the Vite app (src/, server.js, docs/, lockfiles, untracked .env/node_modules/dist) **retired into `legacy/` instead of deleted** (ratified with Naveen 2026-07-18; startable there under Node 20 — verified :3000/:3001 answer) with plaintext-token `.sessions/` deleted; then `web/*` promoted to root (101 renames, history follows via `git log --follow`). Node 22 bump landed with it (`.nvmrc`, `engines >=22.12`, `.yarnrc` shim deleted, fresh install under 22.22.2). Config/docs: root `.gitignore` = web's + re-added `.claude/*` rules, `turbopack.root` pin kept (dual lockfile with `legacy/yarn.lock`), package renames (`sprint-tracker` / `sprint-tracker-legacy`), CLAUDE.md/AGENTS.md/README.md rewritten for the single-app root, `.claude/skills` `web/`-path sweep (+ `verify-web` renamed `verify`, per Naveen), `legacy/**` added to ESLint ignores (the only config-behavior change). Zero app-code changes; no schema change, no migration. Verified at root under Node 22: lint clean; `prisma validate` + `migrate status` up to date; **DB/env-free build green, 27 ƒ Dynamic (same as step 8)**; dev-server smoke on :3002 — unauth 307, login 200, unknown share → generic page, cron bad-bearer 401, `health/db` ok against Neon, minted-admin dashboard SSR with full chrome. **Deployment re-pointing (build from repo root) is a deploy-time task.** See context/features/cutover.md. *Post-v1 clause:* **trend/burndown UI DONE 2026-07-19** — snapshot-fed `TrendPanel` on `/` + `/rollup` with the trailing-7-day projection, plus the §12 velocity swap (`snapshotVelocity` override w/ naive fallback; share/export untouched); no schema change/migration/deps/routes (see context/features/trend-burndown.md). **AI insights (risk call-outs + narrative) DONE 2026-07-20** — provider-agnostic AI platform (`src/lib/ai/`: neutral `generateJson` + Gemini/Anthropic fetch adapters, env-switched with loud-fail config and a dormant unconfigured state) behind the on-demand "AI Digest" dialog on `/` (`POST …/ai-digest` — **28 ƒ Dynamic**); no schema change, no migration, no new deps (see context/features/ai-insights.md). **Risk comments + roll-up all-risks dialog + roll-up AI Digest DONE 2026-07-21** — `IssueProgress.riskComment` (one additive migration — the first schema change since `add_user_isadmin`) lets a known/agreed risk be communicated to leadership as managed context; `/rollup`'s risk panel now surfaces every team's comments/blocked reasons plus a "View all risks" dialog listing every risky issue across teams; the roll-up hero gained an AI Digest button (`POST /api/rollup/ai-digest` — **29 ƒ Dynamic**) generating a portfolio digest that compares teams and narrates commented risks as known/agreed (see context/features/risk-comments-rollup-digest.md). **Bug report dashboards DONE 2026-07-21** — the config-driven bug matrix + executive dashboard at `/bugs` (+ `/bugs/[slug]`): 7 new models + one migration (the largest schema change since `init`), 4 new API routes + 2 pages (**29 → 35 ƒ Dynamic**), and the **first non-sprint-scoped read path in the app**. Everything about a report is admin config — scope universes (saved filter id or JQL), category→status mapping with a fallback category, SLA days per (scope, priority), and P0–P4 bands — so a second dashboard (Honda) is configuration, not code; classification is read-time so config edits apply with no Jira refresh (see context/features/gm-bug-report.md). **Sprint timeline (dev → QA/UAT → release) + two-lens metrics DONE 2026-07-24** (implemented on the `feature/modern-theme` branch) — a sprint now ends at its release date, not dev end: phase-aware days-remaining pill (`"Dev cycle ended · QA/UAT · Nd to release"`), window-spelling eyebrows (`formatSprintWindow`), and a **hybrid** hero phase bar (completion drives the dev phases, then QA/UAT/Release light up by date); metrics split into a **delivery lens** (roadmap + tech debt, dev cycle → Sprint Health / Completion / At-Risk / risk call-outs) and a **throughput lens** (all work → velocity, now incl. support + bugs, + Issues-in-scope). Burndown/`SprintSnapshot`/trend deliberately stay all-work; **no schema/migration/route/dependency change**, 35 ƒ Dynamic unchanged (see context/features/sprint-phases-delivery-lens.md). **Hero timeline UI + live release countdown DONE 2026-07-25** (same branch, presentation only) — the flat days-remaining pill became a live animated **release countdown** (progress ring + ticking `d·h·m·s` clock, `ui/release-countdown.jsx`) repositioned to the hero top-right; the hero phase bar became a **sprint timeline** with two macro-cycle status chips (`✓ Dev cycle · Completed` → `● QA / UAT · In progress`) over partial-fill animated phase bars; and the **Relaxed/Dense view toggle was retired** (density fixed at "dense"). New `--on-ink-success` token + `sweep`/`blink` keyframes; no schema/migration/route/dependency change (see context/features/modern-theme.md). **One-Click Sprint Start DONE 2026-07-26** — a config-driven answer to hand-typed onboarding: an admin-maintained `JiraComponent`/`JiraSubComponent` catalog (a Jira project's Component field value → many literal Sub-components, each claimed by at most one Team, entered one at a time — no bulk import, no live Jira lookup) plus per-team Jira Issue Type overrides and `Sprint.fixVersions`; a new dashboard "Sprint Start" action (`TEAM_MANAGER_ROLES` — same gate as manual filter creation, no RBAC change) generates a team's missing Roadmap/Tech Debt/Internal Bug/External Bug filters against an **existing** Sprint (never creates one — Sprint stays admin-only), skipping tracks that already exist; External Bug scopes by the parent Component name only, not the team's sub-components (2 new models + 5 new Team/Sprint fields, one migration, 6 new routes — **35 → 41 ƒ Dynamic**; see context/features/one-click-sprint-start.md). **[Corrected 2026-07-27]** Naveen's real Jira acceptance run caught the generated JQL was wrong (custom `"sub-component[dropdown]"` field, not standard `component`; field naming/order/quoting/a trailing `ORDER BY` all needed to match his instance) — fixed same day, plus an amendment ANDing the sub-component clause into External Bug too (was parent-Component-only); no schema/route change, 41 ƒ Dynamic unchanged (see context/features/one-click-sprint-start.md As-built notes). **Velocity / LeaderBoard DONE 2026-07-27** — a gamified team + developer story-point leaderboard at `/leaderboard`: teams ranked by `completedPoints ÷ Team.developerCount` (a new admin-entered field) and developers ranked org-wide by points delivered, both sprint-scoped and all-time. One additive schema field (`Team.developerCount`, one migration — **41 → 42 ƒ Dynamic**), a bundled bugfix gating manual sync away from `CLOSED` sprints, and — the key simplification — **no new snapshot table**, since historical data is computed live off the already-persisted `Issue`/`IssueProgress` rows now that the sync-gate fix keeps them frozen. Gated to a new, deliberately narrower `LEADERBOARD_ROLES` (excludes TPM); LEAD/MEMBER get a personal "my stats" card on `/` instead. See context/features/leaderboard.md. Remaining post-v1 ideas: export-embedded narrative, AI Q&A over sprint data, stage suggestions, PDF/share for `/bugs`, a `/bugs` follow-up to call out ENG issues with no sub-component tag, and leaderboard rank-delta ("moved since last sprint") arrows.
+10. Cutover, then post-v1 — promote web/ to repo root, delete the Vite app; then burndown/trend UI from snapshots, then Gemini (risk call-outs + narrative first). **[DONE 2026-07-18 (cutover half)]** — two-phase `git mv` on `feature/cutover`: the Vite app (src/, server.js, docs/, lockfiles, untracked .env/node_modules/dist) **retired into `legacy/` instead of deleted** (ratified with Naveen 2026-07-18; startable there under Node 20 — verified :3000/:3001 answer) with plaintext-token `.sessions/` deleted; then `web/*` promoted to root (101 renames, history follows via `git log --follow`). Node 22 bump landed with it (`.nvmrc`, `engines >=22.12`, `.yarnrc` shim deleted, fresh install under 22.22.2). Config/docs: root `.gitignore` = web's + re-added `.claude/*` rules, `turbopack.root` pin kept (dual lockfile with `legacy/yarn.lock`), package renames (`sprint-tracker` / `sprint-tracker-legacy`), CLAUDE.md/AGENTS.md/README.md rewritten for the single-app root, `.claude/skills` `web/`-path sweep (+ `verify-web` renamed `verify`, per Naveen), `legacy/**` added to ESLint ignores (the only config-behavior change). Zero app-code changes; no schema change, no migration. Verified at root under Node 22: lint clean; `prisma validate` + `migrate status` up to date; **DB/env-free build green, 27 ƒ Dynamic (same as step 8)**; dev-server smoke on :3002 — unauth 307, login 200, unknown share → generic page, cron bad-bearer 401, `health/db` ok against Neon, minted-admin dashboard SSR with full chrome. **Deployment re-pointing (build from repo root) is a deploy-time task.** See context/features/cutover.md. *Post-v1 clause:* **trend/burndown UI DONE 2026-07-19** — snapshot-fed `TrendPanel` on `/` + `/rollup` with the trailing-7-day projection, plus the §12 velocity swap (`snapshotVelocity` override w/ naive fallback; share/export untouched); no schema change/migration/deps/routes (see context/features/trend-burndown.md). **AI insights (risk call-outs + narrative) DONE 2026-07-20** — provider-agnostic AI platform (`src/lib/ai/`: neutral `generateJson` + Gemini/Anthropic fetch adapters, env-switched with loud-fail config and a dormant unconfigured state) behind the on-demand "AI Digest" dialog on `/` (`POST …/ai-digest` — **28 ƒ Dynamic**); no schema change, no migration, no new deps (see context/features/ai-insights.md). **Risk comments + roll-up all-risks dialog + roll-up AI Digest DONE 2026-07-21** — `IssueProgress.riskComment` (one additive migration — the first schema change since `add_user_isadmin`) lets a known/agreed risk be communicated to leadership as managed context; `/rollup`'s risk panel now surfaces every team's comments/blocked reasons plus a "View all risks" dialog listing every risky issue across teams; the roll-up hero gained an AI Digest button (`POST /api/rollup/ai-digest` — **29 ƒ Dynamic**) generating a portfolio digest that compares teams and narrates commented risks as known/agreed (see context/features/risk-comments-rollup-digest.md). **Bug report dashboards DONE 2026-07-21** — the config-driven bug matrix + executive dashboard at `/bugs` (+ `/bugs/[slug]`): 7 new models + one migration (the largest schema change since `init`), 4 new API routes + 2 pages (**29 → 35 ƒ Dynamic**), and the **first non-sprint-scoped read path in the app**. Everything about a report is admin config — scope universes (saved filter id or JQL), category→status mapping with a fallback category, SLA days per (scope, priority), and P0–P4 bands — so a second dashboard (Honda) is configuration, not code; classification is read-time so config edits apply with no Jira refresh (see context/features/gm-bug-report.md). **Sprint timeline (dev → QA/UAT → release) + two-lens metrics DONE 2026-07-24** (implemented on the `feature/modern-theme` branch) — a sprint now ends at its release date, not dev end: phase-aware days-remaining pill (`"Dev cycle ended · QA/UAT · Nd to release"`), window-spelling eyebrows (`formatSprintWindow`), and a **hybrid** hero phase bar (completion drives the dev phases, then QA/UAT/Release light up by date); metrics split into a **delivery lens** (roadmap + tech debt, dev cycle → Sprint Health / Completion / At-Risk / risk call-outs) and a **throughput lens** (all work → velocity, now incl. support + bugs, + Issues-in-scope). Burndown/`SprintSnapshot`/trend deliberately stay all-work; **no schema/migration/route/dependency change**, 35 ƒ Dynamic unchanged (see context/features/sprint-phases-delivery-lens.md). **Hero timeline UI + live release countdown DONE 2026-07-25** (same branch, presentation only) — the flat days-remaining pill became a live animated **release countdown** (progress ring + ticking `d·h·m·s` clock, `ui/release-countdown.jsx`) repositioned to the hero top-right; the hero phase bar became a **sprint timeline** with two macro-cycle status chips (`✓ Dev cycle · Completed` → `● QA / UAT · In progress`) over partial-fill animated phase bars; and the **Relaxed/Dense view toggle was retired** (density fixed at "dense"). New `--on-ink-success` token + `sweep`/`blink` keyframes; no schema/migration/route/dependency change (see context/features/modern-theme.md). **One-Click Sprint Start DONE 2026-07-26** — a config-driven answer to hand-typed onboarding: an admin-maintained `JiraComponent`/`JiraSubComponent` catalog (a Jira project's Component field value → many literal Sub-components, each claimed by at most one Team, entered one at a time — no bulk import, no live Jira lookup) plus per-team Jira Issue Type overrides and `Sprint.fixVersions`; a new dashboard "Sprint Start" action (`TEAM_MANAGER_ROLES` — same gate as manual filter creation, no RBAC change) generates a team's missing Roadmap/Tech Debt/Internal Bug/External Bug filters against an **existing** Sprint (never creates one — Sprint stays admin-only), skipping tracks that already exist; External Bug scopes by the parent Component name only, not the team's sub-components (2 new models + 5 new Team/Sprint fields, one migration, 6 new routes — **35 → 41 ƒ Dynamic**; see context/features/one-click-sprint-start.md). **[Corrected 2026-07-27]** Naveen's real Jira acceptance run caught the generated JQL was wrong (custom `"sub-component[dropdown]"` field, not standard `component`; field naming/order/quoting/a trailing `ORDER BY` all needed to match his instance) — fixed same day, plus an amendment ANDing the sub-component clause into External Bug too (was parent-Component-only); no schema/route change, 41 ƒ Dynamic unchanged (see context/features/one-click-sprint-start.md As-built notes). **Velocity / LeaderBoard DONE 2026-07-27** — a gamified team + developer story-point leaderboard at `/leaderboard`: teams ranked by `completedPoints ÷ Team.developerCount` (a new admin-entered field) and developers ranked org-wide by points delivered, both sprint-scoped and all-time. One additive schema field (`Team.developerCount`, one migration — **41 → 42 ƒ Dynamic**), a bundled bugfix gating manual sync away from `CLOSED` sprints, and — the key simplification — **no new snapshot table**, since historical data is computed live off the already-persisted `Issue`/`IssueProgress` rows now that the sync-gate fix keeps them frozen. Gated to a new, deliberately narrower `LEADERBOARD_ROLES` (excludes TPM); LEAD/MEMBER get a personal "my stats" card on `/` instead. See context/features/leaderboard.md. **Committed / Tech Debt / Unplanned work breakdown + per-sprint capacity DONE 2026-07-29** — a three-way story-point composition breakdown (Committed = `FEATURE` only, Tech Debt = `TECH_DEBT`, Unplanned Bugs = `SUPPORT`+`INTERNAL_BUG`, badged as "two types") shown next to every total-points figure on `/`, `/rollup`, `/share/[token]`, and Export — purely additive, zero change to Sprint Health/Completion/At-Risk/the delivery-throughput lens; a new per-team-per-sprint `SprintCapacity` model (one migration — **44 ƒ Dynamic (42 → 44)**, the 2 new capacity routes) backs a Committed-points-only admin target, edited via a new admin matrix screen (sprint picker + one row per team, plus a "duplicate to another sprint" action), admin-only, no RBAC change. `/leaderboard` deliberately untouched. **Redesigned the same day (2026-07-29, presentation only)** — the chip row was replaced by the full **delivery scoreboard**: an ink-surface card whose composition rail encodes share-of-scope as segment width and delivered as solid fill, in `condensed` (default on `/` and `/share/[token]`, 148px down from 428px) and `relaxed` (default on `/rollup`, the only screen with a per-card Condensed/Relaxed toggle) variants; two new measured palette tokens (`--on-ink-cat-2` gold, `--on-ink-cat-3` rose), `--on-ink-warn` renamed `--on-ink-alert` red, CVD-load-bearing `.sp-stripe` hatching retained, and a real `useCountTransition` `getSnapshot`-caching bug fix that also fixed both leaderboards and `MyStatsCard`; **44 ƒ Dynamic unchanged**, no schema/migration/route/dependency change. See context/features/committed-unplanned-work.md. Remaining post-v1 ideas: export-embedded narrative, AI Q&A over sprint data, stage suggestions, PDF/share for `/bugs`, a `/bugs` follow-up to call out ENG issues with no sub-component tag, and leaderboard rank-delta ("moved since last sprint") arrows.

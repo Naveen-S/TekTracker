@@ -27,10 +27,29 @@ const DAY_MS = 1000 * 60 * 60 * 24;
  */
 const DELIVERY_TYPES = new Set(["FEATURE", "TECH_DEBT"]);
 
+/**
+ * Committed / Tech Debt / Unplanned Bugs (committed-unplanned-work.md) — a NEW, purely additive
+ * display lens layered over the same DELIVERY_TYPES-partitioned `issues` array above. Committed =
+ * the roadmap track committed to the customer (non-negotiable scope, per the handwritten spec).
+ * Tech Debt = planned ahead of time but not customer-committed. Unplanned Bugs = genuinely
+ * reactive internal/external bug reports. Never wired into `bandSprintHealth`/`deliveryHealthCounts`/
+ * `velocityPoints`/`riskCount` — decision 2 (display-only) is enforced by construction.
+ */
+const COMMITTED_TYPES = new Set(["FEATURE"]);
+const TECH_DEBT_ONLY_TYPES = new Set(["TECH_DEBT"]);
+const UNPLANNED_TYPES = new Set(["SUPPORT", "INTERNAL_BUG"]);
+
 const averagePercent = (list) =>
   list.length > 0 ? Math.round(list.reduce((sum, i) => sum + i.percent, 0) / list.length) : 0;
 const weightedCompleted = (list) =>
   list.reduce((sum, i) => sum + i.storyPoints * (i.percent / 100), 0);
+
+/** Points/completedPoints/issueCount totals for one work-type segment (committed-unplanned-work.md). */
+const segmentTotals = (list) => ({
+  points: list.reduce((sum, issue) => sum + issue.storyPoints, 0),
+  completedPoints: weightedCompleted(list),
+  issueCount: list.length,
+});
 
 /** Weighted completion % for one issue's checklist (§12). */
 export function calculateWeightedCompletion(stageCompletion, weights) {
@@ -163,6 +182,13 @@ export function computeSprintMetrics(filters, progressByKey, sprint, asOf) {
   const deliveryHealthCounts = countStatuses(deliveryIssues);
   const healthCounts = countStatuses(issues);
 
+  // Committed / Tech Debt / Unplanned Bugs (committed-unplanned-work.md) — a new, purely additive
+  // composition breakdown over the SAME already-materialized `issues` array. Display-only: none of
+  // these three feed `bandSprintHealth`/`deliveryHealthCounts`/`velocityPoints`/`riskCount` above.
+  const committed = segmentTotals(issues.filter((i) => COMMITTED_TYPES.has(i.workflowType)));
+  const techDebtWork = segmentTotals(issues.filter((i) => TECH_DEBT_ONLY_TYPES.has(i.workflowType)));
+  const unplanned = segmentTotals(issues.filter((i) => UNPLANNED_TYPES.has(i.workflowType)));
+
   return {
     issues,
     deliveryIssues,
@@ -176,6 +202,15 @@ export function computeSprintMetrics(filters, progressByKey, sprint, asOf) {
     deliveryAvgProgress,
     velocityPoints,
     velocityCompletedPoints,
+    committedPoints: committed.points,
+    committedCompletedPoints: committed.completedPoints,
+    committedIssueCount: committed.issueCount,
+    techDebtPoints: techDebtWork.points,
+    techDebtCompletedPoints: techDebtWork.completedPoints,
+    techDebtIssueCount: techDebtWork.issueCount,
+    unplannedPoints: unplanned.points,
+    unplannedCompletedPoints: unplanned.completedPoints,
+    unplannedIssueCount: unplanned.issueCount,
     sprintHealth: bandSprintHealth(deliveryHealthCounts, totalDeliveryIssues, deliveryAvgProgress),
     healthCounts,
     deliveryHealthCounts,
@@ -250,6 +285,17 @@ export function aggregateRollup(perTeamMetrics) {
     deliveryCompletedPoints: sumOf((m) => m.deliveryCompletedPoints),
     velocityPoints: sumOf((m) => m.velocityPoints),
     velocityCompletedPoints: sumOf((m) => m.velocityCompletedPoints),
+    // Committed / Tech Debt / Unplanned Bugs (committed-unplanned-work.md) — straight sums, same
+    // treatment as deliveryPoints/velocityPoints above.
+    committedPoints: sumOf((m) => m.committedPoints),
+    committedCompletedPoints: sumOf((m) => m.committedCompletedPoints),
+    committedIssueCount: sumOf((m) => m.committedIssueCount),
+    techDebtPoints: sumOf((m) => m.techDebtPoints),
+    techDebtCompletedPoints: sumOf((m) => m.techDebtCompletedPoints),
+    techDebtIssueCount: sumOf((m) => m.techDebtIssueCount),
+    unplannedPoints: sumOf((m) => m.unplannedPoints),
+    unplannedCompletedPoints: sumOf((m) => m.unplannedCompletedPoints),
+    unplannedIssueCount: sumOf((m) => m.unplannedIssueCount),
     sprintHealth: bandSprintHealth(deliveryHealthCounts, totalDeliveryIssues, deliveryAvgProgress),
     healthCounts,
     deliveryHealthCounts,

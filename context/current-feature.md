@@ -1,79 +1,127 @@
 # Current Feature
 
-**Velocity / LeaderBoard** — full spec: @context/features/leaderboard.md
+**Committed / Tech Debt / Unplanned Work Breakdown + Per-Sprint Team Capacity** — full spec:
+@context/features/committed-unplanned-work.md
 
-A gamified "healthy competition" screen: a team velocity leaderboard (total story points delivered
-÷ an admin-entered developer headcount, ranked) and an overall developer leaderboard across every
-scrum team — both sprint-scoped and all-time. Requested by Naveen 2026-07-26; post-v1 (the
-migration plan is complete).
+A new three-way story-point breakdown (Committed / Tech Debt / Unplanned Bugs) shown everywhere a
+total-points number shows today (`/`, `/rollup`, `/share/[token]`, Export PDF/PNG), plus a new
+admin-configurable, per-team-per-sprint "committed capacity" target compared against the Committed
+bucket only. Requested by Naveen 2026-07-28 (two handwritten notebook pages); post-v1, purely
+additive — does not touch Sprint Health, Completion %, At-Risk, or the existing delivery/throughput
+lens (§12).
 
 ## Status
 
-**Done 2026-07-27.** Full spec, ratified decisions, as-built notes, and open risks:
-@context/features/leaderboard.md.
+**Done 2026-07-29.** Full spec, ratified decisions, as-built notes, and open risks:
+@context/features/committed-unplanned-work.md.
 
-Implemented as specced: `Team.developerCount` (one migration); the sync-gate bugfix (rejecting
-manual sync of a `CLOSED` sprint, 409); four new pure functions in `metrics.mjs`
-(`aggregateByDeveloper`, `teamVelocityPerDeveloper`, `aggregateTeamAllTime`,
-`aggregateDeveloperAllTime`, `rankBy`); a new `src/lib/leaderboard-data.js` (org-wide, 3 batched
-queries for cross-sprint history — no new snapshot table needed); a new `LEADERBOARD_ROLES` group +
-`hasLeaderboardAccess()` in `rbac.js`; the new `/leaderboard` page + `TeamLeaderboard`/
-`DeveloperLeaderboard`/`LeaderboardTopBar`; a shared `AvatarChip` (retrofit into 3 existing inline
-copies) and `RankBadge` (Crown/Medal/Award podium treatment); `MyStatsCard` on `/` for LEAD/MEMBER;
-the `developerCount` admin field; sidebar/`AppShell` wiring across all 5 pages.
+Implemented as specced: new `SprintCapacity` model (migration `add_sprint_capacity`); 9 new
+purely-additive fields on `computeSprintMetrics`/`aggregateRollup` (`committed*`/`techDebt*`/
+`unplanned*`); `src/lib/schemas/sprint-capacity.js`; two new admin-only routes (`PUT
+/api/sprints/[sprintId]/capacity`, `POST …/capacity/duplicate`); capacity threaded through
+`getDashboardData`/`getRollupData`/`buildShareSnapshot`+`getShareData`; new admin
+`SprintCapacityConfig` (sprint picker + per-team matrix + duplicate-with-confirm) wired into
+`admin-panel.jsx`; `StoryPointsHighlight` grew optional `breakdown`/`capacity` props (initially a
+chip row — **superseded the same day, see below**) wired at all three call sites; one new column on
+`team-summary-table.jsx`; a new breakdown row in `export-dialog.jsx`'s `SummaryPage`. `/leaderboard`
+untouched.
 
-**Verified:** `yarn lint` clean; `prisma validate`/`migrate status` up to date (**6 migrations**);
-**DB/env-free cold build green — 42 ƒ Dynamic (41 → 42)**, `.env` genuinely moved aside (twice) and
-restored; **26/26 pure-fixture checks** for the new `metrics.mjs` functions; **24/24 SSR/API smoke
-checks** against a fabricated multi-team/multi-sprint fixture (RBAC gate incl. the TPM exclusion,
-the sync-gate 409, hand-verified sprint + all-time team/developer math, `MyStatsCard`'s figures
-with no rank/comparison leakage, the admin `developerCount` PATCH taking effect live); fixture torn
-down to 0 leftovers. A design pass (`impeccable` `bolder` playbook) added the podium treatment,
-confirmed via headless-Chrome screenshots in **both themes** (Tekion teal / Modern blue) — the
-accent-token reuse re-hues automatically with no per-theme branching.
+**Second pass, same day — the delivery scoreboard (2026-07-29).** Per Naveen ("extremely important
+section… every detail in it is represented well"), `StoryPointsHighlight` was **replaced, not
+tweaked** — the chip row is gone. Presentation only: no schema/migration/route/dependency change,
+**44 ƒ Dynamic unchanged**, all three call sites keep their props. An ink-surface card with a
+**composition rail** whose segment width is each type's share of planned scope and whose solid fill
+is what's delivered, in two variants — `condensed` (default on `/` and `/share/[token]`, **148px
+down from 428px**) and `relaxed` (default on `/rollup`, the only screen with a per-card
+Condensed/Relaxed toggle via the new `rollup/rollup-story-points.jsx` client leaf over
+`useLocalPref` — **not** a revival of the app-wide density toggle retired 2026-07-25). Two new
+measured palette tokens (`--on-ink-cat-2` gold `#e3a72f`, `--on-ink-cat-3` rose `#f2a8b6`),
+`--on-ink-warn` renamed `--on-ink-alert` red `#ff5f56` (amber sat ΔE 6.4 from the new gold),
+CVD-load-bearing `.sp-stripe` hatching on Unplanned Bugs, a capacity tick drawn **only** when
+committed scope overruns target (headroom stated in words otherwise), CSS-`:has()` hover dimming so
+the card stays a server component, and one ~0.8s `sp-draw`/`sp-fill`/`sp-mark` arrival.
+`useCountTransition` gained opt-in `countOnMount` **and a real bug fix** — its `getSnapshot` sampled
+the clock per call (React's "getSnapshot should be cached" warning); now computed once per rAF frame
+and cached, fixing both leaderboards and `MyStatsCard` too.
 
-**As-built discovery, not a bug in this feature**: smoke testing surfaced a pre-existing Next
-16.2.9 + Turbopack dev-mode quirk where both `redirect()` and `notFound()` resolve to HTTP 200
-(correct content, wrong status code) under `curl`/`fetch` — reproduces identically on untouched
-routes (`/`, `/admin`, `/rollup`). Worked around by asserting on body content instead of status
-code; noted in the spec's As-built notes for future dev-mode smoke testing in this repo.
+**Verified:** `yarn lint` clean; `prisma validate`/`migrate status` up to date (**7 migrations**);
+**DB/env-free cold build green — 44 ƒ Dynamic (42 → 44)**, `.env` genuinely moved aside and
+restored; **23/23 pure-fixture checks** for the new `metrics.mjs` segments incl. a before/after
+regression diff proving every pre-existing field byte-identical; **32/32 live API-route + SSR
+smoke checks** against a fully isolated fabricated fixture (2 teams, 2 sprints, 1 non-admin member,
+1 filter) — RBAC 403s, 404/400 validation gates, a `null` genuinely clearing a row, duplicate
+overwrite semantics, and SSR rendering on `/`/`/rollup`/`/admin`; fixture torn down to 0 leftovers.
+One pre-existing stale dev server (holding a pre-migration build, per this project's own documented
+hazard) was found and restarted mid-verification.
 
-**Next:** that live re-run confirmation for one-click-sprint-start (tracked separately, does not
-block this feature); remaining post-v1 ideas — export-embedded AI narrative, AI Q&A, stage
-suggestions, PDF/share for `/bugs`, a `/bugs` follow-up for ENG issues with no sub-component tag,
-and leaderboard rank-delta ("moved since last sprint") arrows, deliberately deferred out of v1.
+**Re-verified 2026-07-30 (finish gate, against Naveen's real synced data):** `yarn lint` clean;
+`prisma validate`/`migrate status` up to date (**7 migrations**, no schema change in the second
+pass); **cold `rm -rf .next` DB/env-free build green — 44 ƒ Dynamic unchanged**, `.env` genuinely
+moved aside via `mv` and confirmed absent mid-build, then restored; **22/22 pure-Node fixtures**
+re-derived for the three segments (all 5 `WorkflowType`s incl. `CUSTOM` landing in none,
+`aggregateRollup` doubling, empty-board NaN safety); **26/26 SSR/API smoke** (`/`, `/rollup`,
+`/admin`, unauth gate, both capacity routes' 401/404); **19/19 dedicated share-path checks** creating
+one live **and one frozen** share through the real route — the frozen `snapshot` JSON physically
+**pins capacity** (`keys: sprint, filters, capacity, progress, capturedAt`), both render condensed,
+teardown left **0** leftovers. `metrics.mjs`'s diff is **purely additive — zero removed lines**,
+proving decision 2 structurally, not just by fixture diff. **Zero** `getSnapshot`/infinite-loop
+warnings in the dev server's captured browser console, confirming the hook fix live.
+
+**Human acceptance — capacity numbers now DONE:** Naveen has entered his six real numbers
+(`AAI=24, CALM=24, D360=36, DX=48, INT=24, PCX=84`) and they render correctly — the AAI board shows
+`· 24 cap (on target)` (the equality case) and `/rollup`'s portfolio figure reads **240 capacity**,
+exactly their sum.
+
+**Still not done:** the **Modern**-theme visual round and the authed real-browser pass on `/`,
+`/rollup`, `/admin`. The Claude-in-Chrome extension is still not connected (as throughout this arc),
+so what was captured is the session-less `/share` page via **system Chrome headless** at
+1512/900/420px — scoreboard confirmed correct (rail at 24%/30%/46% summing to 100%, gold Tech Debt,
+hatched rose Unplanned Bugs, no capacity tick at target, graceful 3-line legend reflow at 420px).
+Theme is a `localStorage` class a cookie-less headless capture can't toggle.
+
+**Observation (pre-existing, not a regression):** below ~900px every card on a board page overflows
+horizontally — caused by the Delivery Matrix's `min-w-225` (900px) rows in `planner-panel.jsx`, a
+file **untouched by this diff**. The scoreboard is `overflow-hidden` + `min-w-0` and stacks fine.
+Worth a separate mobile-layout fix.
+
+**Next:** Naveen's Modern-theme/authed visual pass; then the remaining post-v1 ideas —
+export-embedded AI narrative, AI Q&A, stage suggestions, PDF/share for `/bugs`, a `/bugs`
+ENG-sub-component follow-up, and leaderboard rank-delta arrows, deliberately deferred out of v1.
+Also uncommitted and unrelated: a stray `legacy/index.html` edit (see History).
 
 ## Goals
 
-- **Team velocity leaderboard**: teams ranked by `completedPoints ÷ Team.developerCount` (a new
-  admin-entered field, not a dynamically-derived assignee count), both for a selected sprint and
-  all-time. Teams without `developerCount` set are excluded from the ranking but still show their
-  developers individually on the developer board.
-- **Developer leaderboard**: individual developers ranked by points delivered, aggregated across
-  every scrum team, both sprint-scoped and all-time — matched by `Issue.assigneeAccountId`.
-- **Visibility**: gated to EM + ED + VIEWER roles only (global admin bypasses); TPM and LEAD/MEMBER
-  are deliberately excluded from the full board. LEAD/MEMBER instead get a personal, non-competitive
-  "my stats" card (their own points only, no rank, no comparison) on their existing `/` dashboard.
-- **Bundled bugfix**: gate the manual "Sync Jira" action away from already-`CLOSED` sprints —
-  closes a real data-integrity gap this feature's historical accuracy depends on.
-- **Acceptance**: pure-fixture tests for the new `metrics.mjs` aggregation/ranking functions against
-  hand-computed examples; lint/`prisma validate`/DB-env-free build green; SSR/API smoke incl. RBAC
-  gates (EM/ED/VIEWER/admin see the board, LEAD/MEMBER/TPM see only their personal card, the
-  sync-gate 409 on a `CLOSED` sprint); a final human-acceptance run + visual pass against Naveen's
-  real synced teams/sprints.
+- **Three-way segmentation**: Committed (`FEATURE`) / Tech Debt (`TECH_DEBT`) / Unplanned Bugs
+  (`SUPPORT` + `INTERNAL_BUG`), badged visually as "two types" (Committed alone vs. Tech Debt +
+  Unplanned Bugs grouped). New fields on `computeSprintMetrics`/`aggregateRollup` in
+  `src/lib/metrics.mjs` — purely additive, never wired into Sprint Health/Completion/At-Risk.
+- **New `SprintCapacity` model** (`prisma/schema.prisma`) — a per-(team, sprint) admin-entered
+  Committed-points target. Cadence is per sprint (unlike the static `Team.developerCount`
+  precedent), since committed capacity can shift release to release.
+- **Admin matrix UI**: one sprint-scoped screen to edit every team's capacity at once, plus a
+  "duplicate to another sprint" action — admin-only, no RBAC change.
+- **Screens**: `StoryPointsHighlight` (`/`, `/rollup`, `/share/[token]`) gets a new breakdown row +
+  capacity comparison; `team-summary-table.jsx` gets one new "Committed/Capacity" column;
+  `export-dialog.jsx`'s `SummaryPage` gets a new breakdown row. `/leaderboard` is explicitly
+  untouched.
+- **Acceptance**: pure-fixture tests incl. a before/after regression diff proving every existing
+  `metrics.mjs` field stays byte-identical; API-route smoke for the two new capacity routes; SSR
+  smoke against Naveen's real synced data on all four screens; visual pass in both themes; final
+  human acceptance entering his six real capacity numbers.
 
 ## Notes
 
 - Full data model, API routes, UI changes, decisions, and open risks are in
-  @context/features/leaderboard.md — kept as the single source of truth rather than duplicated
-  here.
-- **One-Click Sprint Start (previous feature) is Done**, with one item still open: Naveen
-  re-running the live flow to confirm the corrected JQL (both 2026-07-27 fixes) against real Jira —
-  see the last History entries below and @context/features/one-click-sprint-start.md. This does not
-  block starting the Leaderboard feature.
-- Naveen asked that design skills be used for this one — the plan calls for the `impeccable` skill
-  (or `emil-design-eng`'s polish principles for micro-interactions) during the build, per the
-  dribbble references shared alongside the spec.
+  @context/features/committed-unplanned-work.md — kept as the single source of truth rather than
+  duplicated here.
+- **Velocity / LeaderBoard (previous feature) is Done and now committed to `main`** (commit
+  `c8d5bd5`, "Added Leadership page." — Naveen committed the whole accumulated
+  `feature/velocity-leaderboard` diff, including the three post-leaderboard fixes and the
+  `StatusStageMapping` seed extensions logged in the History below, in a parallel session while
+  this feature was being planned). This feature branches fresh off `main`.
+- This is a **new, purely additive display lens** layered on top of the existing `DELIVERY_TYPES`
+  binary split in `src/lib/metrics.mjs` (roadmap+tech-debt vs. all-work, §12) — that split is
+  read-only reference for this feature, never modified.
 
 ## History
 
@@ -1560,3 +1608,166 @@ and leaderboard rank-delta ("moved since last sprint") arrows, deliberately defe
   housekeeping for everything sitting uncommitted on this branch (leaderboard, the three
   post-leaderboard fixes, the story-points fallback, and this), then the still-open
   one-click-sprint-start live re-run and the remaining post-v1 ideas.
+- 2026-07-28 — Planning session (no code): drafted @context/features/committed-unplanned-work.md
+  from two handwritten notebook pages (`CommittedAndUnplanned-{1,2}.jpg`) via several rounds of
+  clarifying questions rather than guessing, since the notes left every architecture-determining
+  choice open. Ratified 10 decisions with Naveen: **three-way segmentation** (Committed=`FEATURE`,
+  Tech Debt=`TECH_DEBT`, Unplanned Bugs=`SUPPORT`+`INTERNAL_BUG`) **badged as two types** at the
+  headline level; **display-only/additive** — zero change to Sprint Health, Completion %, At-Risk,
+  or the existing delivery/throughput lens; **capacity compares Committed only** (Tech Debt/
+  Unplanned Bugs never get a target); **screens** = `/`, `/rollup`, `/share/[token]`, Export —
+  explicitly **NOT** `/leaderboard`; **capacity is per-team PER SPRINT**, needing a new
+  `SprintCapacity` join model (not a static `Team` field like `developerCount`, since committed
+  capacity shifts release to release); **one admin matrix screen** (sprint picker + one row per
+  team) plus a **"duplicate to another sprint"** action (explicitly requested); **admin-only RBAC**
+  (matches Sprint config's existing global-admin-only gate, no carve-out); **roll-up portfolio
+  total sums whatever teams ARE configured** with an "N of M teams configured" caveat rather than
+  hiding; `team-summary-table.jsx` gets **one new column** (Committed/Capacity), not a full
+  per-team 3-way breakdown; **duplicate confirms before overwriting** a target sprint that already
+  has configured rows. Exploration confirmed no existing per-`workflowType` breakdown exists
+  anywhere today (only the binary `DELIVERY_TYPES` set), and pinned exact file:line wiring points
+  in `metrics.mjs`, `dashboard-data.js`, `admin-panel.jsx`, and `schema.prisma` before writing the
+  spec. Also discovered mid-session: Naveen had committed and merged the entire
+  `feature/velocity-leaderboard` branch to `main` in a parallel session (`c8d5bd5`, "Added
+  Leadership page.") — this feature branches fresh off `main` instead.
+- 2026-07-28 — Picked @context/features/committed-unplanned-work.md as the current feature.
+  Created branch `feature/committed-unplanned-work` off `main`. Velocity/LeaderBoard remains
+  **Done** (now on `main`).
+- 2026-07-29 — **Implemented committed-unplanned-work.** Added `SprintCapacity` (`sprintId`,
+  `teamId`, `committedPoints`; `@@unique([sprintId, teamId])`, mirroring `SprintSnapshot`'s shape
+  minus the daily axis) via migration `20260728180901_add_sprint_capacity` (+ `capacities`
+  relations on `Team`/`Sprint`) — the first schema change since `add_team_developercount`. Added
+  `COMMITTED_TYPES`/`TECH_DEBT_ONLY_TYPES`/`UNPLANNED_TYPES` sets + a `segmentTotals` helper to
+  `metrics.mjs`, feeding 9 new fields (`committed*`/`techDebt*`/`unplanned*` × points/
+  completedPoints/issueCount) onto both `computeSprintMetrics` and `aggregateRollup` — filtering
+  the SAME already-materialized `issues` array `DELIVERY_TYPES` already uses, never touching any
+  existing field. New `src/lib/schemas/sprint-capacity.js` (a `z.null()`-before-`z.coerce.number()`
+  union so a literal `null` clears a row instead of coercing to 0) backs two new admin-only routes:
+  `PUT /api/sprints/[sprintId]/capacity` (batched upsert/delete transaction over the whole matrix)
+  and `POST …/capacity/duplicate` (copies another sprint's rows in, `[sprintId]` = destination,
+  `sourceSprintId` = source). Threaded capacity reads through `getDashboardData` (sibling `capacity`
+  prop, same treatment as `snapshots`), `getRollupData` (batched `combinedCapacity` w/
+  `configuredTeamCount`/`totalTeamCount` driving a "N of M teams configured" caveat), and
+  `buildShareSnapshot`/`getShareData` (frozen shares now pin capacity too, same asOf-pinning
+  invariant as the sprint window) + its one call site in the shares route. New
+  `src/components/admin/sprint-capacity-config.jsx` (sprint picker defaulting to `ACTIVE`, one
+  numeric input per team keyed by `key={selectedSprintId}` to reset on switch/refresh, a "duplicate
+  from" picker gated behind a confirm `Dialog` only when the target sprint already has rows) wired
+  into `admin-panel.jsx` as a new `Target`-iconed `SectionCard` between Sprints and BugReportConfig;
+  `admin/page.jsx` fetches `capacityRows` in its existing `Promise.all`. `StoryPointsHighlight`
+  restructured (existing 3-item row wrapped in its own flex container) and grew optional
+  `breakdown`/`capacity` props rendering a new chip row below the progress bar — a standalone
+  "Committed" chip (`X/Y pts` + `· N capacity` when configured) and a bordered "Tech Debt" +
+  "Unplanned Bugs" pair grouped together, delivering decision 1's "two types" framing structurally
+  — wired at all three existing call sites (`dashboard.jsx`, `rollup/page.jsx`,
+  `share/[token]/page.jsx`) with zero changes needed to `MetricGrid` (deliberately left alone, per
+  decision 2). `team-summary-table.jsx` gained one "Committed / Cap" column after "Points done".
+  `export-dialog.jsx`'s `SummaryPage` gained a new "Committed / Tech Debt / Unplanned" row of
+  `ReportMetricBox`es (capacity threaded as a new prop through `ExportDialog`'s one call site) —
+  `exportMetrics` already recomputes via the now-extended `computeSprintMetrics`, so no new export
+  metrics logic was needed. No changes to `/leaderboard`, as specced. Verified: `yarn lint` clean;
+  `prisma validate`/`migrate status` up to date (**7 migrations**); **DB/env-free cold build green
+  — 44 ƒ Dynamic (42 → 44)**, `.env` genuinely moved aside via `mv` and restored; **23/23 pure-Node
+  fixture checks** (hand-computed segment sums across all 5 `WorkflowType`s incl. the `CUSTOM`
+  edge case landing in none of the three segments, `aggregateRollup` doubling for 2 identical
+  teams) **plus a before/after regression diff** proving every pre-existing field
+  (`deliveryPoints`/`deliveryCompletedPoints`/`velocityPoints`/`totalIssues`/
+  `totalDeliveryIssues` and their rollup equivalents) byte-identical; **32/32 live API-route + SSR
+  smoke checks** via real HTTP + minted iron-session cookies against a fully isolated fabricated
+  fixture (2 teams, 2 sprints, 1 non-admin member, 1 filter) — non-admin 403 on both new routes,
+  404/400 validation gates, a `null` row genuinely clearing (confirmed via a follow-up DB read),
+  the duplicate route's same-sprint/unknown-source guards, a happy-path duplicate + a re-duplicate
+  proving overwrite semantics, and SSR rendering on `/` (Committed/Tech Debt/Unplanned Bugs chips +
+  capacity figure), `/rollup` (new table column, both fabricated teams' rows), and `/admin` (new
+  "Committed Capacity" section) — fixture torn down to **0 leftovers** (confirmed by a post-teardown
+  count query). Found and fixed two harness bugs along the way, zero app bugs: the dashboard's
+  `showWelcome` gate (`filters.length === 0`) initially hid the whole matrix until a bare `Filter`
+  row was added to the fixture team, and React SSR's `<!-- -->` comment markers between adjacent
+  JSX text nodes (`24<!-- --> capacity`) broke a naive substring assertion until markers were
+  stripped before comparing — both are pre-existing repo/framework behaviors, not regressions. One
+  pre-existing stale `next-server` process (holding a pre-migration build from the prior day, this
+  project's own well-documented "build clobbers `.next`" hazard) was found holding port 3002 and
+  restarted mid-verification. Doc-synced project-overview.md (§5 new row, §9 model block + both
+  relation lines + rationale bullet, §11 new dated note, §16 new ratified-decision entry, the
+  running post-v1 historical clause, `Last reviewed` bump). **Done.** **Not yet done:** a real
+  headless-Chrome/`impeccable` visual pass in both themes, and Naveen entering his six real
+  capacity numbers via the new admin screen against his real synced teams. **Next:** that
+  human-acceptance pass; remaining post-v1 ideas — export-embedded AI narrative, AI Q&A, stage
+  suggestions, PDF/share for `/bugs`, a `/bugs` ENG-sub-component follow-up, and leaderboard
+  rank-delta arrows.
+- 2026-07-29 — **Redesigned `StoryPointsHighlight` as the delivery scoreboard** (same day, per
+  Naveen: "extremely important section… every detail in it is represented well"). The chip row
+  shipped hours earlier was **replaced, not tweaked** — presentation only, no
+  schema/migration/route/dependency change, **44 ƒ Dynamic unchanged**, all three call sites keeping
+  their props. Seven choices ratified before any code (full scoreboard footprint · **ink surface**,
+  the hero's material rather than the pale accent tint · totals lead · one authored arrival ·
+  **Committed branded, the other two neutral** · over-capacity flagged · hover reveals precision).
+  As built: a headline delivered/planned pair over a **composition rail** whose segment WIDTH is each
+  type's share of planned scope and whose solid FILL is what's delivered, so the rail's lit area *is*
+  the headline % — composition and completion in one shape. **Two variants** after Naveen's mid-build
+  correction ("it's occupying a lot of real estate" / "in the Rollup screen keep this view, but give
+  an option to have condense/relax"): `condensed` (default on `/` and `/share/[token]`) at **148px,
+  down from 428px**, and `relaxed` (default on `/rollup`, where the portfolio breakdown IS the page)
+  — `/rollup` is the ONLY screen with a **Condensed/Relaxed toggle**, a new client leaf
+  `rollup/rollup-story-points.jsx` over `useLocalPref` per §17's ephemeral-pref rule, deliberately
+  **per-card** and NOT a revival of the app-wide density toggle retired 2026-07-25. **Palette measured,
+  not eyeballed:** the first cut's two greys read as background on ink (6.7:1 and 4.2:1), so Tech Debt
+  and Unplanned Bugs took two new theme-neutral tokens — `--on-ink-cat-2` **gold `#e3a72f`** (Naveen,
+  pointing at the `/bugs` Ageing ramp: "can we use this colour, I really like these") and
+  `--on-ink-cat-3` **rose `#f2a8b6`**; the Ageing ramp is deliberately **not** reused verbatim (authored
+  against a white card, its two darkest steps collapse to 3.4:1/2.2:1 on ink, so `--age-*` is
+  untouched and this is the same hue re-pitched). **`.sp-stripe` hatching stays** because brand↔cat-3
+  is worst-case **ΔE 4.8 under deuteranopia** — texture is that pair's second channel and must not be
+  "simplified" away. Knock-on: `--on-ink-warn` became `--on-ink-alert` **red `#ff5f56`**, since amber
+  sat ΔE 6.4 from the new gold and would have read as a fourth category. The capacity tick is drawn
+  **only when committed scope has overrun** target (a tick pinned to the segment edge would imply
+  capacity equals scope — the legend states headroom in words instead); hover-dimming is pure CSS
+  `:has()` so the card stays a server component and nothing is hover-only; motion is one ~0.8s
+  `sp-draw`/`sp-fill`/`sp-mark` sequence, all `backwards`-filled so it hands the property back and
+  never outranks the hover rule. `useCountTransition` gained opt-in `countOnMount` **and a real bug
+  fix**: its `getSnapshot` sampled the clock on every call — exactly React's "the result of
+  getSnapshot should be cached to avoid an infinite loop" — now computed once per rAF frame and
+  cached, fixing **every** caller (both leaderboards and `MyStatsCard`), not just the scoreboard.
+- 2026-07-30 — **Ran the finish-feature gate on the whole feature (both passes).** Verified against
+  Naveen's real synced data: `yarn lint` clean; `prisma validate`/`migrate status` up to date
+  (**7 migrations**); **cold `rm -rf .next` DB/env-free build green — 44 ƒ Dynamic unchanged**, `.env`
+  genuinely moved aside via `mv`, confirmed absent mid-build, restored after; **22/22 pure-Node
+  fixtures** re-derived for the three segments (all 5 `WorkflowType`s incl. the `CUSTOM` issue landing
+  in none of them, `aggregateRollup` doubling, empty-board NaN safety); **26/26 SSR/API smoke** across
+  `/`, `/rollup`, `/admin`, the unauth gate and both capacity routes' 401/404s; **19/19 dedicated
+  share-path checks** that create one live **and one frozen** share through the real API route — the
+  frozen `snapshot` JSON physically **pins capacity** (`keys: sprint, filters, capacity, progress,
+  capturedAt`), both variants render condensed, and teardown left **0** leftovers. Two structural
+  confirmations worth more than the counts: `metrics.mjs`'s diff is **purely additive — zero removed
+  lines** (decision 2's display-only claim proven by construction, not just by fixture diff), and the
+  dev server's **captured browser console shows zero** `getSnapshot`/infinite-loop/`Maximum update
+  depth` warnings across real page loads, confirming the hook fix in situ. **Closed a human-acceptance
+  item:** Naveen has entered his six real capacity numbers (`AAI=24, CALM=24, D360=36, DX=48, INT=24,
+  PCX=84`) and they render correctly — the AAI board shows `· 24 cap (on target)` (the equality case)
+  and `/rollup`'s portfolio figure reads **240 capacity**, exactly their sum. **Partial visual pass:**
+  the Chrome extension is still not connected, so the authed round remains Naveen's; the session-less
+  `/share` page was captured via **system Chrome headless** at 1512/900/420px against a temporary live
+  share (deleted after) — rail at 24%/30%/46% summing to 100%, gold Tech Debt, hatched rose Unplanned
+  Bugs, `24 cap (on target)` in words with **no** tick (correct at target), and a graceful 3-line
+  legend reflow at 420px. **Found three harness bugs and zero app bugs** — assertions using
+  `"Story Points"` vs the rendered `"Story points delivered"`, the *relaxed* variant's `24 capacity`
+  wording asserted against a *condensed* page (whose legend reads `· 24 cap`), and `includedFilterIds`
+  sent where the route's contract is `filterIds` (its 400 was correct) — plus a re-confirmation that
+  `computeSprintMetrics` is positional with a jiraKey-keyed progress **object**, `aggregateRollup`
+  takes a flat **array**, and `velocityPoints` is the throughput **scope** total, not delivered points.
+  Also established that the only pre-existing `SharedView` row **expired 2026-07-19**, so its page
+  correctly serves the generic expired state — which is indistinguishable from a broken board in a
+  substring assertion, hence the freshly-created share pair. **One pre-existing issue observed, not
+  fixed (out of scope):** below ~900px every card on a board page overflows horizontally, caused by
+  the Delivery Matrix's `min-w-225` rows in `planner-panel.jsx` — **a file this diff never touches**;
+  the scoreboard itself is `overflow-hidden` + `min-w-0` and stacks correctly. **One unrelated stray
+  edit flagged for Naveen, deliberately not reverted:** `legacy/index.html` (the retired Vite app)
+  carries an uncommitted reformat plus a title change to "Tek Tracker" **and a stray `pro` appended
+  after `</html>` with the trailing newline lost** — almost certainly an accidental keystroke, and it
+  would otherwise ride along in this commit. Docs synced: feature spec Status (both passes) +
+  As-built notes, project-overview §5 row / §16 decision register (a dated presentation-only
+  amendment, no ratified decision reversed) / the master-plan post-v1 clause, and `Last reviewed`
+  bumped to 2026-07-30; §9 re-checked byte-identical against `schema.prisma`. **Done.** **Next:**
+  Naveen's Modern-theme + authed visual pass, then the deferred post-v1 ideas — export-embedded AI
+  narrative, AI Q&A, stage suggestions, PDF/share for `/bugs`, the `/bugs` ENG-sub-component
+  follow-up, and leaderboard rank-delta arrows.

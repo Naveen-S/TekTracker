@@ -86,7 +86,18 @@ export default async function SharePage({ params }) {
     return <ShareInvalid />;
   }
 
-  const { sprint, filters, progressByKey, metrics, isLive, asOf, lastSyncedAt, viewDensity, jiraBaseUrl } = data;
+  const {
+    sprint,
+    filters,
+    progressByKey,
+    metrics,
+    capacity,
+    isLive,
+    asOf,
+    lastSyncedAt,
+    viewDensity,
+    jiraBaseUrl,
+  } = data;
   const freshness = isLive
     ? lastSyncedAt
       ? `Live view · data as of last Jira sync, ${formatDateTime(lastSyncedAt)}`
@@ -114,7 +125,25 @@ export default async function SharePage({ params }) {
           )}
         </HeroShell>
 
-        <StoryPointsHighlight completedPoints={metrics.completedPoints} totalPoints={metrics.points} />
+        <StoryPointsHighlight
+          completedPoints={metrics.completedPoints}
+          totalPoints={metrics.points}
+          breakdown={{
+            committed: {
+              points: metrics.committedPoints,
+              completedPoints: metrics.committedCompletedPoints,
+            },
+            techDebt: {
+              points: metrics.techDebtPoints,
+              completedPoints: metrics.techDebtCompletedPoints,
+            },
+            unplanned: {
+              points: metrics.unplannedPoints,
+              completedPoints: metrics.unplannedCompletedPoints,
+            },
+          }}
+          capacity={capacity}
+        />
 
         <MetricGrid metrics={metrics} sprint={sprint} asOf={asOf ?? undefined} />
 

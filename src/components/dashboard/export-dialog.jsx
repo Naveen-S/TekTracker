@@ -38,7 +38,7 @@ const HEALTH_BADGE = {
   neutral: "border-border-strong bg-subtle text-muted-foreground",
 };
 
-export function ExportDialog({ sprint, filters, progressByKey, onClose, showToast }) {
+export function ExportDialog({ sprint, filters, progressByKey, capacity, onClose, showToast }) {
   const [currentPage, setCurrentPage] = useState(0);
   const [selectedIds, setSelectedIds] = useState(() => new Set(filters.map((f) => f.id)));
   const [busy, setBusy] = useState(false);
@@ -266,6 +266,7 @@ export function ExportDialog({ sprint, filters, progressByKey, onClose, showToas
                 exportIssues={exportIssues}
                 exportMetrics={exportMetrics}
                 velocity={velocity}
+                capacity={capacity}
               />
             ) : (
               <IssuesPage rows={page.rows} pageNumber={pageIndex} totalPages={totalPages} />
@@ -330,7 +331,7 @@ function OverallCard({ tone, label, value, detail }) {
   );
 }
 
-function SummaryPage({ sprint, selectedFilters, exportIssues, exportMetrics, velocity }) {
+function SummaryPage({ sprint, selectedFilters, exportIssues, exportMetrics, velocity, capacity }) {
   const inProgressCount = exportIssues.filter((issue) => issue.percent > 0 && issue.percent < 100).length;
   const healthStatus = exportMetrics.sprintHealth.status;
   // Delivery lens (roadmap + tech debt) for the leadership health/completion cards; velocity below
@@ -467,6 +468,29 @@ function SummaryPage({ sprint, selectedFilters, exportIssues, exportMetrics, vel
           label="Projected"
           value={`${Math.round(velocity.projectedPoints)} pts`}
           detail="by end of sprint"
+        />
+      </div>
+
+      <SectionLabel className="mt-5">Committed / Tech Debt / Unplanned</SectionLabel>
+      <div className="mt-3 grid grid-cols-3 gap-3">
+        <ReportMetricBox
+          label="Committed"
+          value={`${Math.round(exportMetrics.committedCompletedPoints)} / ${Math.round(exportMetrics.committedPoints)}`}
+          detail={
+            capacity?.committedPoints != null
+              ? `of ${Math.round(capacity.committedPoints)} pt capacity`
+              : "Roadmap, committed to customer"
+          }
+        />
+        <ReportMetricBox
+          label="Tech Debt"
+          value={`${Math.round(exportMetrics.techDebtCompletedPoints)} / ${Math.round(exportMetrics.techDebtPoints)}`}
+          detail="Planned, not customer-committed"
+        />
+        <ReportMetricBox
+          label="Unplanned Bugs"
+          value={`${Math.round(exportMetrics.unplannedCompletedPoints)} / ${Math.round(exportMetrics.unplannedPoints)}`}
+          detail="Internal + external"
         />
       </div>
     </div>

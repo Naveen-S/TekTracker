@@ -80,6 +80,35 @@
   --on-ink-accent: #7fe3d5;
   --on-ink-danger: #fca5a5;
   --on-ink-success: #6ee7b7; /* emerald-300 — "shipped" green on ink (theme-neutral) */
+  /* The over-capacity alert on ink. This was amber until gold became a CATEGORY hue below
+     (`--on-ink-cat-2`) — at ΔE 6.4 an amber tick sitting a few pixels from a gold segment stops
+     reading as a signal and starts reading as a fourth category. Red clears the whole set
+     (ΔE ≥ 8.1 against every categorical slot, worst case across normal/protan/deutan vision) and
+     is the honest register anyway: committing past your capacity is not a soft caution. */
+  --on-ink-alert: #ff5f56;
+
+  /* ── On-ink CATEGORICAL slots (story-points-highlight.jsx) ──────────
+     Slot 1 is always `--on-ink-accent`, i.e. the active theme's own hue, so the primary category
+     reads as "ours". Slots 2 and 3 are theme-NEUTRAL (like the --age-* ramp): they must separate
+     from BOTH themes' brand hue, and no single pair of hues can do that while also clearing amber
+     and danger — so these two were chosen against teal AND blue simultaneously.
+
+     cat-2 is the GOLD from the /bugs Ageing panel (Naveen picked it: "I really like these"), but
+     re-pitched UP for this surface and NOT reused verbatim. That ramp was authored against a white
+     card, where dark steps read strongest; on ink the polarity inverts and its own two darkest
+     steps collapse to 3.4:1 and 2.2:1. `--age-*` therefore stays exactly as it is on /bugs — this
+     is the same hue tuned for the opposite background, not a shared token.
+
+     Measured worst-case ΔE across normal + protanopia + deuteranopia vision:
+       Tekion  brand↔cat-2 17.3 · brand↔cat-3  4.8 · cat-2↔cat-3 13.3
+       Modern  brand↔cat-2 25.1 · brand↔cat-3 10.1 · cat-2↔cat-3 13.3
+     Contrast on ink: 8.6:1 and 9.6:1 — both well clear of the dim greys they replace.
+
+     The ONE weak pair (brand↔cat-3 in Tekion) is why cat-3 is always drawn as a HATCH, never a
+     flat fill: texture is the second channel that makes it separable without colour. Do not
+     "simplify" that hatch away. */
+  --on-ink-cat-2: #e3a72f;
+  --on-ink-cat-3: #f2a8b6;
 
   --chart-1: #00bfa5;
   --chart-2: #0ea5e9;
@@ -218,6 +247,9 @@
   --color-on-ink-accent: var(--on-ink-accent);
   --color-on-ink-danger: var(--on-ink-danger);
   --color-on-ink-success: var(--on-ink-success);
+  --color-on-ink-alert: var(--on-ink-alert);
+  --color-on-ink-cat-2: var(--on-ink-cat-2);
+  --color-on-ink-cat-3: var(--on-ink-cat-3);
 
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -311,6 +343,43 @@
     }
     50% {
       opacity: 0.25;
+    }
+  }
+
+  /* ── Story-points scoreboard arrival (story-points-highlight.jsx) ─────
+     One authored sequence, played once on mount and then still: the sprint's
+     SHAPE is drawn left-to-right (sp-draw over the composition rail), then how
+     much of each type is DONE fills in behind it (sp-fill, staggered per type),
+     then the capacity marker drops in last (sp-mark). Order carries the meaning
+     — scope first, achievement second — so it is a sentence, not a flourish.
+
+     Every one of these uses `backwards`, never `both`: `both` would pin the end
+     keyframe at animation specificity and permanently outrank the hover-dim
+     rule below. `backwards` covers the delay and then hands the property back. */
+  @keyframes sp-draw {
+    from {
+      clip-path: inset(0 100% 0 0);
+    }
+    to {
+      clip-path: inset(0 0 0 0);
+    }
+  }
+  @keyframes sp-fill {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+  @keyframes sp-mark {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scaleY(0.4);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scaleY(1);
     }
   }
 
@@ -478,6 +547,41 @@
   background-color: var(--accent);
   border-color: color-mix(in oklab, var(--primary) 22%, transparent);
   color: var(--accent-foreground);
+}
+
+/* ── Story-points scoreboard: read one work type in isolation ────────────
+   Hovering any part of a work type (its segment in the composition rail, or its
+   column in the detail row) dims the other two, so "tech debt is two-thirds of
+   this sprint" lands as a picture instead of a number you have to compare.
+
+   Pure CSS, so the card stays a server component. Nothing here is hover-ONLY:
+   every figure the highlight surfaces is also printed as static text in the
+   detail row, so a keyboard or touch user loses emphasis, never information.
+
+   Specificity note: the dim rule and the three re-raise rules tie at (0,4,0),
+   so source order decides — the re-raise rules MUST stay below the dim rule. */
+.sp-part {
+  transition: opacity 0.2s var(--ease-out);
+}
+
+/* Unplanned Bugs is hatched AND coloured. The hatch is not decoration: `--on-ink-cat-3` is the one
+   pair in the set that colour alone cannot separate from the Tekion brand hue (worst-case ΔE 4.8
+   under deuteranopia — see the token block above), so texture is the channel that carries it. It
+   also happens to be the one place this card says "unplanned" without a word. */
+.sp-stripe {
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--on-ink-cat-3) 0 4px,
+    color-mix(in oklab, var(--on-ink-cat-3) 42%, var(--ink)) 4px 8px
+  );
+}
+.sp-board:has(.sp-part:hover) .sp-part {
+  opacity: 0.35;
+}
+.sp-board:has([data-part="committed"]:hover) [data-part="committed"],
+.sp-board:has([data-part="techDebt"]:hover) [data-part="techDebt"],
+.sp-board:has([data-part="unplanned"]:hover) [data-part="unplanned"] {
+  opacity: 1;
 }
 
 /* Motion sensitivity — the loading and dialog systems are the app's only

@@ -55,6 +55,7 @@ export function TeamSummaryTable({ perTeam, selectedSprint, asOf, viewerIsAdmin 
             <HeaderCell>My role</HeaderCell>
             <HeaderCell align="right">Issues</HeaderCell>
             <HeaderCell align="right">Points done</HeaderCell>
+            <HeaderCell align="right">Committed / Cap</HeaderCell>
             <HeaderCell align="right">Avg progress</HeaderCell>
             <HeaderCell>Health</HeaderCell>
             <HeaderCell>Bands</HeaderCell>
@@ -64,7 +65,7 @@ export function TeamSummaryTable({ perTeam, selectedSprint, asOf, viewerIsAdmin 
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ team, myRole, filters, metrics, lastSyncedAt }) => (
+          {rows.map(({ team, myRole, filters, metrics, capacity, lastSyncedAt }) => (
             <tr key={team.id} className="border-b border-border-subtle transition-colors last:border-b-0 hover:bg-subtle">
               <td className="px-3 py-2.5">
                 <p className="font-medium">
@@ -80,6 +81,13 @@ export function TeamSummaryTable({ perTeam, selectedSprint, asOf, viewerIsAdmin 
               <td className="px-3 py-2.5 text-right tabular-nums">{metrics.totalIssues}</td>
               <td className="px-3 py-2.5 text-right tabular-nums">
                 {Math.round(metrics.deliveryCompletedPoints)}/{metrics.deliveryPoints}
+              </td>
+              <td className="px-3 py-2.5 text-right tabular-nums">
+                {capacity?.committedPoints != null ? (
+                  `${Math.round(metrics.committedCompletedPoints)}/${Math.round(capacity.committedPoints)}`
+                ) : (
+                  <span className="text-muted-foreground/50">—</span>
+                )}
               </td>
               <td className="px-3 py-2.5 text-right tabular-nums">{metrics.deliveryAvgProgress}%</td>
               <td className="px-3 py-2.5">

@@ -23,7 +23,7 @@ export default async function AdminPage() {
     notFound();
   }
 
-  const [teams, sprints, jiraComponents] = await Promise.all([
+  const [teams, sprints, jiraComponents, capacityRows] = await Promise.all([
     prisma.team.findMany({
       orderBy: { name: "asc" },
       include: {
@@ -49,6 +49,9 @@ export default async function AdminPage() {
         },
       },
     }),
+    // committed-unplanned-work.md — every team's committed-capacity rows across every sprint, fed
+    // into the new "Committed Capacity" matrix section.
+    prisma.sprintCapacity.findMany({ orderBy: { sprintId: "asc" } }),
   ]);
 
   // Bug-report config (gm-bug-report.md (h)). The vocabularies come from the cached issues, so the
@@ -65,6 +68,7 @@ export default async function AdminPage() {
         teams={teams}
         sprints={sprints}
         jiraComponents={jiraComponents}
+        capacityRows={capacityRows}
         bugReports={bugData?.reports ?? []}
         bugConfig={bugData?.report ?? null}
         bugStatusVocabulary={bugData?.statusVocabulary ?? []}

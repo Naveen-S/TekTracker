@@ -107,6 +107,7 @@ model Team {
   snapshots       SprintSnapshot[]
   statusMappings  StatusStageMapping[]
   subComponents   JiraSubComponent[]
+  capacities      SprintCapacity[]
 }
 
 model TeamMembership {
@@ -195,6 +196,7 @@ model Sprint {
   progress         IssueProgress[]
   snapshots        SprintSnapshot[]
   sharedViews      SharedView[]
+  capacities       SprintCapacity[]
 
   @@index([state])
 }
@@ -357,6 +359,27 @@ model SprintSnapshot {
   totalIssues     Int
 
   @@unique([sprintId, teamId, capturedOn])
+  @@index([sprintId])
+}
+
+/// Admin-configured "planned/dedicated track capacity" (committed-unplanned-work.md) — the
+/// Committed (FEATURE workflow) point target for one team in one sprint. Cadence is PER SPRINT:
+/// unlike Team.developerCount, committed capacity can change release to release, so it is NOT a
+/// static per-team constant — it lives on this join row, mirroring SprintSnapshot's (team, sprint)
+/// shape minus the daily capturedOn axis. No row for a (team, sprint) ⇒ capacity is UNCONFIGURED,
+/// not zero — only Committed work is ever compared against a target; Tech Debt/Unplanned Bugs
+/// never have one.
+model SprintCapacity {
+  id              String   @id @default(cuid())
+  sprintId        String
+  sprint          Sprint   @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  teamId          String
+  team            Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  committedPoints Float
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([sprintId, teamId])
   @@index([sprintId])
 }
 
