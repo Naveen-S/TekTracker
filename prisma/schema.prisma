@@ -1,4 +1,4 @@
-// Sprint Tracker (TekTracker) data model.
+// StoryBoard data model.
 // Ported verbatim from context/project-overview.md §9 (the canonical data model).
 // Keep this file and §9 byte-consistent — change both in the same PR (doc-sync, §17).
 //

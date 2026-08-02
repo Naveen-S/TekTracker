@@ -36,7 +36,7 @@ export function Hero({
           {team.name} · {sprint.name} · {formatDate(sprint.developmentStart)} –{" "}
           {formatDate(sprint.developmentEnd)}
         </span>
-        <HeroTitle className="mt-0">Sprint Tracker</HeroTitle>
+        <HeroTitle className="mt-0">StoryBoard</HeroTitle>
         <HeroCopy className="max-w-md">
           Track delivery progress across multiple Jira filters with real-time visibility
         </HeroCopy>

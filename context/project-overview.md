@@ -1,12 +1,18 @@
-# Sprint Tracker (Tek Tracker) — Project Overview
+# StoryBoard — Project Overview
 
-> **Status of this document:** This is the canonical reference for the Sprint Tracker project.
+> **Status of this document:** This is the canonical reference for the StoryBoard project.
 > Every future feature, refactor, or AI-assisted change should be consistent with this file.
 > When reality and this doc diverge, **fix the doc in the same change**. Sections are marked
 > **[BUILT]**, **[PARTIAL]**, **[PLANNED]**, or **[GAP]** so the as-built state is never confused
 > with the target state.
 >
-> Last reviewed: 2026-07-30 · Owner: Naveen · Audience: engineers + Claude Code.
+> Last reviewed: 2026-07-31 · Owner: Naveen · Audience: engineers + Claude Code.
+>
+> **Rename note (2026-07-31):** the product was renamed to **StoryBoard** (was "Sprint Tracker",
+> earlier codename "Tek Tracker" / "TekTracker"). The rename is display/branding only — no schema,
+> route, cookie, or storage-key change. In-body references to the old names in the **dated history
+> and decision entries below are deliberately not rewritten** (same convention as the path note),
+> so read "Sprint Tracker"/"TekTracker" there as "StoryBoard".
 >
 > **Path note (cutover, 2026-07-18):** the Next.js app was promoted from the `web/` subfolder to
 > the **repo root**, and the legacy Vite/Express app was backed up into **`legacy/`**. Historical
@@ -18,7 +24,7 @@
 ## 1. Product vision
 
 One fast, comprehensive view of an entire sprint — from roadmap to backlog — in one place,
-without hunting through multiple Jira filters. Sprint Tracker sits *on top of* Jira and adds the
+without hunting through multiple Jira filters. StoryBoard sits *on top of* Jira and adds the
 **software-development lifecycle (SDLC) granularity** that raw Jira status cannot express, plus
 roll-ups that leadership can actually read.
 
@@ -34,7 +40,7 @@ It is an **internal engineering tool at Tekion Corp.**
    They have no signal mid-sprint about whether it is **on track**.
 3. **Jira status is too coarse.** A single Jira status doesn't capture the real delivery lifecycle:
    `PM clarification → HLD/LLD → coding → API contract → FE/BE integration → E2E testing → demo →
-   PR review/deployment → deployment`. Sprint Tracker models these **stages** so an EM/Lead can give
+   PR review/deployment → deployment`. StoryBoard models these **stages** so an EM/Lead can give
    a granular, trustworthy update upward to ED/VP.
 
 ---
@@ -1055,7 +1061,7 @@ generous whitespace, subtle borders and shadows. Desktop-first, mobile-usable.
 - **Delivery Matrix:** collapsible **Connected JQL** sidebar (left); rows = issues grouped by filter;
   columns = **stages**; **Health** + at-risk indicator (right). Grouped under the sprint/gate name.
 
-**Login page:** "Sprint Tracker — Connect your Jira account to get started." Inputs: **Jira Email**,
+**Login page:** "StoryBoard — Connect your Jira account to get started." Inputs: **Jira Email**,
 **API Token** (with "create token" hint → `id.atlassian.com → Security → API Tokens`), **Connect to
 Jira** button. Footer: "Engineering Internal Tool @ Tekion Corp."
 

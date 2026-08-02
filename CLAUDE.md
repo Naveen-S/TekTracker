@@ -1,7 +1,11 @@
-# TekTracker (Sprint Tracker)
+# StoryBoard
+
+> **Renamed 2026-07-31:** the product was renamed to **StoryBoard** (was "Sprint Tracker",
+> codename "TekTracker"). Dated historical entries in `context/**` deliberately keep the old
+> name, per the repo's append-don't-rewrite convention.
 
 One fast, comprehensive view of an entire sprint — from roadmap to backlog — in one place,
-without hunting through multiple Jira filters. Sprint Tracker sits *on top of* Jira and adds the
+without hunting through multiple Jira filters. StoryBoard sits *on top of* Jira and adds the
 **software-development lifecycle (SDLC) granularity** that raw Jira status cannot express, plus
 roll-ups that leadership can actually read.
 

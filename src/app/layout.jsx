@@ -25,7 +25,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata = {
-  title: "Sprint Tracker",
+  title: "StoryBoard",
   description:
     "One fast, comprehensive view of an entire sprint — from roadmap to backlog. Engineering internal tool @ Tekion Corp.",
 };

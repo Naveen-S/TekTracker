@@ -12,7 +12,7 @@ import { AppShell } from "@/components/ui/app-shell";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = { title: "Admin · Sprint Tracker" };
+export const metadata = { title: "Admin · StoryBoard" };
 
 export default async function AdminPage() {
   const user = await getCurrentUser();

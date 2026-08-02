@@ -18,7 +18,7 @@ import { TeamLeaderboard } from "@/components/leaderboard/team-leaderboard";
 import { DeveloperLeaderboard } from "@/components/leaderboard/developer-leaderboard";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Leaderboard · Sprint Tracker" };
+export const metadata = { title: "Leaderboard · StoryBoard" };
 
 export default async function LeaderboardPage({ searchParams }) {
   const user = await getCurrentUser();

@@ -26,7 +26,7 @@ export const dynamic = "force-dynamic";
 
 // Capability URLs must never be indexed or followed.
 export const metadata = {
-  title: "Shared sprint view — Sprint Tracker",
+  title: "Shared sprint view — StoryBoard",
   robots: { index: false, follow: false },
 };
 
@@ -47,8 +47,7 @@ function ShareChrome({ children }) {
         <div className="flex items-center gap-3">
           <Image src="/tekion-logo.svg" alt="Tekion" width={92} height={22} priority />
           <div className="hidden border-l border-border-subtle pl-3 sm:block">
-            <p className="font-display text-sm leading-tight font-extrabold">TekTracker</p>
-            <p className="text-[11px] leading-tight text-muted-foreground">Sprint Tracker</p>
+            <p className="font-display text-sm leading-tight font-extrabold">StoryBoard</p>
           </div>
         </div>
         <Badge tone="neutral">Shared view · read-only</Badge>
@@ -66,7 +65,7 @@ function ShareInvalid() {
     <ShareChrome>
       <main className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
         <p className="text-[11px] font-bold tracking-widest uppercase text-accent-foreground">
-          Sprint Tracker
+          StoryBoard
         </p>
         <h1 className="font-display text-2xl font-extrabold">
           This share link is invalid or has expired

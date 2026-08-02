@@ -4,7 +4,7 @@ import { LoginForm } from "@/components/auth/login-form";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = { title: "Sign in · Sprint Tracker" };
+export const metadata = { title: "Sign in · StoryBoard" };
 
 export default async function LoginPage() {
   const user = await getCurrentUser();

@@ -55,7 +55,7 @@ export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess }) {
     >
       <Link
         href="/"
-        aria-label="Sprint Tracker — go to my board"
+        aria-label="StoryBoard — go to my board"
         className={cn(
           "flex h-14 items-center gap-2.5 px-3.5 transition-colors hover:bg-white/8",
           collapsed && "justify-center px-0",
@@ -69,7 +69,7 @@ export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess }) {
           priority
           className="size-8 shrink-0 rounded-lg"
         />
-        {!collapsed && <span className="font-display text-sm font-bold whitespace-nowrap">Sprint Tracker</span>}
+        {!collapsed && <span className="font-display text-sm font-bold whitespace-nowrap">StoryBoard</span>}
       </Link>
 
       <nav className="mt-2 flex flex-col gap-1 px-2.5">

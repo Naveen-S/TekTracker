@@ -42,7 +42,7 @@ export function LoginForm() {
       <div className="w-full max-w-105 rounded-2xl border bg-card p-6 shadow-md animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out sm:p-10">
         <div className="mb-7 flex flex-col items-center gap-2 text-center">
           <Image src="/tekion-logo.svg" alt="Tekion" width={120} height={28} priority />
-          <h1 className="mt-2 font-display text-2xl font-bold tracking-tight">Sprint Tracker</h1>
+          <h1 className="mt-2 font-display text-2xl font-bold tracking-tight">StoryBoard</h1>
           <p className="text-sm text-muted-foreground">Connect your Jira account to get started</p>
         </div>
 

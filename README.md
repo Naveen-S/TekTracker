@@ -1,7 +1,7 @@
-# TekTracker (Sprint Tracker)
+# StoryBoard
 
 One fast, comprehensive view of an entire sprint — from roadmap to backlog — in one place,
-without hunting through multiple Jira filters. Sprint Tracker sits on top of Jira and adds the
+without hunting through multiple Jira filters. StoryBoard sits on top of Jira and adds the
 SDLC granularity that raw Jira status cannot express, plus roll-ups that leadership can read.
 
 **Internal engineering tool @ Tekion Corp.**

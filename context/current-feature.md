@@ -1,127 +1,83 @@
 # Current Feature
 
-**Committed / Tech Debt / Unplanned Work Breakdown + Per-Sprint Team Capacity** — full spec:
-@context/features/committed-unplanned-work.md
+**Rename the application to StoryBoard** (was "Sprint Tracker", earlier codename "TekTracker" /
+"Tek Tracker"). No dedicated spec file — a small display/branding change tracked here + in the
+dated History entry below. Requested by Naveen 2026-07-31.
 
-A new three-way story-point breakdown (Committed / Tech Debt / Unplanned Bugs) shown everywhere a
-total-points number shows today (`/`, `/rollup`, `/share/[token]`, Export PDF/PNG), plus a new
-admin-configurable, per-team-per-sprint "committed capacity" target compared against the Committed
-bucket only. Requested by Naveen 2026-07-28 (two handwritten notebook pages); post-v1, purely
-additive — does not touch Sprint Health, Completion %, At-Risk, or the existing delivery/throughput
-lens (§12).
+Display/branding only — **deliberately no schema, route, cookie, or storage-key change**, so
+nobody is logged out and no data is orphaned. Impact analysis confirmed the name has zero DB
+coupling (no rows/enums/slugs/defaults — only a line-1 schema comment), no env-var-name coupling,
+no in-repo deploy config, and no lockfile coupling; the Tekion git remote was already
+`naveens_tkinc/storyboard.git`.
 
 ## Status
 
-**Done 2026-07-29.** Full spec, ratified decisions, as-built notes, and open risks:
-@context/features/committed-unplanned-work.md.
+**Done 2026-08-01.** 22 in-code sites across 12 files + config/doc headers.
 
-Implemented as specced: new `SprintCapacity` model (migration `add_sprint_capacity`); 9 new
-purely-additive fields on `computeSprintMetrics`/`aggregateRollup` (`committed*`/`techDebt*`/
-`unplanned*`); `src/lib/schemas/sprint-capacity.js`; two new admin-only routes (`PUT
-/api/sprints/[sprintId]/capacity`, `POST …/capacity/duplicate`); capacity threaded through
-`getDashboardData`/`getRollupData`/`buildShareSnapshot`+`getShareData`; new admin
-`SprintCapacityConfig` (sprint picker + per-team matrix + duplicate-with-confirm) wired into
-`admin-panel.jsx`; `StoryPointsHighlight` grew optional `breakdown`/`capacity` props (initially a
-chip row — **superseded the same day, see below**) wired at all three call sites; one new column on
-`team-summary-table.jsx`; a new breakdown row in `export-dialog.jsx`'s `SummaryPage`. `/leaderboard`
-untouched.
+Implemented: the 6 wordmarks (4 top-bars, sidebar wordmark+aria-label, login heading, welcome
+hero) + the share page's two-line `TekTracker / Sprint Tracker` lockup collapsed to a single
+`StoryBoard`; the 5 `export const metadata` titles (`layout`, `login`, `leaderboard`, `admin`,
+`share`); `package.json` name → `story-board`; `.env.example` header; `README.md`/`CLAUDE.md`
+headers + vision prose; `prisma/schema.prisma:1` comment (self-heals into the gitignored generated
+client on `prisma generate` — verified clean). **Deliberately left alone** (decision 2): the
+session cookie `sprinttracker_session` (`src/lib/auth.js:22`) and the two `sprintTracker_*`
+localStorage keys — renaming the cookie would force-log-out every user with no dual-read fallback,
+for zero benefit. `legacy/**`, `src/generated/**`, and dated history/decision entries in
+`context/**` untouched (append-don't-rewrite; `project-overview.md` + `CLAUDE.md` each got a dated
+rename note instead).
 
-**Second pass, same day — the delivery scoreboard (2026-07-29).** Per Naveen ("extremely important
-section… every detail in it is represented well"), `StoryPointsHighlight` was **replaced, not
-tweaked** — the chip row is gone. Presentation only: no schema/migration/route/dependency change,
-**44 ƒ Dynamic unchanged**, all three call sites keep their props. An ink-surface card with a
-**composition rail** whose segment width is each type's share of planned scope and whose solid fill
-is what's delivered, in two variants — `condensed` (default on `/` and `/share/[token]`, **148px
-down from 428px**) and `relaxed` (default on `/rollup`, the only screen with a per-card
-Condensed/Relaxed toggle via the new `rollup/rollup-story-points.jsx` client leaf over
-`useLocalPref` — **not** a revival of the app-wide density toggle retired 2026-07-25). Two new
-measured palette tokens (`--on-ink-cat-2` gold `#e3a72f`, `--on-ink-cat-3` rose `#f2a8b6`),
-`--on-ink-warn` renamed `--on-ink-alert` red `#ff5f56` (amber sat ΔE 6.4 from the new gold),
-CVD-load-bearing `.sp-stripe` hatching on Unplanned Bugs, a capacity tick drawn **only** when
-committed scope overruns target (headroom stated in words otherwise), CSS-`:has()` hover dimming so
-the card stays a server component, and one ~0.8s `sp-draw`/`sp-fill`/`sp-mark` arrival.
-`useCountTransition` gained opt-in `countOnMount` **and a real bug fix** — its `getSnapshot` sampled
-the clock per call (React's "getSnapshot should be cached" warning); now computed once per rAF frame
-and cached, fixing both leaderboards and `MyStatsCard` too.
+**Verified 2026-08-01 (finish gate):** `yarn lint` clean (Node 22); grep sweep of authored `src/`
+returns **zero** old-name hits; `prisma validate` + `migrate status` up to date (**7 migrations, no
+new migration** — comment-only schema change); **cold `rm -rf .next` DB/env-free build green — 44 ƒ
+Dynamic unchanged** (`.env` genuinely moved aside via `mv`, confirmed absent mid-build, restored
+after; the running dev server was stopped for the cold build and restarted after — the documented
+house pattern). Runtime smoke on the restarted `:3002` server: `/login` renders `<title>Sign in ·
+StoryBoard</title>` + the StoryBoard wordmark; the unauth `/share/<bad-token>` page renders
+`<title>Shared sprint view — StoryBoard</title>` + StoryBoard chrome; both with zero
+`Sprint Tracker`/`TekTracker` in the rendered HTML.
 
-**Verified:** `yarn lint` clean; `prisma validate`/`migrate status` up to date (**7 migrations**);
-**DB/env-free cold build green — 44 ƒ Dynamic (42 → 44)**, `.env` genuinely moved aside and
-restored; **23/23 pure-fixture checks** for the new `metrics.mjs` segments incl. a before/after
-regression diff proving every pre-existing field byte-identical; **32/32 live API-route + SSR
-smoke checks** against a fully isolated fabricated fixture (2 teams, 2 sprints, 1 non-admin member,
-1 filter) — RBAC 403s, 404/400 validation gates, a `null` genuinely clearing a row, duplicate
-overwrite semantics, and SSR rendering on `/`/`/rollup`/`/admin`; fixture torn down to 0 leftovers.
-One pre-existing stale dev server (holding a pre-migration build, per this project's own documented
-hazard) was found and restarted mid-verification.
-
-**Re-verified 2026-07-30 (finish gate, against Naveen's real synced data):** `yarn lint` clean;
-`prisma validate`/`migrate status` up to date (**7 migrations**, no schema change in the second
-pass); **cold `rm -rf .next` DB/env-free build green — 44 ƒ Dynamic unchanged**, `.env` genuinely
-moved aside via `mv` and confirmed absent mid-build, then restored; **22/22 pure-Node fixtures**
-re-derived for the three segments (all 5 `WorkflowType`s incl. `CUSTOM` landing in none,
-`aggregateRollup` doubling, empty-board NaN safety); **26/26 SSR/API smoke** (`/`, `/rollup`,
-`/admin`, unauth gate, both capacity routes' 401/404); **19/19 dedicated share-path checks** creating
-one live **and one frozen** share through the real route — the frozen `snapshot` JSON physically
-**pins capacity** (`keys: sprint, filters, capacity, progress, capturedAt`), both render condensed,
-teardown left **0** leftovers. `metrics.mjs`'s diff is **purely additive — zero removed lines**,
-proving decision 2 structurally, not just by fixture diff. **Zero** `getSnapshot`/infinite-loop
-warnings in the dev server's captured browser console, confirming the hook fix live.
-
-**Human acceptance — capacity numbers now DONE:** Naveen has entered his six real numbers
-(`AAI=24, CALM=24, D360=36, DX=48, INT=24, PCX=84`) and they render correctly — the AAI board shows
-`· 24 cap (on target)` (the equality case) and `/rollup`'s portfolio figure reads **240 capacity**,
-exactly their sum.
-
-**Still not done:** the **Modern**-theme visual round and the authed real-browser pass on `/`,
-`/rollup`, `/admin`. The Claude-in-Chrome extension is still not connected (as throughout this arc),
-so what was captured is the session-less `/share` page via **system Chrome headless** at
-1512/900/420px — scoreboard confirmed correct (rail at 24%/30%/46% summing to 100%, gold Tech Debt,
-hatched rose Unplanned Bugs, no capacity tick at target, graceful 3-line legend reflow at 420px).
-Theme is a `localStorage` class a cookie-less headless capture can't toggle.
-
-**Observation (pre-existing, not a regression):** below ~900px every card on a board page overflows
-horizontally — caused by the Delivery Matrix's `min-w-225` (900px) rows in `planner-panel.jsx`, a
-file **untouched by this diff**. The scoreboard is `overflow-hidden` + `min-w-0` and stacks fine.
-Worth a separate mobile-layout fix.
-
-**Next:** Naveen's Modern-theme/authed visual pass; then the remaining post-v1 ideas —
-export-embedded AI narrative, AI Q&A, stage suggestions, PDF/share for `/bugs`, a `/bugs`
-ENG-sub-component follow-up, and leaderboard rank-delta arrows, deliberately deferred out of v1.
-Also uncommitted and unrelated: a stray `legacy/index.html` edit (see History).
+**Next:** Commit (awaiting Naveen's go-ahead) — then the optional external follow-ups: rename the
+`origin` GitHub repo `Naveen-S/TekTracker` and swap the "T" app icon/favicon for a StoryBoard mark.
+Deferred post-v1 ideas remain — export-embedded AI narrative, AI Q&A, stage suggestions, PDF/share
+for `/bugs`, a `/bugs` ENG-sub-component follow-up, leaderboard rank-delta arrows, plus the
+committed-unplanned-work Modern-theme/authed visual pass. Also uncommitted and unrelated: a stray
+`legacy/index.html` edit (see History).
 
 ## Goals
 
-- **Three-way segmentation**: Committed (`FEATURE`) / Tech Debt (`TECH_DEBT`) / Unplanned Bugs
-  (`SUPPORT` + `INTERNAL_BUG`), badged visually as "two types" (Committed alone vs. Tech Debt +
-  Unplanned Bugs grouped). New fields on `computeSprintMetrics`/`aggregateRollup` in
-  `src/lib/metrics.mjs` — purely additive, never wired into Sprint Health/Completion/At-Risk.
-- **New `SprintCapacity` model** (`prisma/schema.prisma`) — a per-(team, sprint) admin-entered
-  Committed-points target. Cadence is per sprint (unlike the static `Team.developerCount`
-  precedent), since committed capacity can shift release to release.
-- **Admin matrix UI**: one sprint-scoped screen to edit every team's capacity at once, plus a
-  "duplicate to another sprint" action — admin-only, no RBAC change.
-- **Screens**: `StoryPointsHighlight` (`/`, `/rollup`, `/share/[token]`) gets a new breakdown row +
-  capacity comparison; `team-summary-table.jsx` gets one new "Committed/Capacity" column;
-  `export-dialog.jsx`'s `SummaryPage` gets a new breakdown row. `/leaderboard` is explicitly
-  untouched.
-- **Acceptance**: pure-fixture tests incl. a before/after regression diff proving every existing
-  `metrics.mjs` field stays byte-identical; API-route smoke for the two new capacity routes; SSR
-  smoke against Naveen's real synced data on all four screens; visual pass in both themes; final
-  human acceptance entering his six real capacity numbers.
+- **Rename every user-visible occurrence** of "Sprint Tracker" / "TekTracker" to **StoryBoard** —
+  wordmarks, page titles, aria-labels, welcome hero, login heading, share-page chrome.
+- **Rename config/doc headers** — `package.json` name, `.env.example`, `README.md`, `CLAUDE.md`,
+  and the `schema.prisma` line-1 comment. Add a dated rename note to the canonical docs
+  (`project-overview.md`, `CLAUDE.md`) rather than rewriting dated history.
+- **Change nothing structural** — no schema/migration, no route, and (decision 2) explicitly NOT
+  the session cookie or the two `sprintTracker_*` localStorage keys, so no user is logged out and
+  no pref is silently reset.
+- **Acceptance**: grep sweep of authored `src/` returns zero old-name hits; lint clean; cold
+  DB/env-free build green with 44 ƒ Dynamic unchanged; runtime smoke confirming the new name in
+  rendered titles/chrome and existing sessions surviving.
+
+## As-built notes (vs. the plan)
+
+- **`package.json` name → `story-board`** (kebab-case; npm names can't contain uppercase). UI text
+  is `StoryBoard`. `legacy/package.json` (`sprint-tracker-legacy`) left as-is — retired app.
+- **Share page went from 3 old-name sites to a structural collapse**: the two-line lockup
+  (`TekTracker` over `Sprint Tracker`) became a single `StoryBoard` `<p>`, removing the redundant
+  subtitle line rather than renaming both — the plan anticipated this.
+- **The one residual `src/` hit** (`src/generated/prisma/internal/class.ts`, the `inlineSchema`
+  string mirroring the schema comment) self-healed on `yarn prisma generate` — confirmed clean, no
+  hand-edit. Grep sweeps exclude `src/generated/`.
+- **`current-feature.md`'s own old-name matches were left untouched** — they are dated History
+  entries plus the real on-disk directory path `context/SprintTracker - Project Spec/`.
 
 ## Notes
 
-- Full data model, API routes, UI changes, decisions, and open risks are in
-  @context/features/committed-unplanned-work.md — kept as the single source of truth rather than
-  duplicated here.
-- **Velocity / LeaderBoard (previous feature) is Done and now committed to `main`** (commit
-  `c8d5bd5`, "Added Leadership page." — Naveen committed the whole accumulated
-  `feature/velocity-leaderboard` diff, including the three post-leaderboard fixes and the
-  `StatusStageMapping` seed extensions logged in the History below, in a parallel session while
-  this feature was being planned). This feature branches fresh off `main`.
-- This is a **new, purely additive display lens** layered on top of the existing `DELIVERY_TYPES`
-  binary split in `src/lib/metrics.mjs` (roadmap+tech-debt vs. all-work, §12) — that split is
-  read-only reference for this feature, never modified.
+- **Committed / Tech Debt / Unplanned Work (previous feature) is Done** — its full spec is
+  @context/features/committed-unplanned-work.md; it was committed to `main` as `a1982c8`
+  ("Feature: Story points delivered.") before this rename branched off. This rename is a fresh,
+  unrelated branch (`feature/rename-storyboard`) off `main`.
+- The rename is intentionally minimal — see the four judgment-call decisions (naming, identity
+  keys left alone, docs scope, icon deferred) captured in the approved plan and the History entry.
 
 ## History
 
@@ -1771,3 +1727,54 @@ Also uncommitted and unrelated: a stray `legacy/index.html` edit (see History).
   Naveen's Modern-theme + authed visual pass, then the deferred post-v1 ideas — export-embedded AI
   narrative, AI Q&A, stage suggestions, PDF/share for `/bugs`, the `/bugs` ENG-sub-component
   follow-up, and leaderboard rank-delta arrows.
+- 2026-07-31 — **Renamed the application to StoryBoard** (was "Sprint Tracker", earlier codename
+  "TekTracker"/"Tek Tracker"). Branch `feature/rename-storyboard` off `main`. **Display/branding
+  only** — deliberately no schema, route, cookie, or storage-key change, so nobody is logged out
+  and no data is orphaned. Impact analysis up front confirmed the name has **zero DB coupling** (no
+  rows/enums/slugs/defaults — only a line-1 schema comment), **no env-var-name coupling**, no
+  in-repo deploy config, and no lockfile coupling; the Tekion git remote was already
+  `naveens_tkinc/storyboard.git`. Edits (22 in-code sites / 12 files + config/doc headers): the 6
+  wordmarks (4 top-bars, sidebar wordmark+aria-label, login heading, welcome hero) + the share
+  page's two-line `TekTracker / Sprint Tracker` lockup collapsed to a single `StoryBoard`; the 5
+  `export const metadata` titles (`layout`, `login`, `leaderboard`, `admin`, `share`);
+  `package.json` name → `story-board`; `.env.example` header; `README.md`/`CLAUDE.md` headers +
+  vision prose; `prisma/schema.prisma:1` comment (self-heals into the gitignored generated client on
+  `prisma generate` — verified clean). **Deliberately left alone** (decision 2): the session cookie
+  `sprinttracker_session` (`src/lib/auth.js:22`) and the two `sprintTracker_*` localStorage keys —
+  renaming the cookie would force-log-out every user with no dual-read fallback, for zero benefit.
+  `legacy/**`, `src/generated/**`, and dated history/decision entries in `context/**` untouched
+  (append-don't-rewrite; project-overview.md + CLAUDE.md each got a dated rename note instead, and
+  `current-feature.md`'s only old-name matches are historical entries + the real
+  `context/SprintTracker - Project Spec/` directory path). **Verified:** `yarn lint` clean (Node
+  22); grep sweep of authored `src/` returns **zero** old-name hits; `prisma validate` +
+  `migrate status` up to date (**7 migrations, no new migration**); **cold `rm -rf .next`
+  DB/env-free build green — 44 ƒ Dynamic unchanged** (`.env` genuinely moved aside via `mv`,
+  confirmed absent mid-build, restored after; a stale dev server holding the turbopack cache was
+  stopped for the cold build and restarted after — the documented house pattern); runtime smoke on
+  the restarted `:3002` server — `/login` renders `<title>Sign in · StoryBoard</title>` + the
+  StoryBoard wordmark, the unauth `/share/<bad-token>` page renders
+  `<title>Shared sprint view — StoryBoard</title>` + StoryBoard chrome, both with zero
+  `Sprint Tracker`/`TekTracker` in rendered HTML. **Not committed** (awaiting Naveen's review + the
+  optional external follow-ups: rename the `origin` GitHub repo `Naveen-S/TekTracker`, and swap the
+  "T" app icon/favicon for a StoryBoard mark). The stray `legacy/index.html` edit noted in the
+  2026-07-30 entry is unrelated and still uncommitted.
+- 2026-08-01 — **Ran the finish-feature gate on the StoryBoard rename.** Re-verified end to end on
+  Node 22: `yarn lint` clean; grep sweep of authored `src/` (excl. `src/generated/`) returns
+  **zero** `Sprint Tracker`/`TekTracker` hits; `prisma validate` + `migrate status` up to date
+  (**7 migrations, no new migration** — comment-only schema change); **cold `rm -rf .next`
+  DB/env-free build green — 44 ƒ Dynamic unchanged** (`.env` moved aside via `mv`, confirmed absent
+  mid-build, restored after; the running `:3002` dev server was stopped for the cold build and
+  restarted after — the documented house pattern); runtime smoke on the restarted server —
+  `/login` → `<title>Sign in · StoryBoard</title>` + StoryBoard wordmark, unauth
+  `/share/<bad-token>` → `<title>Shared sprint view — StoryBoard</title>` + StoryBoard chrome,
+  both zero old-name in rendered HTML, root `/` unauth → 200 (login). **Doc-sync (finish gate):**
+  extended the rename beyond the plan's original list to two forward-looking prose sites in
+  `project-overview.md` (§2 "StoryBoard models these stages", §11 login-page spec text) and the
+  three illustrative `.env.example` DB-URL sample names (`sprint_tracker` → `storyboard`) — all
+  commented/example values, zero runtime coupling. Canonical docs now carry the old name only in
+  the intentional dated rename notes (`project-overview.md` header, `CLAUDE.md` header) and in
+  dated `context/**` history; the session cookie + two `sprintTracker_*` localStorage keys remain
+  deliberately unchanged. Tracker header rolled forward from the committed-unplanned feature to this
+  rename (its detail preserved in @context/features/committed-unplanned-work.md + the History
+  above). **Done.** **Next:** commit on Naveen's go-ahead; then the optional external follow-ups
+  (rename `origin` GitHub repo, StoryBoard app mark).

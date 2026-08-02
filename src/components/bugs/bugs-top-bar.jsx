@@ -30,7 +30,7 @@ export function BugsTopBar({ user }) {
         <Image src="/tekion-logo.svg" alt="Tekion" width={92} height={22} priority />
         <span className="hidden h-5.5 w-px bg-border sm:block" aria-hidden="true" />
         <div className="hidden leading-tight sm:block">
-          <p className="font-display text-sm font-bold">Sprint Tracker</p>
+          <p className="font-display text-sm font-bold">StoryBoard</p>
           <p className="text-[11px] text-muted-foreground">Bug report</p>
         </div>
       </div>
