@@ -143,6 +143,7 @@ export function BugReportConfig({ reports, config, statusVocabulary, priorityVoc
   const [fallbackName, setFallbackName] = useState(
     () => config?.categories.find((category) => category.id === config.fallbackCategoryId)?.name ?? "",
   );
+  const [sprintPattern, setSprintPattern] = useState(() => config?.sprintOwnershipPattern ?? "");
 
   const inFlight = busy || pending;
 
@@ -220,6 +221,7 @@ export function BugReportConfig({ reports, config, statusVocabulary, priorityVoc
             bands: bands.map((band, index) => ({ ...band, sortOrder: index })),
             categories: categories.map((category, index) => ({ ...category, sortOrder: index })),
             fallbackCategoryName: fallbackName || null,
+            sprintOwnershipPattern: sprintPattern.trim() || null,
           },
         }),
       "Configuration saved — the dashboard reflects it immediately, no refresh needed.",
@@ -638,6 +640,22 @@ export function BugReportConfig({ reports, config, statusVocabulary, priorityVoc
                   </p>
                 )}
               </div>
+            </div>
+          </Section>
+
+          <Section
+            title="Sprint ownership"
+            hint="Group bugs by their Jira Sprint into 'ours' vs 'dependencies on other teams'. A bug whose sprint name matches this pattern counts as ours; everything else is a dependency. `*` is a wildcard; a value with no `*` is a prefix; separate several patterns with commas. Leave blank to hide the grouping. Applies at read time — no Jira refresh needed."
+          >
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="br-sprint-pattern">Sprint pattern</Label>
+              <Input
+                id="br-sprint-pattern"
+                value={sprintPattern}
+                onChange={(event) => setSprintPattern(event.target.value)}
+                placeholder="GM-*"
+                className="h-8 max-w-xs text-xs"
+              />
             </div>
           </Section>
 

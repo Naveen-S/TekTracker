@@ -1,4 +1,4 @@
-import { AlertTriangle, Bug, Clock, Flame, HelpCircle } from "lucide-react";
+import { AlertTriangle, Bug, Clock, Flame, GitBranch, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   SCOPE_TOTAL_BAND_KEY,
@@ -74,9 +74,34 @@ function Card({ label, icon: Icon, tone = "neutral", value, detail, delta, delta
   );
 }
 
-export function BugKpiCards({ matrix, diff, aging }) {
+export function BugKpiCards({ matrix, diff, aging, ownership = null, emphasizeScopeId = null }) {
   const total = matrix.totalRow;
   if (!total) return null;
+
+  // The sprint-ownership split (bug-sprint-ownership.md) gets an at-a-glance card when a pattern is
+  // configured — leadership sees ours-vs-dependencies without scrolling to the drill section below.
+  const showOwnership = Boolean(ownership?.configured && ownership.total > 0);
+
+  // External leads and is emphasized in the per-scope detail (enhancing-bug-board.md decision 1),
+  // in the All view only. Already first by sortOrder; this keeps it first and gives it weight.
+  const orderedScopes = emphasizeScopeId
+    ? [...matrix.scopes].sort((a, b) =>
+        a.id === emphasizeScopeId ? -1 : b.id === emphasizeScopeId ? 1 : 0,
+      )
+    : matrix.scopes;
+  const totalDetail = (
+    <span className="flex flex-wrap items-center gap-x-1.5">
+      {orderedScopes.map((scope, index) => (
+        <span
+          key={scope.id}
+          className={cn(scope.id === emphasizeScopeId && "font-semibold text-foreground")}
+        >
+          {index > 0 && <span className="mr-1.5 text-muted-foreground/50">·</span>}
+          {scope.name} {total.cells[scope.id]?.[SCOPE_TOTAL_BAND_KEY]?.count ?? 0}
+        </span>
+      ))}
+    </span>
+  );
 
   const residual = matrix.rows.find((row) => row.rowKey === UNATTRIBUTED_ROW_KEY);
 
@@ -110,7 +135,10 @@ export function BugKpiCards({ matrix, diff, aging }) {
 
   return (
     <div
-      className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"
+      className={cn(
+        "grid gap-3 sm:grid-cols-2 lg:grid-cols-3",
+        showOwnership ? "xl:grid-cols-7" : "xl:grid-cols-6",
+      )}
       aria-label="Bug report summary metrics"
     >
       <Card
@@ -121,9 +149,7 @@ export function BugKpiCards({ matrix, diff, aging }) {
         value={total.grandTotal.count}
         delta={diff.priorDate ? totalDelta : null}
         deltaTitle={since}
-        detail={matrix.scopes
-          .map((scope) => `${scope.name} ${total.cells[scope.id]?.[SCOPE_TOTAL_BAND_KEY]?.count ?? 0}`)
-          .join(" · ")}
+        detail={totalDetail}
       />
       <Card
         label="SLA breached"
@@ -165,6 +191,21 @@ export function BugKpiCards({ matrix, diff, aging }) {
             : "every status maps to a category"
         }
       />
+      {showOwnership && (
+        <Card
+          label="Ours / dependencies"
+          icon={GitBranch}
+          tone="brand"
+          value={
+            <span className="inline-flex items-baseline gap-1">
+              <span className="text-primary">{ownership.oursCount}</span>
+              <span className="text-lg font-bold text-muted-foreground/40">/</span>
+              <span className="text-warn-strong">{ownership.dependencyCount}</span>
+            </span>
+          }
+          detail={`${ownership.noSprintCount} no sprint · ours = sprint matches ${ownership.pattern}`}
+        />
+      )}
     </div>
   );
 }

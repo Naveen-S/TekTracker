@@ -414,9 +414,11 @@ export function Dashboard({
       {showExport && selectedSprint && (
         <ExportDialog
           sprint={selectedSprint}
+          team={selectedTeam}
           filters={filters}
           progressByKey={progressByKey}
           capacity={capacity}
+          jiraBaseUrl={jiraBaseUrl}
           onClose={() => setShowExport(false)}
           showToast={showToast}
         />

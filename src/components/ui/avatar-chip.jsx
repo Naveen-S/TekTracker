@@ -16,8 +16,11 @@ const SIZES = {
  * @param {{ name: string, title?: string, size?: "sm"|"md"|"lg", className?: string }} props
  */
 export function AvatarChip({ name, title, size = "sm", className }) {
+  // Root is a flex `<span>` (not a `<div>`) so the chip is valid PHRASING content — the by-team
+  // drill nests it inside an expand `<button>`. A flex span renders identically to the old div in
+  // every existing caller (all use it in flex/list rows).
   return (
-    <div
+    <span
       className={cn(
         "flex shrink-0 items-center justify-center rounded-full bg-ink font-bold text-white",
         SIZES[size] ?? SIZES.sm,
@@ -26,6 +29,6 @@ export function AvatarChip({ name, title, size = "sm", className }) {
       title={title ?? name}
     >
       {initials(name)}
-    </div>
+    </span>
   );
 }

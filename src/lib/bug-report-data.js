@@ -1,24 +1,34 @@
 /**
- * Server-only bug-report data assembly (gm-bug-report.md (f)) — the `/bugs` page resolves a
- * report by slug (or the first active one), its config, its cached issues, the read-time matrix,
- * the prior snapshot day for deltas, and the trend series. Reads go straight through Prisma
- * (coding-standards: server components fetch directly), mirroring `dashboard-data.js`.
+ * Server-only bug-report data assembly (gm-bug-report.md (f); extended by enhancing-bug-board.md
+ * (d)) — the `/bugs` page resolves a report by slug (or the first active one), its config, cached
+ * issues, and — computed at read time from raw cached facts + current config — the matrix, prior-day
+ * deltas, trend, aging, breach list, and the by-scrum-team breakdown. Reads go straight through
+ * Prisma (server components fetch directly), mirroring `dashboard-data.js`.
  *
- * Classification is NOT stored (decision 12) — `buildMatrix` runs here on every render from raw
- * cached facts + current config, so an admin config edit is visible immediately.
+ * The scope toggle (enhancing-bug-board.md decision 2) is served by pre-computing ONE view per
+ * scope plus an "all" view here; the page pre-renders all of them and a client switcher mounts the
+ * selected one, so switching is instant with no server round-trip. Everything is derived from a
+ * single issues + single snapshot query, sliced in memory.
+ *
+ * The team of a bug is a READ-TIME, FK-less join to the `JiraSubComponent → Team` catalog
+ * (enhancing-bug-board.md decision 3): the cache stays a dumb Jira mirror; claiming a sub-component
+ * in /admin re-renders instantly with no refresh, exactly like band/category/SLA classification.
  */
 import { prisma } from "@/lib/db";
 import {
   agingBuckets,
   buildMatrix,
   diffMatrix,
-  slaMapForScope,
   daysOverSla,
   cellJql,
   cellBreachedJql,
   SCOPE_TOTAL_BAND_KEY,
   TOTAL_ROW_KEY,
 } from "@/lib/bug-report/matrix.mjs";
+import { buildSubComponentTeamMap, buildSlaByScope, groupByTeam } from "@/lib/bug-report/by-team.mjs";
+import { groupBySprintOwnership } from "@/lib/bug-report/sprint-ownership.mjs";
+
+const EMPTY_SLA = new Map();
 
 const CONFIG_INCLUDE = {
   scopes: { orderBy: { sortOrder: "asc" }, include: { slaTargets: true } },
@@ -70,8 +80,6 @@ export async function getBugReportData(slug, asOf = new Date()) {
       })
     : [];
 
-  const matrix = buildMatrix(issues, report, asOf);
-
   // Deltas come from the most recent PRIOR capture day — never zero-filled across a gap.
   const priorDay = await prisma.bugReportSnapshot.findFirst({
     where: { reportId: report.id, capturedOn: { lt: startOfUtcDay(asOf) } },
@@ -83,39 +91,70 @@ export async function getBugReportData(slug, asOf = new Date()) {
         where: { reportId: report.id, capturedOn: priorDay.capturedOn },
       })
     : [];
-  const diff = diffMatrix(matrix, priorRows);
 
-  // Trend: the Total row's per-scope totals per captured day.
+  // Trend: the Total row's per-scope totals per captured day (sliced per scope in buildTrendSeries).
   const trendRows = await prisma.bugReportSnapshot.findMany({
     where: { reportId: report.id, rowKey: TOTAL_ROW_KEY, bandKey: SCOPE_TOTAL_BAND_KEY },
     orderBy: { capturedOn: "asc" },
     select: { capturedOn: true, scopeKey: true, scopeLabel: true, count: true, breachedCount: true },
   });
 
-  // Per-scope SLA maps power the breach panel's "N days over" copy.
-  const slaByScope = new Map(report.scopes.map((scope) => [scope.id, slaMapForScope(scope.slaTargets)]));
-  const breached = issues
-    .map((issue) => {
-      const over = daysOverSla(issue, slaByScope.get(issue.scopeId) ?? new Map(), asOf);
-      return over === null ? null : { ...issue, daysOverSla: over };
-    })
-    .filter(Boolean)
-    .sort((a, b) => b.daysOverSla - a.daysOverSla);
+  // Read-time sub-component → team catalog (enhancing-bug-board.md decision 3), loaded once.
+  const catalogRows = configured
+    ? await prisma.jiraSubComponent.findMany({
+        include: { team: { select: { id: true, key: true, name: true } } },
+      })
+    : [];
+  const teamMap = buildSubComponentTeamMap(catalogRows);
+  const slaByScope = buildSlaByScope(report.scopes);
+
+  // One view per scope + an "all" view; derived in memory (no extra queries) — enhancing-bug-board (d).
+  const buildView = (scopeSubset, scopeId) => {
+    const scopeIds = new Set(scopeSubset.map((scope) => scope.id));
+    const viewIssues = scopeId ? issues.filter((issue) => scopeIds.has(issue.scopeId)) : issues;
+    const config = scopeId ? { ...report, scopes: scopeSubset } : report;
+    const matrix = buildMatrix(viewIssues, config, asOf);
+    const diff = diffMatrix(matrix, priorRows);
+    const breached = viewIssues
+      .map((issue) => {
+        const over = daysOverSla(issue, slaByScope.get(issue.scopeId) ?? EMPTY_SLA, asOf);
+        return over === null ? null : { ...issue, daysOverSla: over };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.daysOverSla - a.daysOverSla);
+    return {
+      scopeId: scopeId ?? null,
+      matrix,
+      diff: { priorDate: diff.priorDate, delta: diff.delta },
+      trend: buildTrendSeries(trendRows, scopeId),
+      aging: agingBuckets(viewIssues, asOf),
+      breached,
+      byTeam: groupByTeam(viewIssues, teamMap, slaByScope, asOf),
+      bySprintOwnership: groupBySprintOwnership(viewIssues, report.sprintOwnershipPattern, slaByScope, asOf),
+      issues: viewIssues,
+    };
+  };
+
+  const views = { all: buildView(report.scopes, null) };
+  for (const scope of report.scopes) {
+    views[scope.id] = buildView([scope], scope.id);
+  }
+
+  // The scope emphasized in the All view (decision 1). "External" by name, else the first scope.
+  const externalScope = report.scopes.find((scope) => /extern/i.test(scope.name)) ?? report.scopes[0];
 
   return {
     report,
     reports,
     configured,
-    matrix,
-    diff: { priorDate: diff.priorDate, delta: diff.delta },
-    trend: buildTrendSeries(trendRows),
-    aging: agingBuckets(issues, asOf),
-    breached,
     issues,
     statusVocabulary: countBy(issues, (issue) => issue.jiraStatus),
     priorityVocabulary: countBy(issues, (issue) => issue.priority ?? "(none)"),
     jiraBaseUrl: (process.env.JIRA_BASE_URL ?? "").replace(/\/+$/, ""),
     asOf,
+    externalScopeId: externalScope?.id ?? null,
+    scopeOptions: report.scopes.map((scope) => ({ id: scope.id, name: scope.name })),
+    views,
     // The matrix passes back its TRIMMED scope ({ id, name, bands } — no resolvedJql/jql/
     // jiraFilterId/slaTargets), so resolve the full scope by id here; otherwise the universe
     // clause is silently dropped and every link degrades to just `priority IN (…)`.
@@ -130,10 +169,14 @@ function startOfUtcDay(date) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
 
-/** `[{capturedOn, scopeKey, count, breachedCount}]` → one point per day, summed across scopes. */
-function buildTrendSeries(rows) {
+/**
+ * `[{capturedOn, scopeKey, count, breachedCount}]` → one point per day. With `scopeId` set, only
+ * that scope's rows are kept (the per-scope view); otherwise summed across scopes (the All view).
+ */
+function buildTrendSeries(rows, scopeId = null) {
   const byDay = new Map();
   for (const row of rows) {
+    if (scopeId && row.scopeKey !== scopeId) continue;
     const key = row.capturedOn.toISOString();
     const point = byDay.get(key) ?? { capturedOn: row.capturedOn, count: 0, breachedCount: 0, scopes: {} };
     point.count += row.count;

@@ -402,6 +402,12 @@ model BugReport {
   /// Unmatched statuses land in this category (decision 9 — Naveen: Engineering Team).
   /// Null = they fall into the derived `__unattributed__` residual row instead.
   fallbackCategoryId   String?
+  /// Optional per-report glob (e.g. `GM-*`) grouping bugs by Jira SPRINT ownership
+  /// (bug-sprint-ownership.md): a bug whose `BugReportIssue.jiraSprintName` matches is "ours",
+  /// everything else is a dependency owned by another team. `*` is a wildcard; no `*` ⇒ prefix;
+  /// comma/newline-separated patterns are OR'd. Null/empty ⇒ the ownership section + KPI card hide.
+  /// Read-time only — a config edit re-renders instantly with no Jira refresh (the fallback/SLA precedent).
+  sprintOwnershipPattern String?
   isActive             Boolean  @default(true)
   lastRefreshedAt      DateTime?
   lastRefreshedByEmail String?
@@ -503,7 +509,9 @@ model BugReportIssue {
   priority       String?                               // drives band + SLA resolution
   assigneeName   String?
   reporterName   String?
-  components     String?                               // comma-joined
+  components     String?                               // comma-joined (standard Jira Component; coarse parent, e.g. DR_GM)
+  subComponent   String?                               // custom "sub-component[dropdown]" value → Team via JiraSubComponent (read-time, FK-less join; enhancing-bug-board.md)
+  jiraSprintName String?                               // Jira Sprint field → matched against BugReport.sprintOwnershipPattern at read time (ours vs dependency; bug-sprint-ownership.md)
   labels         String?                               // comma-joined
   jiraCreatedAt  DateTime?                             // drives SLA breach + aging
   jiraUpdatedAt  DateTime?

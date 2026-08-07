@@ -121,7 +121,10 @@ export async function PUT(request, { params }) {
         : null;
       await tx.bugReport.update({
         where: { id: reportId },
-        data: { fallbackCategoryId: fallback?.id ?? null },
+        data: {
+          fallbackCategoryId: fallback?.id ?? null,
+          sprintOwnershipPattern: input.sprintOwnershipPattern ?? null,
+        },
       });
     },
     // A full config save is ~20 sequential round-trips (scopes + their SLA targets, bands,

@@ -124,6 +124,25 @@ export async function fetchFilter({ auth, filterId }) {
   return parsed.data;
 }
 
+/**
+ * List all Jira fields (GET /rest/api/3/field). Used to discover a CUSTOM field's REST id
+ * (`customfield_XXXXX`) from its JQL clause name / display name — the search `fields` param needs
+ * the id, not the human name (enhancing-bug-board.md (b)). Returns the raw field-metadata array;
+ * the caller does the matching.
+ * @param {{ auth: { baseUrl: string, email: string, token: string } }} args
+ * @returns {Promise<Array<{ id: string, key?: string, name?: string, clauseNames?: string[] }>>}
+ */
+export async function fetchFields({ auth }) {
+  const res = await fetch(`${auth.baseUrl}/rest/api/3/field`, {
+    headers: { Authorization: basicAuthHeader(auth.email, auth.token), Accept: "application/json" },
+  });
+  if (!res.ok) {
+    throw toJiraError(res, "listing Jira fields");
+  }
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
 const SEARCH_PAGE_SIZE = 100;
 const SEARCH_MAX_ISSUES = 2000; // safety cap — a sprint track is a few hundred issues at most
 

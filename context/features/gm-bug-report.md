@@ -1,5 +1,11 @@
 # Bug Report dashboards — config-driven bug matrix + executive dashboard
 
+> **Enhancements (2026-08-02):** `/bugs` gained a scope toggle (External/Internal/All, External
+> highlighted, instant client-side), a "Bugs by scrum team" section (read-time sub-component → Team
+> join, a new `BugReportIssue.subComponent` column), and a per-team → per-developer → inline-issue
+> drill. Those changes have their own spec — see context/features/enhancing-bug-board.md. This file
+> remains the source of truth for the base dashboard (matrix, KPIs, charts, refresh, config).
+
 ## Overview
 
 Automate the **daily GM bug report** that is hand-built today: a matrix of open bug counts with
@@ -515,9 +521,9 @@ same applies to the SLA grid: one row per priority name actually present in that
 
 ### Out of scope
 
-- **PDF/PNG export and share tokens for `/bugs`.** Panels are built export-ready (server
-  components, inline SVG, no client-only rendering) so the follow-up is small — but porting
-  `ExportDialog` + a `SharedView` variant is its own feature.
+- **~~PDF/PNG export~~ and share tokens for `/bugs`.** **PDF export DONE 2026-08-02** — a
+  downloadable PDF with clickable Jira links; see context/features/bug-report-pdf-export.md. PNG and
+  a `SharedView` share-link variant remain out of scope.
 - **AI narrative over the bug report** — the `lib/ai/` platform is the natural home
   (`buildBugDigestInput` alongside the sprint builders); parked as the successor feature. Note
   decision 11: AI narrates these numbers, it never computes them.

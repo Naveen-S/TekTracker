@@ -1,18 +1,16 @@
 "use client";
 
 /**
- * Export dialog (share-view-export.md (e)) — port of the legacy ExportModal + useExport capture:
- * include/exclude filter toggles, a paged preview (summary page + 15-issue pages), and dedicated
- * offscreen 794px A4 print pages captured client-side. All report numbers come from ONE
- * `computeSprintMetrics` recompute over the selected filters, so preview and capture always match
- * (legacy ExportModal.jsx:21-27). PDF = one page per print page via jsPDF; PNG = merged canvas.
- * `html2canvas-pro` (not stock html2canvas) because the Tailwind v4 theme is oklch/color-mix —
- * proven by the capture spike (decision 8). Both libs load on demand via dynamic import.
- * The report pages follow the legacy export design system verbatim (src/styles.css :1728-2152):
- * teal eyebrow/section labels + 2px teal divider, white bordered metric boxes, 3-col accent
- * filter cards, pastel leadership cards, tinted table chrome with zebra rows. Print-only colors
- * that legacy hardcoded (brand teal, pastels, pct badges) stay fixed hex here too — these are
- * captured light-mode surfaces, never theme-flipped.
+ * Sprint board export — a leadership PDF/PNG of the selected sprint.
+ *
+ * Restyled onto the shared export design system (print-kit.jsx / print-theme.mjs) so it reads as
+ * one family with the /bugs Executive Bug Report: Inter typography, a navy/slate palette with a
+ * blue -> purple -> magenta gradient header rule, tinted KPI tiles, readout callouts, and blue
+ * mono Jira-key chips. Fixed A4 PORTRAIT sheets are captured offscreen by html2canvas-pro at
+ * scale 3 (lossless PNG), assembled by jsPDF, and every real `<a href>` is re-projected to a
+ * transparent pdf.link() so issue keys stay clickable. Every report number comes from ONE
+ * `computeSprintMetrics` recompute over the selected filters, so preview and capture never
+ * diverge. Both heavy libraries load on demand via dynamic import.
  */
 import { useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Download } from "lucide-react";
@@ -25,24 +23,72 @@ import {
   getWeeklyVelocity,
 } from "@/lib/metrics.mjs";
 import { WORKFLOWS } from "@/lib/workflows.mjs";
+import { PORTRAIT } from "@/lib/export/print-theme.mjs";
+import {
+  ExecutiveReadout,
+  KeyLink,
+  KpiBox,
+  PrintFooter,
+  PrintHeader,
+  PrintSheet,
+  ReportPanel,
+} from "@/components/export/print-kit.jsx";
+import {
+  canvasToPngBytes,
+  captureOptions,
+  fileStamp,
+  overlayLinks,
+  safeFilePart,
+} from "@/lib/export/pdf-capture.js";
 import { cn } from "@/lib/utils";
 
 const ISSUES_PER_PAGE = 15;
+const DEFAULT_ACCENT = "#2563eb";
+const ISSUE_COLS = "grid-cols-[82px_minmax(0,1fr)_64px_52px_92px]";
 
-/* Same legacy health triplets as issue-row.jsx (text 500 / border 600 / bg 50). */
-const HEALTH_BADGE = {
-  danger: "border-danger-strong bg-danger-soft text-danger",
-  warn: "border-warn-strong bg-warn-soft text-warn",
-  info: "border-info-strong bg-info-soft text-info",
-  success: "border-success-strong bg-success-soft text-success",
-  neutral: "border-border-strong bg-subtle text-muted-foreground",
+/* Progress pill: green complete / blue in-progress / slate not-started (print palette). */
+const PCT_BADGE = {
+  complete: "bg-[#f0fdf4] text-[#16a34a]",
+  inProgress: "bg-[#eff6ff] text-[#2563eb]",
+  notStarted: "bg-[#f1f5f9] text-[#64748b]",
 };
 
-export function ExportDialog({ sprint, filters, progressByKey, capacity, onClose, showToast }) {
+/* Bordered health pills tuned to the print palette (keyed by issue.health.tone). */
+const HEALTH_BADGE = {
+  danger: "border-[#fecdd3] bg-[#fff1f2] text-[#e11d48]",
+  warn: "border-[#fed7aa] bg-[#fff7ed] text-[#c2410c]",
+  info: "border-[#bfdbfe] bg-[#eff6ff] text-[#2563eb]",
+  success: "border-[#bbf7d0] bg-[#f0fdf4] text-[#16a34a]",
+  neutral: "border-[#e2e8f0] bg-[#f8fafc] text-[#64748b]",
+};
+
+function formatDateTime(value) {
+  if (!value) return "Not available";
+  return new Date(value).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+export function ExportDialog({
+  sprint,
+  team,
+  filters,
+  progressByKey,
+  capacity,
+  jiraBaseUrl,
+  onClose,
+  showToast,
+}) {
   const [currentPage, setCurrentPage] = useState(0);
   const [selectedIds, setSelectedIds] = useState(() => new Set(filters.map((f) => f.id)));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Captured once at mount (lazy init keeps render pure) so the header "Generated" time is stable.
+  const [generatedAt] = useState(() => Date.now());
   const offScreenRef = useRef(null);
 
   const selectedFilters = useMemo(
@@ -66,7 +112,7 @@ export function ExportDialog({ sprint, filters, progressByKey, capacity, onClose
       const fc = filterIssues.reduce((sum, issue) => sum + (issue.storyPoints * issue.percent) / 100, 0);
       const fpct = fp > 0 ? Math.round((fc / fp) * 100) : 0;
       rows.push({ kind: "filter-header", filter, count: filterIssues.length, fp, fc, fpct });
-      filterIssues.forEach((issue) => rows.push({ kind: "issue", issue }));
+      filterIssues.forEach((issue, i) => rows.push({ kind: "issue", issue, zebra: i % 2 === 1 }));
     });
     return rows;
   }, [selectedFilters, exportIssues]);
@@ -85,6 +131,23 @@ export function ExportDialog({ sprint, filters, progressByKey, capacity, onClose
     [sprint, exportMetrics],
   );
 
+  const lastRefreshed = useMemo(() => {
+    const times = selectedFilters
+      .map((filter) => (filter.lastSyncedAt ? new Date(filter.lastSyncedAt).getTime() : 0))
+      .filter((value) => value > 0);
+    return times.length > 0 ? Math.max(...times) : null;
+  }, [selectedFilters]);
+
+  const meta = useMemo(
+    () => [
+      { label: "Team", value: team?.name ?? "—", truncate: true },
+      { label: "Data refreshed", value: lastRefreshed ? formatDateTime(lastRefreshed) : "Not synced" },
+      { label: "Generated", value: formatDateTime(generatedAt) },
+    ],
+    [team, lastRefreshed, generatedAt],
+  );
+  const footerLeft = `StoryBoard · ${sprint.name} · ${team?.name ?? "Sprint report"}`;
+
   const toggleFilter = (id) =>
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -100,41 +163,66 @@ export function ExportDialog({ sprint, filters, progressByKey, capacity, onClose
   const pageIndex = Math.min(currentPage, totalPages - 1);
   const page = pages[pageIndex];
 
+  const browseHref = (jiraKey) => (jiraBaseUrl ? `${jiraBaseUrl}/browse/${jiraKey}` : null);
+
+  const renderPage = (pageDef, index) =>
+    pageDef.type === "summary" ? (
+      <SummaryPage
+        sprint={sprint}
+        selectedFilters={selectedFilters}
+        exportIssues={exportIssues}
+        exportMetrics={exportMetrics}
+        velocity={velocity}
+        capacity={capacity}
+        meta={meta}
+        footerLeft={footerLeft}
+        pageNumber={index + 1}
+        totalPages={totalPages}
+      />
+    ) : (
+      <IssuesPage
+        rows={pageDef.rows}
+        browseHref={browseHref}
+        footerLeft={footerLeft}
+        pageNumber={index + 1}
+        totalPages={totalPages}
+      />
+    );
+
   const handleExport = async (format) => {
     setError("");
     setBusy(true);
     try {
       await document.fonts.ready;
       const html2canvas = (await import("html2canvas-pro")).default;
-      // Date + time in the filename so same-day exports don't collide as "(1)", "(2)", …
-      const now = new Date();
-      const stamp = `${now.toISOString().split("T")[0]}_${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
-      const baseName = `${sprint.name.replace(/\s+/g, "_")}_Week${velocity.weeksElapsed}_Report_${stamp}`;
+      const baseName = `${safeFilePart(sprint.name, "sprint")}_Week${velocity.weeksElapsed}_Report_${fileStamp()}`;
       const pageEls = Array.from(offScreenRef.current.children);
-      // onclone: html2canvas measures layout in a cloned iframe whose webfonts load
-      // independently — without waiting, text metrics come from the fallback font and
-      // baselines/line breaks drift in the capture.
-      const captureOptions = {
-        scale: 2,
-        logging: false,
-        backgroundColor: "#ffffff",
-        width: 794,
-        onclone: (clonedDoc) => clonedDoc.fonts.ready,
-      };
+      const capture = captureOptions(PORTRAIT);
 
       if (format === "pdf") {
         const { jsPDF } = await import("jspdf");
-        const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+        const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
+        pdf.setProperties({
+          title: `${sprint.name} — Sprint Report`,
+          subject: "Sprint delivery report — Internal",
+          author: team?.name || "StoryBoard",
+          creator: "StoryBoard",
+          keywords: "sprint, delivery, velocity, engineering, internal",
+        });
         for (let i = 0; i < pageEls.length; i++) {
-          const canvas = await html2canvas(pageEls[i], captureOptions);
-          if (i > 0) pdf.addPage();
-          pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, 210, (canvas.height * 210) / canvas.width);
+          const canvas = await html2canvas(pageEls[i], capture);
+          const pngBytes = await canvasToPngBytes(canvas);
+          if (i > 0) pdf.addPage("a4", "portrait");
+          pdf.addImage(pngBytes, "PNG", 0, 0, PORTRAIT.widthMm, PORTRAIT.heightMm, undefined, "SLOW");
+          overlayLinks(pdf, pageEls[i], PORTRAIT);
         }
         pdf.save(`${baseName}.pdf`);
       } else {
-        const canvases = await Promise.all(
-          pageEls.map((el) => html2canvas(el, captureOptions)),
-        );
+        // PNG stacks every page into one tall image; capped at scale 2 to stay under the browser's
+        // max canvas height for long reports (the PDF path keeps the full scale-3 clarity).
+        const pngCapture = { ...capture, scale: 2 };
+        const canvases = [];
+        for (const el of pageEls) canvases.push(await html2canvas(el, pngCapture));
         const merged = document.createElement("canvas");
         merged.width = canvases[0].width;
         merged.height = canvases.reduce((sum, canvas) => sum + canvas.height, 0);
@@ -163,13 +251,11 @@ export function ExportDialog({ sprint, filters, progressByKey, capacity, onClose
     <Dialog
       open
       title={`Sprint Report — ${sprint.name}`}
-      description="Pick the filters to include, check the preview, then export."
+      description="Pick the filters to include, check the preview, then export. Jira keys stay clickable in the PDF."
       onClose={busy ? undefined : onClose}
       size="xl"
       footer={
         <>
-          {/* Page stepper sits with the actions rather than under a preview that scrolls — on a
-              multi-page report the old placement went out of reach exactly when it was needed. */}
           {totalPages > 1 && (
             <div className="mr-auto flex items-center gap-1.5">
               <Button
@@ -218,7 +304,7 @@ export function ExportDialog({ sprint, filters, progressByKey, capacity, onClose
             <div className="flex flex-wrap gap-1.5">
               {filters.map((filter) => {
                 const active = selectedIds.has(filter.id);
-                const accent = filter.accentColor ?? "#00a892";
+                const accent = filter.accentColor ?? DEFAULT_ACCENT;
                 return (
                   <button
                     key={filter.id}
@@ -257,92 +343,80 @@ export function ExportDialog({ sprint, filters, progressByKey, capacity, onClose
 
         <DialogError>{error}</DialogError>
 
-        <div className="overflow-x-auto rounded-lg border border-border-subtle bg-subtle p-4">
-          <div className="mx-auto w-198.5 bg-white p-8 shadow-sm">
-            {page.type === "summary" ? (
-              <SummaryPage
-                sprint={sprint}
-                selectedFilters={selectedFilters}
-                exportIssues={exportIssues}
-                exportMetrics={exportMetrics}
-                velocity={velocity}
-                capacity={capacity}
-              />
-            ) : (
-              <IssuesPage rows={page.rows} pageNumber={pageIndex} totalPages={totalPages} />
-            )}
+        <div className="rounded-xl border border-border-subtle bg-[#e9eef3] p-2 sm:p-4">
+          <div className="mb-2 flex items-center justify-between gap-3 px-1 text-[11px] text-muted-foreground">
+            <span>Responsive preview · A4 portrait</span>
+            <span className="font-semibold text-foreground">Internal</span>
           </div>
+          <PortraitPreview>{renderPage(page, pageIndex)}</PortraitPreview>
         </div>
-
       </div>
 
-      {/* Offscreen A4 print pages — what html2canvas-pro actually captures. Rendered (not
-          display:none) so layout runs; parked far off-canvas like the legacy .export-offscreen. */}
-      <div ref={offScreenRef} className="fixed top-0 -left-500" aria-hidden="true">
-        <div className="w-198.5 bg-white p-8">
-          <SummaryPage
-            sprint={sprint}
-            selectedFilters={selectedFilters}
-            exportIssues={exportIssues}
-            exportMetrics={exportMetrics}
-            velocity={velocity}
-          />
-        </div>
-        {pages.slice(1).map((issuePage, index) => (
-          <div key={index} className="w-198.5 bg-white p-8">
-            <IssuesPage rows={issuePage.rows} pageNumber={index + 1} totalPages={totalPages - 1} />
-          </div>
+      {/* Offscreen A4 print sheets — what html2canvas-pro captures. Rendered (not display:none) so
+          layout runs; parked far off-canvas. */}
+      <div
+        ref={offScreenRef}
+        className="pointer-events-none fixed top-0 -left-[20000px]"
+        aria-hidden="true"
+      >
+        {pages.map((pageDef, index) => (
+          <PrintSheet key={`${pageDef.type}-${index}`} geometry={PORTRAIT}>
+            {renderPage(pageDef, index)}
+          </PrintSheet>
         ))}
       </div>
     </Dialog>
   );
 }
 
-/* Teal section label / eyebrow (legacy .export-section-label / .export-eyebrow — brand teal). */
-function SectionLabel({ children, className }) {
+function PortraitPreview({ children }) {
   return (
-    <p className={cn("text-[11px] font-bold tracking-[0.08em] uppercase text-[#00bfa5]", className)}>
-      {children}
-    </p>
-  );
-}
-
-/* Pastel leadership cards (legacy styles.css :1880-1918). Legacy styled its "warn" band
-   identically to "good", so only good/risk/completion/projected exist. */
-const OVERALL_CARD = {
-  good: { box: "border-[#bbf7d0] bg-[#f0fdf4]", label: "text-[#15803d]", value: "text-[#14532d]" },
-  risk: { box: "border-[#fed7aa] bg-[#fff7ed]", label: "text-[#c2410c]", value: "text-[#7c2d12]" },
-  completion: { box: "border-[#bfdbfe] bg-[#eff6ff]", label: "text-[#1d4ed8]", value: "text-[#1e3a8a]" },
-  projected: { box: "border-[#fde68a] bg-[#fffbeb]", label: "text-[#b45309]", value: "text-[#78350f]" },
-};
-
-function OverallCard({ tone, label, value, detail }) {
-  const colors = OVERALL_CARD[tone];
-  return (
-    <div className={cn("rounded-md border px-5 py-4", colors.box)}>
-      <span className={cn("block text-[11px] font-bold tracking-[0.08em] uppercase", colors.label)}>
-        {label}
-      </span>
-      <strong className={cn("mt-2 block font-display text-[32px] leading-[1.05] font-extrabold", colors.value)}>
-        {value}
-      </strong>
-      <span className={cn("mt-1 block text-[11px]", colors.label)}>{detail}</span>
+    <div
+      className={cn(
+        "relative mx-auto h-[404px] w-[286px] overflow-hidden shadow-lg",
+        "min-[480px]:h-[517px] min-[480px]:w-[365px]",
+        "sm:h-[606px] sm:w-[429px]",
+      )}
+    >
+      <div
+        className={cn(
+          "absolute top-0 left-0 origin-top-left scale-[0.36]",
+          "min-[480px]:scale-[0.46] sm:scale-[0.54]",
+        )}
+      >
+        <PrintSheet geometry={PORTRAIT}>{children}</PrintSheet>
+      </div>
     </div>
   );
 }
 
-function SummaryPage({ sprint, selectedFilters, exportIssues, exportMetrics, velocity, capacity }) {
-  const inProgressCount = exportIssues.filter((issue) => issue.percent > 0 && issue.percent < 100).length;
+function SummaryPage({
+  sprint,
+  selectedFilters,
+  exportIssues,
+  exportMetrics,
+  velocity,
+  capacity,
+  meta,
+  footerLeft,
+  pageNumber,
+  totalPages,
+}) {
   const healthStatus = exportMetrics.sprintHealth.status;
-  // Delivery lens (roadmap + tech debt) for the leadership health/completion cards; velocity below
-  // stays all-work (two-lens model, sprint-phases-delivery-lens.md).
+  // Delivery lens (roadmap + tech debt) drives the health/completion figures; velocity + story
+  // points stay all-work (two-lens model, sprint-phases-delivery-lens.md).
   const completionPct =
     exportMetrics.deliveryPoints > 0
       ? Math.round((exportMetrics.deliveryCompletedPoints / exportMetrics.deliveryPoints) * 100)
       : 0;
-  // Worst-first breakdown (mirrors metric-grid.jsx's DELIVERY_BANDS) — replaces the old
-  // on-track-only count, which could read "on track" or even "Excellent" overall while most of
-  // the sprint's delivery issues sat un-shown in Done/At Risk/Behind.
+  const overallPct =
+    exportMetrics.points > 0
+      ? Math.round((exportMetrics.completedPoints / exportMetrics.points) * 100)
+      : 0;
+  const atRisk =
+    exportMetrics.deliveryHealthCounts.atRisk + exportMetrics.deliveryHealthCounts.behind;
+
+  // Worst-first delivery breakdown (mirrors metric-grid.jsx's DELIVERY_BANDS).
   const deliveryBreakdown =
     [
       ["blocked", "blocked"],
@@ -356,269 +430,270 @@ function SummaryPage({ sprint, selectedFilters, exportIssues, exportMetrics, vel
       .map(([key, label]) => `${exportMetrics.deliveryHealthCounts[key]} ${label}`)
       .join(" · ") || "no delivery issues";
 
-  const generatedOn = new Date().toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-
-  const healthTone = ["At Risk", "Critical"].includes(healthStatus) ? "risk" : "good";
+  const healthKpiTone =
+    healthStatus === "Critical" ? "danger" : healthStatus === "At Risk" ? "warn" : "positive";
+  const healthReadoutTone =
+    healthStatus === "Critical" ? "danger" : healthStatus === "At Risk" ? "warn" : "neutral";
+  const round = (n) => Math.round(n);
 
   return (
-    <div className="text-foreground">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <SectionLabel>Sprint Report</SectionLabel>
-          <h3 className="mt-1 font-display text-2xl font-extrabold">{sprint.name}</h3>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">{formatSprintWindow(sprint)}</p>
-        </div>
-        <div className="shrink-0 text-right">
-          <span className="block text-[11px] text-muted-foreground">Generated on</span>
-          <strong className="mt-0.5 block text-[13px] font-bold text-foreground">{generatedOn}</strong>
-        </div>
-      </div>
-      <div className="mt-4 h-0.5 bg-[#00bfa5]" />
+    <div className="flex flex-1 flex-col text-[#0f172a]">
+      <PrintHeader
+        eyebrow="Sprint delivery"
+        pill="Internal"
+        title={sprint.name}
+        subtitle={formatSprintWindow(sprint)}
+        meta={meta}
+      />
 
-      <SectionLabel className="mt-5">
-        This week&apos;s update — week {velocity.weeksElapsed} of {velocity.totalWeeks}
-      </SectionLabel>
-      <div className="mt-3 grid grid-cols-4 gap-3">
-        <ReportMetricBox
-          label="Week"
-          value={`${velocity.weeksElapsed} / ${velocity.totalWeeks}`}
-          detail={velocity.onTrack ? "On pace" : "Behind pace"}
-        />
-        <ReportMetricBox
-          label="Velocity"
-          value={`${velocity.velocity} pts`}
-          detail={`per week · ${velocity.weeksNeeded}w needed`}
-        />
-        <ReportMetricBox
-          label="In progress"
-          value={inProgressCount}
-          detail={`of ${exportIssues.length} issues`}
-        />
-        <ReportMetricBox
-          label="Blocked"
-          value={exportMetrics.blockedCount}
-          detail={`${exportMetrics.behindCount} behind · ${exportMetrics.atRiskCount} at risk`}
-        />
-      </div>
-
-      <div className="mt-5 grid grid-cols-3 gap-3">
-        {selectedFilters.map((filter) => {
-          const filterIssues = exportIssues.filter((issue) => issue.filterId === filter.id);
-          const fp = filterIssues.reduce((sum, issue) => sum + issue.storyPoints, 0);
-          const fc = filterIssues.reduce(
-            (sum, issue) => sum + (issue.storyPoints * issue.percent) / 100,
-            0,
-          );
-          const fpct = fp > 0 ? Math.round((fc / fp) * 100) : 0;
-          const done = filterIssues.filter((issue) => issue.percent === 100).length;
-          const active = filterIssues.filter((issue) => issue.percent > 0 && issue.percent < 100).length;
-          const accent = filter.accentColor ?? "#00a892";
-          return (
-            <div
-              key={filter.id}
-              className="rounded-md border bg-white px-4 py-3"
-              style={{ borderLeft: `4px solid ${accent}` }}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <strong className="block text-sm font-bold text-foreground">{filter.name}</strong>
-                  <span className="mt-0.5 block text-[11px] font-medium text-muted-foreground">
-                    {WORKFLOWS[filter.workflowType].name}
-                  </span>
-                </div>
-                <span className="shrink-0 font-display text-lg font-extrabold text-foreground">
-                  {fpct}%
-                </span>
-              </div>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                {done} done · {active} active · {filterIssues.length} total
-              </p>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-                <span
-                  className="block h-full rounded-full"
-                  style={{ width: `${fpct}%`, backgroundColor: accent }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <SectionLabel className="mt-5">Overall sprint metrics</SectionLabel>
-      <div className="mt-3 grid grid-cols-3 gap-3">
-        <OverallCard
-          tone={healthTone}
-          label="Sprint health"
-          value={healthStatus}
-          detail={deliveryBreakdown}
-        />
-        <OverallCard
-          tone="completion"
+      <div className="mt-3 grid grid-cols-5 gap-2.5">
+        <KpiBox label="Sprint health" value={healthStatus} detail={deliveryBreakdown} tone={healthKpiTone} />
+        <KpiBox
           label="Completion"
           value={`${completionPct}%`}
-          detail={`${Math.round(exportMetrics.deliveryCompletedPoints)} / ${exportMetrics.deliveryPoints} delivery pts`}
+          detail={`${round(exportMetrics.deliveryCompletedPoints)} / ${round(exportMetrics.deliveryPoints)} delivery pts`}
+          tone="info"
         />
-        <OverallCard
-          tone="projected"
-          label="Projected"
-          value={`${Math.round(velocity.projectedPoints)} pts`}
-          detail="by end of sprint"
+        <KpiBox
+          label="Weekly velocity"
+          value={`${velocity.velocity} pts`}
+          detail={`per week · ${velocity.weeksNeeded}w to finish`}
+          tone="ink"
+        />
+        <KpiBox
+          label="At risk"
+          value={atRisk}
+          detail={`${exportMetrics.blockedCount} blocked`}
+          tone={atRisk > 0 ? "warn" : "positive"}
+        />
+        <KpiBox
+          label="Story points"
+          value={`${round(exportMetrics.completedPoints)} / ${round(exportMetrics.points)}`}
+          detail={`${overallPct}% delivered · all work`}
+          tone="positive"
         />
       </div>
 
-      <SectionLabel className="mt-5">Committed / Tech Debt / Unplanned</SectionLabel>
-      <div className="mt-3 grid grid-cols-3 gap-3">
-        <ReportMetricBox
-          label="Committed"
-          value={`${Math.round(exportMetrics.committedCompletedPoints)} / ${Math.round(exportMetrics.committedPoints)}`}
-          detail={
-            capacity?.committedPoints != null
-              ? `of ${Math.round(capacity.committedPoints)} pt capacity`
-              : "Roadmap, committed to customer"
-          }
-        />
-        <ReportMetricBox
-          label="Tech Debt"
-          value={`${Math.round(exportMetrics.techDebtCompletedPoints)} / ${Math.round(exportMetrics.techDebtPoints)}`}
-          detail="Planned, not customer-committed"
-        />
-        <ReportMetricBox
-          label="Unplanned Bugs"
-          value={`${Math.round(exportMetrics.unplannedCompletedPoints)} / ${Math.round(exportMetrics.unplannedPoints)}`}
-          detail="Internal + external"
-        />
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <ReportPanel title="Delivery readout" subtitle="Roadmap + tech debt · dev cycle">
+          <div className="mt-2 grid gap-2">
+            <ExecutiveReadout
+              label="Sprint health"
+              value={healthStatus}
+              detail={deliveryBreakdown}
+              tone={healthReadoutTone}
+            />
+            <ExecutiveReadout
+              label="Completion"
+              value={`${completionPct}% of delivery scope`}
+              detail={`${round(exportMetrics.deliveryCompletedPoints)} of ${round(exportMetrics.deliveryPoints)} pts complete`}
+              tone="info"
+            />
+            <ExecutiveReadout
+              label="Projected finish"
+              value={`${round(velocity.projectedPoints)} pts by sprint end`}
+              detail={`${velocity.onTrack ? "On pace" : "Behind pace"} · week ${velocity.weeksElapsed} of ${velocity.totalWeeks}`}
+              tone={velocity.onTrack ? "neutral" : "warn"}
+            />
+          </div>
+        </ReportPanel>
+        <ReportPanel title="Work composition" subtitle="Committed vs tech debt vs unplanned">
+          <div className="mt-2 grid gap-2">
+            <ExecutiveReadout
+              label="Committed (roadmap)"
+              value={`${round(exportMetrics.committedCompletedPoints)} / ${round(exportMetrics.committedPoints)} pts`}
+              detail={
+                capacity?.committedPoints != null
+                  ? `of ${round(capacity.committedPoints)} pt capacity`
+                  : "Customer-committed scope"
+              }
+              tone="info"
+            />
+            <ExecutiveReadout
+              label="Tech debt"
+              value={`${round(exportMetrics.techDebtCompletedPoints)} / ${round(exportMetrics.techDebtPoints)} pts`}
+              detail="Planned, not customer-committed"
+              tone="warn"
+            />
+            <ExecutiveReadout
+              label="Unplanned bugs"
+              value={`${round(exportMetrics.unplannedCompletedPoints)} / ${round(exportMetrics.unplannedPoints)} pts`}
+              detail="Support + internal bugs"
+              tone="danger"
+            />
+          </div>
+        </ReportPanel>
       </div>
+
+      <ReportPanel title="Delivery by filter" subtitle="Weighted completion per track" className="mt-3">
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          {selectedFilters.map((filter) => (
+            <FilterCard key={filter.id} filter={filter} exportIssues={exportIssues} />
+          ))}
+        </div>
+      </ReportPanel>
+
+      <PrintFooter left={footerLeft} pageNumber={pageNumber} totalPages={totalPages} />
     </div>
   );
 }
 
-function ReportMetricBox({ label, value, detail }) {
+function FilterCard({ filter, exportIssues }) {
+  const issues = exportIssues.filter((issue) => issue.filterId === filter.id);
+  const fp = issues.reduce((sum, issue) => sum + issue.storyPoints, 0);
+  const fc = issues.reduce((sum, issue) => sum + (issue.storyPoints * issue.percent) / 100, 0);
+  const fpct = fp > 0 ? Math.round((fc / fp) * 100) : 0;
+  const done = issues.filter((issue) => issue.percent === 100).length;
+  const active = issues.filter((issue) => issue.percent > 0 && issue.percent < 100).length;
+  const accent = filter.accentColor ?? DEFAULT_ACCENT;
   return (
-    <div className="rounded-md border bg-white px-4 py-3">
-      <p className="text-[11px] font-bold tracking-[0.06em] uppercase text-muted-foreground">{label}</p>
-      <strong className="mt-1 block font-display text-2xl leading-[1.1] font-extrabold text-foreground">
-        {value}
-      </strong>
-      <span className="mt-1 block text-[11px] text-muted-foreground">{detail}</span>
-    </div>
-  );
-}
-
-/* Legacy table chrome (styles.css :1986-2116). */
-const TH = "border-b-2 border-border px-3 py-2 text-left text-[11px] font-bold tracking-[0.06em] uppercase text-muted-foreground whitespace-nowrap";
-const TD = "border-b border-border-subtle px-3 py-2 align-middle";
-
-/* Progress pill colors — legacy .export-pct-badge--* fixed print hex (:2043-2045). */
-const PCT_BADGE = {
-  complete: "bg-[#ecfdf5] text-[#065f46]",
-  inProgress: "bg-[#f0f9ff] text-[#0369a1]",
-  notStarted: "bg-muted text-muted-foreground",
-};
-
-function IssuesPage({ rows, pageNumber, totalPages }) {
-  return (
-    <div className="text-foreground">
-      <SectionLabel>Work breakdown by filter</SectionLabel>
-      <table className="mt-3 w-full border-collapse text-[13px]">
-        <thead>
-          <tr className="bg-muted">
-            <th className={cn(TH, "w-22")}>Key</th>
-            <th className={TH}>Title</th>
-            <th className={cn(TH, "w-20 text-center")}>Progress</th>
-            <th className={cn(TH, "w-18 text-center")}>Stages</th>
-            <th className={cn(TH, "w-22.5 text-center")}>Health</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => {
-            if (row.kind === "filter-header") {
-              const { filter, count, fp, fc, fpct } = row;
-              const accent = filter.accentColor ?? "#00a892";
-              return (
-                <tr key={`fh-${filter.id}-${index}`}>
-                  <td
-                    colSpan={5}
-                    className="border-t border-border-subtle bg-subtle px-4 py-3"
-                    style={{ borderLeft: `4px solid ${accent}` }}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="flex items-center text-sm font-bold text-foreground">
-                        <span
-                          className="mr-2 inline-block size-2 shrink-0 rounded-full"
-                          style={{ backgroundColor: accent }}
-                        />
-                        {filter.name}
-                      </span>
-                      <span className="font-display text-lg font-extrabold text-foreground">
-                        {fpct}%
-                      </span>
-                    </div>
-                    <div className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                      <span>
-                        {WORKFLOWS[filter.workflowType].name} · {count} issues
-                      </span>
-                      <span>
-                        {Math.round(fc)} / {fp} pts
-                      </span>
-                    </div>
-                    <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
-                      <span
-                        className="block h-full rounded-full"
-                        style={{ width: `${fpct}%`, backgroundColor: accent }}
-                      />
-                    </div>
-                  </td>
-                </tr>
-              );
-            }
-            const { issue } = row;
-            const totalStages = WORKFLOWS[issue.workflowType].stages.length;
-            const pctTone =
-              issue.percent === 100 ? "complete" : issue.percent > 0 ? "inProgress" : "notStarted";
-            return (
-              <tr key={issue.jiraKey} className="even:bg-subtle">
-                <td className={cn(TD, "font-mono text-[11px] font-semibold text-accent-foreground whitespace-nowrap")}>
-                  {issue.jiraKey}
-                </td>
-                <td className={TD}>
-                  {issue.title.length > 55 ? `${issue.title.slice(0, 55)}…` : issue.title}
-                </td>
-                <td className={cn(TD, "text-center")}>
-                  <span
-                    className={cn(
-                      "inline-block rounded-full px-1.75 py-0.5 text-[11px] font-bold",
-                      PCT_BADGE[pctTone],
-                    )}
-                  >
-                    {issue.percent}%
-                  </span>
-                </td>
-                <td className={cn(TD, "text-center whitespace-nowrap")}>
-                  {totalStages > 0 ? `${issue.completedStages} / ${totalStages}` : "—"}
-                </td>
-                <td className={cn(TD, "text-center")}>
-                  <span
-                    className={cn(
-                      "inline-block rounded-sm border px-2 py-0.5 text-[11px] font-bold whitespace-nowrap",
-                      HEALTH_BADGE[issue.health.tone] ?? HEALTH_BADGE.neutral,
-                    )}
-                  >
-                    {issue.health.status}
-                  </span>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      <p className="mt-3 border-t border-border-subtle pt-2 text-right text-[11px] text-muted-foreground">
-        Page {pageNumber} of {totalPages}
+    <div
+      className="rounded-lg border border-[#e2e8f0] border-t-[3px] bg-white px-3 py-2"
+      style={{ borderTopColor: accent }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <strong className="block truncate text-[10px] font-extrabold text-[#0f172a]">
+            {filter.name}
+          </strong>
+          <span className="mt-0.5 block truncate text-[8px] font-medium text-[#64748b]">
+            {WORKFLOWS[filter.workflowType].name}
+          </span>
+        </div>
+        <span className="shrink-0 text-[16px] leading-none font-black tabular-nums text-[#0f172a]">
+          {fpct}%
+        </span>
+      </div>
+      <p className="mt-1 text-[8px] text-[#64748b]">
+        {done} done · {active} active · {issues.length} total
       </p>
+      <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-[#eef2f7]">
+        <span
+          className="block h-full rounded-full"
+          style={{ width: `${fpct}%`, backgroundColor: accent }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function IssuesPage({ rows, browseHref, footerLeft, pageNumber, totalPages }) {
+  return (
+    <div className="flex flex-1 flex-col text-[#0f172a]">
+      <div className="flex h-[18px] items-center justify-between">
+        <p className="text-[10px] font-extrabold tracking-[0.12em] uppercase text-[#7c3aed]">
+          Work breakdown
+        </p>
+        <p className="text-[8px] font-semibold text-[#64748b]">By filter · Jira-linked detail</p>
+      </div>
+
+      <div
+        className={cn(
+          "mt-3 grid h-6 items-center border-b border-[#cbd5e1] px-2 text-[7px] font-extrabold tracking-[0.08em] uppercase text-[#64748b]",
+          ISSUE_COLS,
+        )}
+      >
+        <span>Jira key</span>
+        <span>Issue summary</span>
+        <span className="text-center">Progress</span>
+        <span className="text-center">Stages</span>
+        <span className="text-right">Health</span>
+      </div>
+
+      <div className="flex flex-col">
+        {rows.map((row, index) =>
+          row.kind === "filter-header" ? (
+            <FilterBand key={`fh-${row.filter.id}-${index}`} row={row} />
+          ) : (
+            <IssueRow
+              key={`${row.issue.jiraKey}-${index}`}
+              issue={row.issue}
+              href={browseHref(row.issue.jiraKey)}
+              zebra={row.zebra}
+            />
+          ),
+        )}
+      </div>
+
+      <PrintFooter left={footerLeft} pageNumber={pageNumber} totalPages={totalPages} />
+    </div>
+  );
+}
+
+function FilterBand({ row }) {
+  const { filter, count, fp, fc, fpct } = row;
+  const accent = filter.accentColor ?? DEFAULT_ACCENT;
+  return (
+    <div
+      className="mt-2 flex items-center justify-between gap-3 rounded-md border border-[#e2e8f0] border-t-[3px] bg-[#f5f7fb] px-3 py-1.5"
+      style={{ borderTopColor: accent }}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <span
+          className="inline-block size-2 shrink-0 rounded-full"
+          style={{ backgroundColor: accent }}
+          aria-hidden="true"
+        />
+        <div className="min-w-0">
+          <strong className="block truncate text-[10px] font-extrabold text-[#0f172a]">
+            {filter.name}
+          </strong>
+          <span className="block truncate text-[8px] text-[#64748b]">
+            {WORKFLOWS[filter.workflowType].name} · {count} issue{count === 1 ? "" : "s"}
+          </span>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-baseline gap-3 text-right">
+        <span className="text-[8px] text-[#64748b] tabular-nums">
+          {Math.round(fc)} / {fp} pts
+        </span>
+        <span className="text-[16px] leading-none font-black tabular-nums text-[#0f172a]">
+          {fpct}%
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function IssueRow({ issue, href, zebra }) {
+  const totalStages = WORKFLOWS[issue.workflowType].stages.length;
+  const pctTone =
+    issue.percent === 100 ? "complete" : issue.percent > 0 ? "inProgress" : "notStarted";
+  return (
+    <div
+      className={cn(
+        "grid h-[34px] items-center border-b border-[#eef2f7] px-2 text-[9px]",
+        ISSUE_COLS,
+      )}
+      style={{ backgroundColor: zebra ? "#f8fafc" : "#ffffff" }}
+    >
+      <span>
+        <KeyLink jiraKey={issue.jiraKey} href={href} />
+      </span>
+      <span className="line-clamp-2 pr-3 leading-[12px] text-[#334155]">{issue.title}</span>
+      <span className="text-center">
+        <span
+          className={cn(
+            "inline-block rounded-full px-1.5 py-0.5 text-[8px] font-bold tabular-nums",
+            PCT_BADGE[pctTone],
+          )}
+        >
+          {issue.percent}%
+        </span>
+      </span>
+      <span className="text-center tabular-nums text-[#64748b]">
+        {totalStages > 0 ? `${issue.completedStages} / ${totalStages}` : "—"}
+      </span>
+      <span className="text-right">
+        <span
+          className={cn(
+            "inline-block rounded-sm border px-1.5 py-0.5 text-[8px] font-bold whitespace-nowrap",
+            HEALTH_BADGE[issue.health.tone] ?? HEALTH_BADGE.neutral,
+          )}
+        >
+          {issue.health.status}
+        </span>
+      </span>
     </div>
   );
 }

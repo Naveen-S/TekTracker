@@ -15,8 +15,14 @@
  */
 import { prisma } from "@/lib/db";
 import { NotFoundError } from "@/lib/rbac";
-import { fetchFilter, searchIssues, getJiraAuthForUser } from "@/lib/jira/client";
+import { fetchFilter, fetchFields, searchIssues, getJiraAuthForUser } from "@/lib/jira/client";
 import { buildMatrix, snapshotRows } from "@/lib/bug-report/matrix.mjs";
+import { resolveSubComponentFieldId, extractSubComponent } from "@/lib/bug-report/sub-component-field.mjs";
+import {
+  resolveSprintFieldId,
+  extractSprintName,
+  DEFAULT_SPRINT_FIELD,
+} from "@/lib/bug-report/sprint-field.mjs";
 import { FilterSourceType } from "@/generated/prisma/client";
 
 /** A bug universe is bigger than a sprint track, but still bounded — fail loudly past this. */
@@ -53,8 +59,15 @@ function joinNames(list) {
   return list.map((item) => item?.name ?? item).filter(Boolean).join(", ") || null;
 }
 
-/** Raw Jira issue → `BugReportIssue` columns (minus reportId/scopeId, which the caller owns). */
-export function toBugIssueRow(raw) {
+/**
+ * Raw Jira issue → `BugReportIssue` columns (minus reportId/scopeId, which the caller owns).
+ * @param {object} raw
+ * @param {string | null} subComponentFieldId - the discovered custom-field id, or null when Jira
+ *   doesn't expose it (then `subComponent` stays null → those bugs land in the Unassigned bucket).
+ * @param {string | null} sprintFieldId - the resolved Sprint custom-field id, or null (then
+ *   `jiraSprintName` stays null → those bugs land in the "No sprint" ownership bucket).
+ */
+export function toBugIssueRow(raw, subComponentFieldId = null, sprintFieldId = null) {
   const fields = raw.fields ?? {};
   return {
     jiraKey: raw.key,
@@ -66,6 +79,8 @@ export function toBugIssueRow(raw) {
     assigneeName: fields.assignee?.displayName ?? null,
     reporterName: fields.reporter?.displayName ?? null,
     components: joinNames(fields.components),
+    subComponent: subComponentFieldId ? extractSubComponent(fields[subComponentFieldId]) : null,
+    jiraSprintName: sprintFieldId ? extractSprintName(fields[sprintFieldId]) : null,
     labels: Array.isArray(fields.labels) && fields.labels.length > 0 ? fields.labels.join(", ") : null,
     jiraCreatedAt: toDate(fields.created),
     jiraUpdatedAt: toDate(fields.updated),
@@ -153,6 +168,34 @@ export async function refreshBugReport(reportId, { auth, refreshedByEmail = null
     throw new NotFoundError(`Bug report "${report.name}" has no scopes configured`);
   }
 
+  // Two custom fields are read beyond the static BUG_ISSUE_FIELDS: the sub-component dropdown
+  // (enhancing-bug-board.md (b)) and the Jira Sprint field (bug-sprint-ownership.md (b)). Each
+  // prefers an explicit env override, then Jira /field discovery, then a fallback. An explicit
+  // JIRA_SUBCOMPONENT_FIELD_ID wins because a Jira instance can carry several "Sub-component"
+  // dropdown fields sharing one JQL clause name, so name-discovery alone can pick an empty twin
+  // (Tekion: customfield_13108 vs _29090). /field metadata is fetched at most ONCE and shared;
+  // discovery failing just leaves subComponent null (→ Unassigned) / falls the sprint id back to the
+  // default, and a real auth failure still surfaces below on the first searchIssues (decision 17).
+  let subComponentFieldId = process.env.JIRA_SUBCOMPONENT_FIELD_ID?.trim() || null;
+  let sprintFieldId = process.env.JIRA_SPRINT_FIELD_ID?.trim() || null;
+  if (!subComponentFieldId || !sprintFieldId) {
+    let fieldMeta = [];
+    try {
+      fieldMeta = await fetchFields({ auth });
+    } catch {
+      fieldMeta = [];
+    }
+    subComponentFieldId = subComponentFieldId || resolveSubComponentFieldId(fieldMeta);
+    sprintFieldId = sprintFieldId || resolveSprintFieldId(fieldMeta);
+  }
+  sprintFieldId = sprintFieldId || DEFAULT_SPRINT_FIELD;
+
+  const issueFields = [
+    ...BUG_ISSUE_FIELDS,
+    ...(subComponentFieldId ? [subComponentFieldId] : []),
+    sprintFieldId,
+  ];
+
   // ── Phase 1: resolve + fetch EVERYTHING before writing anything (decision 17) ──
   const fetched = [];
   try {
@@ -161,10 +204,14 @@ export async function refreshBugReport(reportId, { auth, refreshedByEmail = null
       const raw = await searchIssues({
         auth,
         jql,
-        fields: BUG_ISSUE_FIELDS,
+        fields: issueFields,
         maxIssues: BUG_SEARCH_MAX_ISSUES,
       });
-      fetched.push({ scope, jql, rows: raw.map(toBugIssueRow) });
+      fetched.push({
+        scope,
+        jql,
+        rows: raw.map((row) => toBugIssueRow(row, subComponentFieldId, sprintFieldId)),
+      });
     }
   } catch (error) {
     // Record why, leave cache + snapshots untouched, and let the caller map the status.

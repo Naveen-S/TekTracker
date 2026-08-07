@@ -2,6 +2,7 @@ import { BarChart3, Clock, Layers, TrendingUp } from "lucide-react";
 import { SCOPE_TOTAL_BAND_KEY, TOTAL_ROW_KEY } from "@/lib/bug-report/matrix.mjs";
 import { smoothAreaPath, smoothLinePath } from "@/lib/chart-path.mjs";
 import { Panel } from "@/components/bugs/panel";
+import { AGE_FILL, Bar, Legend, SCOPE_FILL, TRACK } from "@/components/bugs/bug-bar";
 
 /**
  * The chart panels (gm-bug-report.md (g)4–7): trend, priority mix, category mix, ageing.
@@ -20,78 +21,6 @@ import { Panel } from "@/components/bugs/panel";
  * As-built deviation from the spec's file list: (g)5–7 are three small bar panels sharing one
  * `<Bar>` primitive, so they live together here rather than in three near-identical files.
  */
-
-/** Ordinal age ramp, oldest darkest. Literal classes so Tailwind can see them. */
-const AGE_FILL = ["bg-age-1", "bg-age-2", "bg-age-3", "bg-age-4"];
-const SCOPE_FILL = ["bg-chart-cat-1", "bg-chart-cat-2"];
-
-/** Label-column widths for the shared `<Bar>` track — literal classes, no computed grid template. */
-const TRACK = {
-  wide: "grid-cols-[minmax(6.5rem,auto)_1fr_auto]",
-  band: "grid-cols-[2.5rem_1fr_auto]",
-  bucket: "grid-cols-[5rem_1fr_auto]",
-};
-
-function Legend({ items }) {
-  return (
-    <ul className="flex flex-wrap items-center gap-x-4 gap-y-1">
-      {items.map((item) => (
-        <li key={item.label} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span className={`size-2.5 rounded-[2px] ${item.fill}`} aria-hidden="true" />
-          {item.label}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/**
- * One horizontal bar built from ordered segments, with its value directly labelled.
- *
- * Segments are solid — the previous fill faded each bar toward white across its own length, which
- * drained density exactly where the eye lands (the value end) and is most of why these panels read
- * as washed out. Adjacent fills are separated by the 2px surface gap the mark spec asks for
- * (`gap-0.5` on the track) rather than by a border.
- */
-function Bar({ label, segments, total, max, caption, under, track = TRACK.wide }) {
-  return (
-    <li className={`grid items-center gap-3 ${track}`}>
-      <span className="truncate text-xs font-medium" title={label}>
-        {label}
-      </span>
-      <span className="flex flex-col gap-0.5">
-        <span className="flex h-2.5 gap-0.5 overflow-hidden rounded-full bg-muted">
-          {segments.map((segment) =>
-            segment.value <= 0 ? null : (
-              <span
-                key={segment.key}
-                title={`${segment.title ?? segment.key}: ${segment.value}`}
-                // Minimum 1.5% so a count of 1 is still a visible mark rather than a hairline.
-                style={{ width: `${Math.max((segment.value / max) * 100, 1.5)}%` }}
-                className={`block h-full first:rounded-l-full last:rounded-r-full ${segment.fill}`}
-              />
-            ),
-          )}
-        </span>
-        {under && (
-          <span className="flex h-1 overflow-hidden rounded-full bg-muted">
-            {under.value > 0 && (
-              <span
-                title={`${under.title}: ${under.value}`}
-                style={{ width: `${Math.max((under.value / max) * 100, 1.5)}%` }}
-                className="block h-full rounded-full bg-danger"
-              />
-            )}
-          </span>
-        )}
-      </span>
-      <span className="text-xs font-bold tabular-nums">
-        {total}
-        {caption && <span className="ml-1 font-normal text-muted-foreground">{caption}</span>}
-      </span>
-    </li>
-  );
-}
 
 /* ── Trend ─────────────────────────────────────────────────────────────────── */
 
@@ -364,7 +293,7 @@ export function BugPriorityPanel({ matrix }) {
         />
       }
     >
-      <ul className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2">
         {rows.map((row) => (
           <Bar
             key={row.label}
@@ -375,7 +304,7 @@ export function BugPriorityPanel({ matrix }) {
             max={max}
           />
         ))}
-      </ul>
+      </div>
     </Panel>
   );
 }
@@ -422,7 +351,7 @@ export function BugCategoryPanel({ matrix }) {
         />
       }
     >
-      <ul className="flex flex-col gap-2.5">
+      <div className="flex flex-col gap-2.5">
         {rows.map((row) => (
           <Bar
             key={row.label}
@@ -434,7 +363,7 @@ export function BugCategoryPanel({ matrix }) {
             caption={row.breached > 0 ? `(${row.breached})` : null}
           />
         ))}
-      </ul>
+      </div>
       <p className="mt-3 text-xs text-muted-foreground">
         The thin rail under each bar is the SLA-breached share —{" "}
         <span className="font-bold text-danger-strong">(n)</span> in the count.
@@ -457,7 +386,7 @@ export function BugAgingPanel({ aging }) {
 
   return (
     <Panel title="Ageing" subtitle="How long open bugs have been open" icon={Clock} tone="warn">
-      <ul className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2">
         {aging.buckets.map((bucket, i) => (
           <Bar
             key={bucket.key}
@@ -476,7 +405,7 @@ export function BugAgingPanel({ aging }) {
             caption={total > 0 ? `${Math.round((bucket.count / total) * 100)}%` : null}
           />
         ))}
-      </ul>
+      </div>
       {aging.oldest && (
         <p className="mt-3 text-xs text-muted-foreground">
           Oldest open: <span className="font-mono font-semibold">{aging.oldest.jiraKey}</span> —{" "}

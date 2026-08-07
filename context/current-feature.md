@@ -1,83 +1,88 @@
 # Current Feature
 
-**Rename the application to StoryBoard** (was "Sprint Tracker", earlier codename "TekTracker" /
-"Tek Tracker"). No dedicated spec file — a small display/branding change tracked here + in the
-dated History entry below. Requested by Naveen 2026-07-31.
+**Bug Board — group bugs by Sprint ownership (ours vs dependencies)**
+(@context/features/bug-sprint-ownership.md) — the next follow-on in the `/bugs` arc, on the same
+`feature/enhancing-bug-board` branch (uncommitted, tightly coupled). Within each scope
+(External/Internal/All), call out and group bugs by their Jira **Sprint field**: **ours** (sprint
+name matches a per-report pattern like `GM-*`) vs **dependencies** (other teams' sprints) vs **no
+sprint** — config-driven per report. Post-v1, not a master-plan step.
 
-Display/branding only — **deliberately no schema, route, cookie, or storage-key change**, so
-nobody is logged out and no data is orphaned. Impact analysis confirmed the name has zero DB
-coupling (no rows/enums/slugs/defaults — only a line-1 schema comment), no env-var-name coupling,
-no in-repo deploy config, and no lockfile coupling; the Tekion git remote was already
-`naveens_tkinc/storyboard.git`.
+**Also uncommitted on this branch (Done, pending Naveen's commit):** enhancing-bug-board.md (scope
+toggle + Bugs-by-scrum-team drill) and bug-report-pdf-export.md (landscape executive PDF; finish gate
+2026-08-04 — lint clean, 8 migrations, cold DB/env-free build green 44 ƒ Dynamic). Stray untracked
+`output/` and `tmp/` dirs from a parallel session should be cleaned/ignored before committing.
 
 ## Status
 
-**Done 2026-08-01.** 22 in-code sites across 12 files + config/doc headers.
+**Done + verified 2026-08-04** (branch `feature/enhancing-bug-board`, **uncommitted**). Full spec +
+As-built notes: @context/features/bug-sprint-ownership.md.
 
-Implemented: the 6 wordmarks (4 top-bars, sidebar wordmark+aria-label, login heading, welcome
-hero) + the share page's two-line `TekTracker / Sprint Tracker` lockup collapsed to a single
-`StoryBoard`; the 5 `export const metadata` titles (`layout`, `login`, `leaderboard`, `admin`,
-`share`); `package.json` name → `story-board`; `.env.example` header; `README.md`/`CLAUDE.md`
-headers + vision prose; `prisma/schema.prisma:1` comment (self-heals into the gitignored generated
-client on `prisma generate` — verified clean). **Deliberately left alone** (decision 2): the
-session cookie `sprinttracker_session` (`src/lib/auth.js:22`) and the two `sprintTracker_*`
-localStorage keys — renaming the cookie would force-log-out every user with no dual-read fallback,
-for zero benefit. `legacy/**`, `src/generated/**`, and dated history/decision entries in
-`context/**` untouched (append-don't-rewrite; `project-overview.md` + `CLAUDE.md` each got a dated
-rename note instead).
+**Verified:** `yarn lint` clean; **50/50 plain-Node fixtures** + a `paginateTeamAppendix` regression;
+`prisma migrate status` up to date (**9 migrations**); **cold `rm -rf .next` DB/env-free build green —
+44 ƒ Dynamic unchanged** (no new routes); impeccable design hook clean on every changed component;
+**live real-Jira refresh + SSR on the real `gm` report** — set `GM-*`, refresh tagged **145/233** bugs'
+`jiraSprintName` → **Ours 136 · Dependencies 9 · No sprint 88**, and read-time reclassification proven
+across pattern changes with **no refresh** (`GM-*, AEP-*` → 141/4/88; `AEP-*` → 5/140/88; empty →
+hidden). The `gm` report is left configured with `GM-*` (the requested pattern).
 
-**Verified 2026-08-01 (finish gate):** `yarn lint` clean (Node 22); grep sweep of authored `src/`
-returns **zero** old-name hits; `prisma validate` + `migrate status` up to date (**7 migrations, no
-new migration** — comment-only schema change); **cold `rm -rf .next` DB/env-free build green — 44 ƒ
-Dynamic unchanged** (`.env` genuinely moved aside via `mv`, confirmed absent mid-build, restored
-after; the running dev server was stopped for the cold build and restarted after — the documented
-house pattern). Runtime smoke on the restarted `:3002` server: `/login` renders `<title>Sign in ·
-StoryBoard</title>` + the StoryBoard wordmark; the unauth `/share/<bad-token>` page renders
-`<title>Shared sprint view — StoryBoard</title>` + StoryBoard chrome; both with zero
-`Sprint Tracker`/`TekTracker` in the rendered HTML.
+**Next:** commit on Naveen's go-ahead (this + enhancing-bug-board + PDF all ship together from the
+same branch; clean the stray `output/`/`tmp/` dirs first); then Naveen's authed visual pass + a
+real-browser PDF export to see the ownership appendix. Deferred post-v1 ideas remain (export-embedded
+AI narrative, AI Q&A, stage suggestions, a share link for `/bugs`, leaderboard rank-delta arrows).
 
-**Next:** Commit (awaiting Naveen's go-ahead) — then the optional external follow-ups: rename the
-`origin` GitHub repo `Naveen-S/TekTracker` and swap the "T" app icon/favicon for a StoryBoard mark.
-Deferred post-v1 ideas remain — export-embedded AI narrative, AI Q&A, stage suggestions, PDF/share
-for `/bugs`, a `/bugs` ENG-sub-component follow-up, leaderboard rank-delta arrows, plus the
-committed-unplanned-work Modern-theme/authed visual pass. Also uncommitted and unrelated: a stray
-`legacy/index.html` edit (see History).
+**Branch decision (Naveen, 2026-08-04):** **stayed on `feature/enhancing-bug-board`** — `HEAD == main
+== ad6cdb7`, the enhancing-bug-board + PDF work is uncommitted here, and this feature builds directly
+on it (same `/bugs` page, KPI cards, PDF export, `refresh.js`, `schema.prisma`), so a fresh branch
+off `main` would isolate nothing.
+
+Within each scope (External/Internal/All), the page gains a config-driven **"ours vs dependencies"**
+grouping keyed on the Jira **Sprint field** — a per-report `sprintOwnershipPattern` (e.g. `GM-*`):
+1. **Ours** (sprint name matches the pattern) → **Dependencies** (has a sprint, no match) → **No
+   sprint** (field empty, its own group + a hygiene signal). Ours in accent, Dependencies in warn.
+2. Surfaced as a **drill section** (bucket → sprint → inline issues, Jira links) **+ a top KPI card**,
+   both scope-toggle-aware for free, **plus an appendix in the PDF export** (clickable links).
+3. **Read-time, config-driven** (mirrors the by-team join): new raw-fact column
+   `BugReportIssue.jiraSprintName`, computed against the pattern at read time — a config edit
+   re-renders instantly, no Jira refresh needed.
 
 ## Goals
 
-- **Rename every user-visible occurrence** of "Sprint Tracker" / "TekTracker" to **StoryBoard** —
-  wordmarks, page titles, aria-labels, welcome hero, login heading, share-page chrome.
-- **Rename config/doc headers** — `package.json` name, `.env.example`, `README.md`, `CLAUDE.md`,
-  and the `schema.prisma` line-1 comment. Add a dated rename note to the canonical docs
-  (`project-overview.md`, `CLAUDE.md`) rather than rewriting dated history.
-- **Change nothing structural** — no schema/migration, no route, and (decision 2) explicitly NOT
-  the session cookie or the two `sprintTracker_*` localStorage keys, so no user is logged out and
-  no pref is silently reset.
-- **Acceptance**: grep sweep of authored `src/` returns zero old-name hits; lint clean; cold
-  DB/env-free build green with 44 ƒ Dynamic unchanged; runtime smoke confirming the new name in
-  rendered titles/chrome and existing sessions surviving.
-
-## As-built notes (vs. the plan)
-
-- **`package.json` name → `story-board`** (kebab-case; npm names can't contain uppercase). UI text
-  is `StoryBoard`. `legacy/package.json` (`sprint-tracker-legacy`) left as-is — retired app.
-- **Share page went from 3 old-name sites to a structural collapse**: the two-line lockup
-  (`TekTracker` over `Sprint Tracker`) became a single `StoryBoard` `<p>`, removing the redundant
-  subtitle line rather than renaming both — the plan anticipated this.
-- **The one residual `src/` hit** (`src/generated/prisma/internal/class.ts`, the `inlineSchema`
-  string mirroring the schema comment) self-healed on `yarn prisma generate` — confirmed clean, no
-  hand-edit. Grep sweeps exclude `src/generated/`.
-- **`current-feature.md`'s own old-name matches were left untouched** — they are dated History
-  entries plus the real on-disk directory path `context/SprintTracker - Project Spec/`.
+- **(a) Schema** — `BugReportIssue.jiraSprintName String?` (raw fact) + `BugReport.sprintOwnershipPattern
+  String?` (config); migration `add_bug_report_sprint_ownership`; §9 byte-synced. `prisma/schema.prisma`.
+- **(b) Refresh** — new pure `src/lib/bug-report/sprint-field.mjs` (`resolveSprintFieldId`,
+  `extractSprintName`, `DEFAULT_SPRINT_FIELD`); `refresh.js` resolves the sprint field id (env
+  `JIRA_SPRINT_FIELD_ID` → `/field` discovery → `customfield_10020`), appends to `issueFields`, sets
+  `jiraSprintName` in `toBugIssueRow`; documented in `.env.example`. Missing field → null, never throws.
+- **(c) Pure logic** — new `src/lib/bug-report/sprint-ownership.mjs` (`compileSprintMatcher`,
+  `groupBySprintOwnership`), reusing `isBreached`/`daysOverSla` from `matrix.mjs`.
+- **(d) Read path** — `src/lib/bug-report-data.js`: `buildView` adds `bySprintOwnership` (no extra query).
+- **(e) UI** — new `src/components/bugs/bug-sprint-ownership-section.jsx` (clone `bug-team-section.jsx`:
+  split-header + bucket → sprint → issue drill); `ownership` card in `bug-kpi-cards.jsx`; wire both +
+  `exportViews` in `bugs-page.jsx` (section directly under the matrix). No new routes/pages (44 ƒ
+  Dynamic unchanged).
+- **(f) PDF** — ownership appendix in `bug-export-dialog.jsx` + pagination in `pdf-layout.mjs`.
+- **(g) Config** — `sprintOwnershipPattern` in `bugReportConfigSchema` (`src/lib/schemas/bug-report.js`),
+  persisted in the config PUT route, edited via a new "Sprint ownership" section in
+  `src/components/admin/bug-report-config.jsx`.
 
 ## Notes
 
-- **Committed / Tech Debt / Unplanned Work (previous feature) is Done** — its full spec is
-  @context/features/committed-unplanned-work.md; it was committed to `main` as `a1982c8`
-  ("Feature: Story points delivered.") before this rename branched off. This rename is a fresh,
-  unrelated branch (`feature/rename-storyboard`) off `main`.
-- The rename is intentionally minimal — see the four judgment-call decisions (naming, identity
-  keys left alone, docs scope, icon deferred) captured in the approved plan and the History entry.
+- **Read installed docs first** (versions differ from training data): Prisma 7 additive migration
+  (`prisma-change` skill, `yarn db:migrate`, never `db push`); Next 16 RSC server-component-as-prop
+  pattern (reuse the existing `bug-scope-view.jsx` slot mechanism — the section lives in the
+  per-scope pre-rendered body subtree); Tailwind v4 `@theme`.
+- **Matcher semantics** — `*` wildcard; a pattern with no `*` ⇒ prefix; comma/newline-separated
+  patterns OR'd; case-insensitive, anchored.
+- **Sprint field id ≠ JQL display name** — the REST `fields` param needs `customfield_XXXXX`; resolve
+  env `JIRA_SPRINT_FIELD_ID` → `/field` discovery (name/clause "sprint") → `customfield_10020`.
+  `extractSprintName` (ported from `transform.js:67-81`) handles array-of-sprints / single object /
+  legacy `name=...` string / null defensively.
+- **Read-time derivation, config-driven, hidden when unset** — cache stays a dumb Jira mirror; a
+  config edit re-renders instantly (matrix.mjs / by-team.mjs precedent). `metrics.mjs`/`IssueProgress`/
+  sprint data untouched (§12 purity). Existing cached bugs read "No sprint" until the next Refresh
+  repopulates `jiraSprintName`.
+- **Bug cache has `assigneeName` but no `assigneeAccountId`** (unchanged) — not needed here; grouping
+  is by sprint, the drill sub-level is by sprint name.
 
 ## History
 
@@ -1778,3 +1783,174 @@ committed-unplanned-work Modern-theme/authed visual pass. Also uncommitted and u
   rename (its detail preserved in @context/features/committed-unplanned-work.md + the History
   above). **Done.** **Next:** commit on Naveen's go-ahead; then the optional external follow-ups
   (rename `origin` GitHub repo, StoryBoard app mark).
+- 2026-08-02 — Planning session (no code): drafted @context/features/enhancing-bug-board.md from
+  Naveen's handwritten "Enhancing Bug Board" note (`context/SprintTracker - Project Spec/
+  Enhancing_Bug_Board.jpg`). Three additions to `/bugs`: (1) an External/Internal/All scope toggle
+  driving the whole page with External highlighted, (2) a "Bugs by scrum team" section, (3) a
+  per-team → per-developer → inline-issue drill. Explored the full `/bugs` render path, data model,
+  and reusable patterns (3 Explore agents); key findings folded into the spec — the bug cache has
+  `assigneeName` but **no** `assigneeAccountId` (developers group by display name), and the
+  team-distinguishing value lives in the custom `"sub-component[dropdown]"` field the refresh does
+  **not** fetch today (the stored `components` string is only the coarse parent). Ran a
+  clarifying-question round with Naveen; **5 decisions ratified** (default All + external
+  highlighted; instant client-side toggle over three pre-rendered subtrees; read-time FK-less
+  sub-component→Team join — the first `BugReport`↔`Team` link; Unassigned bucket for unmapped;
+  developer drill = inline list + Jira link). Design direction via the `impeccable` skill (extension
+  inside the incumbent visual world — reuse `Panel`/`Bar`/`AvatarChip`/tokens, no `init`). Approved
+  plan at `/Users/naveen/.claude/plans/plan-the-feature-in-cozy-sketch.md`.
+- 2026-08-02 — Picked @context/features/enhancing-bug-board.md as the current feature; branch
+  `feature/enhancing-bug-board` off `main`. StoryBoard rename remains **Done** (on `main`).
+- 2026-08-02 — **Implemented + verified enhancing-bug-board.** Schema: `BugReportIssue.subComponent`
+  + migration `add_bug_report_issue_subcomponent` (8 migrations). New pure modules
+  `bug-report/by-team.mjs` (grouping) + `bug-report/sub-component-field.mjs` (field id + value
+  extraction, split out for plain-Node testability); `fetchFields` in `jira/client.js`; `refresh.js`
+  captures the sub-component field; `bug-report-data.js` computes three scope views + the read-time
+  team join off one issues + one snapshot query. UI: `bug-scope-view.jsx` (context provider + on-ink
+  segmented toggle + slot), `bug-team-section.jsx` (team→developer→inline-issue drill), extracted
+  `bug-bar.jsx`, restructured `bugs-page.jsx` (three pre-rendered subtrees, static hero + two
+  scope-driven slots), `emphasizeScopeId` on `bug-matrix.jsx` + `bug-kpi-cards.jsx`; `Bar`/`AvatarChip`
+  roots → `<span>` (valid inside the drill's expand buttons). **Verified:** lint clean; 13/13
+  plain-Node fixtures; **cold DB/env-free build green — 44 ƒ Dynamic unchanged**; impeccable detector
+  clean; **live SSR + refresh on the real `gm` report** — 155/233 bugs mapped into 6 real teams, page
+  renders 200 with the toggle/emphasis/all panels, zero errors. **Real-Jira finding:** field-id
+  name-discovery is ambiguous on Tekion's instance (multiple "Sub-component" dropdowns share the
+  `sub-component[dropdown]` clause; real values live in `customfield_13108`) → added the
+  `JIRA_SUBCOMPONENT_FIELD_ID` env override (decision 6's escape hatch), discovery kept as fallback.
+  Doc-synced project-overview §5/§9/§11/§16 + `Last reviewed` 2026-08-03; gm-bug-report.md pointer;
+  spec Status + As-built notes. **Done** — pending commit + Naveen's authed visual pass.
+- 2026-08-02 — **Follow-on feature (same branch): `/bugs` PDF export with clickable Jira links.**
+  Naveen asked to "share this as a PDF, where each link is clickable to go to the jira issues."
+  Ratified 3 decisions (downloadable PDF, all links clickable, exports the current scope toggle).
+  Drafted @context/features/bug-report-pdf-export.md. Built `bug-export-dialog.jsx` — `BugExport`
+  hero button (reads active scope via the new `useBugScope` export) + `BugExportDialog` (offscreen
+  A4 print pages → `html2canvas-pro` capture → jsPDF `addImage` → **`overlayLinks`** → save). The key
+  addition vs. the sprint export: **clickable links** — the print pages carry real `<a href>` and,
+  after each page rasterizes, `pdf.link(x,y,w,h,{url})` annotations are overlaid at each anchor's
+  px→mm position, so issue keys open the issue and matrix cells open the JQL search. Print pages:
+  summary (KPIs + clickable matrix), by-team (team→dev→issues), oldest table. No new dependency
+  (reuses html2canvas-pro + jspdf), no schema/route change. **Verified:** lint clean; **cold
+  DB/env-free build green — 44 ƒ Dynamic unchanged**; **real PDF generated in headless Chrome against
+  the live `gm` report** — 334 clickable anchors (293 browse + 41 matrix JQL), zero page errors, and
+  the downloaded PDF's raw `/URI` annotations confirm the links are embedded + clickable (not a flat
+  image). **As-built:** switched PNG → **JPEG 0.92** (a multi-page PNG PDF ran to 175 MB → ~6 MB).
+  Doc-synced project-overview §5/§11 + the parked out-of-scope lines in gm-bug-report.md /
+  enhancing-bug-board.md flipped to pointers. **Done** — pending commit + Naveen opening a PDF and
+  clicking through. (Temp `playwright-core` install used for verification, reverted from the manifest.)
+- 2026-08-02 — **PDF export refinements from Naveen's first review** (4 asks, all in
+  `bug-export-dialog.jsx`): (1) **spacing/margins** — page padding `p-8` → `px-11 py-10` + roomier
+  section rhythm; (2) **team + developer rows clickable to a Jira filter** (`key in (…)`), so the
+  by-team "table items" are all clickable, not just issue keys (matrix/filter JQL links 41 → 182);
+  (3) **each scrum team starts on a new sheet** — per-team pagination (GM 10 → 20 pages); (4) **the
+  trend chart fills the remaining space on sheet 1** — a static print `PrintTrend` (open vs. past-SLA
+  over time, reusing `smoothLinePath`/`smoothAreaPath`). Verified by regenerating the real `gm` PDF
+  in headless Chrome + screenshotting sheets 1 (KPIs + matrix + trend, clean margins) and 2 (GM
+  PreCheckout on its own sheet, team/dev underlined links) — zero page errors, 6 MB. `yarn lint`
+  clean; **cold DB/env-free build green — 44 ƒ Dynamic unchanged**. Doc-synced the spec's As-built
+  notes. Temp `playwright-core` reverted from the manifest again. **Done** — pending commit +
+  Naveen's own click-through.
+- 2026-08-03 — **PDF leadership-polish pass** (Naveen reviewed a real export: "padding margin …
+  doesn't look accurate, make this leadership shareable ready … pixel perfect"). Fixes in
+  `bug-export-dialog.jsx`: (1) **every sheet is a true A4 page** (`h-[1123px]` flex-col
+  overflow-hidden) with the **footer pinned to the bottom** (`mt-auto`; print pages `flex-1
+  flex-col`) — before, content was top-heavy with the footer floating over a big empty bottom;
+  (2) **dropped the duplicate "Total" column** for single-scope exports (per-scope Total == grand
+  Total when one scope — `showGrandTotal = scopes.length > 1`); (3) **more generous symmetric
+  margins** (`px-13 py-12` ≈ 14mm) + a **taller trend** (190 → 250). Verified by generating the real
+  **External** `gm` PDF and reading the rendered A4 pages: sheet 1 full with footer at bottom, single
+  Total column, taller trend; sheet 2 = DX team on its own sheet, footer pinned. `yarn lint` clean;
+  **cold DB/env-free build green — 44 ƒ Dynamic unchanged**. **Noted (not a bug):** headless-Chrome
+  captures collapse inter-word spaces (html2canvas font-metric quirk); Naveen's real-browser export
+  renders spaces correctly. Doc-synced the spec. **Done** — pending commit + Naveen re-exporting to
+  confirm the polish + spacing in his browser.
+- 2026-08-04 — **PDF export reworked to a landscape executive report (parallel session) + finish
+  gate.** Discovered on `/finish-feature` that `bug-export-dialog.jsx` + `bugs-page.jsx` had been
+  rebuilt (in a parallel session) from the portrait format into a **landscape** A4 executive report:
+  a `BugExecutiveSummary` brief + a **risk-ordered** `BugTeamAppendix` (`sortTeamsByRisk`) + an
+  **optional** oldest appendix (dialog `Checkbox` + 20/40/60 `Select`), with the naive row-count
+  pagination replaced by **height-budgeted** packing in the new pure `lib/bug-report/pdf-layout.mjs`
+  (`paginateTeamAppendix`/`chunkRows` — multiple small teams per sheet, large teams split with
+  repeated headers; supersedes "each team on its own sheet"). New clickable targets: matrix
+  breached-subset + combined-scope cells; PDF `setProperties` metadata; new `ui/checkbox.jsx`.
+  Treated as-found (not reverted). **Finish-gate verification (this session):** `yarn lint` clean;
+  `prisma validate` + `migrate status` up to date (8 migrations); **cold DB/env-free build green —
+  44 ƒ Dynamic unchanged**; runtime smoke — `health/db` ok, authed `/bugs/gm` 200 with the Export
+  button + by-team section, 0 errors. Doc-synced: bug-report-pdf-export.md (Status → Done + a
+  "Landscape executive rework" As-built section), project-overview §5 + a new §11 dated note, and
+  this tracker. **Done.** **Next:** commit on Naveen's go-ahead + his real-browser export check;
+  clean the stray `output/`/`tmp/` dirs first.
+- 2026-08-04 — Picked @context/features/bug-sprint-ownership.md as the current feature (group `/bugs`
+  bugs by Jira Sprint ownership — ours vs dependencies vs no-sprint, config-driven per report). Ran
+  3 parallel Explore agents (data model/refresh, read path/UI, admin config) + a clarifying-question
+  round; 3 decisions ratified with Naveen — separate "No sprint" group, section **+** top KPI card,
+  **include in the PDF export**. Design is a near-exact mirror of the shipped by-team feature.
+  **Branch decision (Naveen):** stay on `feature/enhancing-bug-board` — `HEAD == main == ad6cdb7` and
+  the enhancing-bug-board + PDF work is uncommitted here, so this coupled follow-on continues on the
+  same branch rather than a no-op fresh branch off `main`. Approved plan at
+  `/Users/naveen/.claude/plans/i-do-see-one-linear-brooks.md`. enhancing-bug-board + bug-report-pdf-export
+  remain **Done** (uncommitted, same branch).
+- 2026-08-04 — **Implemented bug-sprint-ownership (group `/bugs` bugs by Jira sprint ownership —
+  ours vs dependencies vs no-sprint).** Schema: `BugReportIssue.jiraSprintName` +
+  `BugReport.sprintOwnershipPattern` (migration `add_bug_report_sprint_ownership` — 9 migrations,
+  §9 byte-synced). New pure `sprint-field.mjs` (`resolveSprintFieldId` + ported `extractSprintName`
+  + `DEFAULT_SPRINT_FIELD`) and `sprint-ownership.mjs` (`compileSprintMatcher` glob/prefix/comma-OR
+  + `groupBySprintOwnership` cloning by-team.mjs, reusing `isBreached`/`daysOverSla`). `refresh.js`
+  resolves the Sprint field id (env `JIRA_SPRINT_FIELD_ID` → `/field` discovery → `customfield_10020`,
+  `/field` now fetched **once** and shared with sub-component discovery), appends it to `issueFields`,
+  captures `jiraSprintName` in `toBugIssueRow`; `.env.example` documents the override. `bug-report-data.js`
+  adds `bySprintOwnership` to each scope view (no extra query). UI: new `bug-sprint-ownership-section.jsx`
+  (three callout tiles + bucket → sprint → inline-issue drill, `key in (…)` Jira links, ours-accent/
+  dependency-warn), a `Ours / dependencies` KPI card in `bug-kpi-cards.jsx` (row → `xl:grid-cols-7`
+  when configured), section placed under the matrix + `exportViews` carry the data (`bugs-page.jsx`).
+  PDF: `paginateOwnershipAppendix` in `pdf-layout.mjs` (refactored a shared `packSections`;
+  `paginateTeamAppendix` regression-checked) + a `renderPage` branch reusing a **parametrized**
+  `BugTeamAppendix` (`title`/`caption`/`subgroupNoun`) — a bucket reads as a "team", a sprint as a
+  "developer". Config: `sprintOwnershipPattern` in `bugReportConfigSchema`, persisted in the config
+  PUT route's `tx.bugReport.update`, edited via a new "Sprint ownership" admin section (rides the
+  existing Save). **Verified:** lint clean; 50/50 plain-Node fixtures + a `paginateTeamAppendix`
+  regression; migrate status up to date (9 migrations); cold DB/env-free build green — **44 ƒ Dynamic
+  unchanged**; impeccable hook clean on all changed components; **live on the real `gm` report** —
+  refresh tagged 145/233 bugs, `GM-*` → Ours 136 · Dependencies 9 (`AEP-*`/`AI-*`/`ZEB-*`) · No sprint
+  88, SSR renders the section + KPI + drill, and read-time reclassification proven with no refresh.
+  **Found (not a code bug): a stale pre-migration Prisma client** on the running dev server 500'd the
+  first refresh (`Unknown argument jiraSprintName`) though the Jira extraction was correct — fixed by
+  `prisma generate` + restart (the documented stale-dev-server hazard). The `gm` report is left set to
+  `GM-*` (Naveen's requested pattern). Doc-synced project-overview §5/§9(+ER)/§11/§16 + master-plan
+  post-v1 clause + `Last reviewed` 2026-08-04, and the spec Status + As-built notes. **Done.**
+  **Next:** commit on Naveen's go-ahead (with enhancing-bug-board + PDF, same branch); then his authed
+  visual + real-browser PDF pass.
+- 2026-08-07 — **Export visual consistency — the sprint export adopts the `/bugs` PDF design system.**
+  Per Naveen ("Check the PDF generated in the bugs screen, follow similar color, theme, styling and
+  format for all the exports in the app… even the clarity should be very similar"). The app has exactly
+  one other export — the sprint board export (`dashboard/export-dialog.jsx`, PDF + PNG) — so scope =
+  that one, re-skinned from its old teal/pastel/Manrope portrait look. Ratified 3 decisions via
+  `AskUserQuestion`: **portrait (restyle only)** (no landscape flip / no burndown — a faithful restyle
+  of existing content), **add clickable Jira key links**, and **extract a shared export kit** (both
+  PDFs import it; refactor the just-finished bugs export to use it, verified identical). Built the kit
+  — `lib/export/print-theme.mjs` (palette/tones/geometry, lifted verbatim from the bugs export),
+  `components/export/print-kit.jsx` (`PrintSheet`/`PrintHeader`/`PrintFooter`/`KpiBox`/`ReportPanel`/
+  `ExecutiveReadout`/`KeyLink`), `lib/export/pdf-capture.js` (`captureOptions`/`canvasToPngBytes`/
+  `overlayLinks`/`fileStamp`/`safeFilePart`) — then refactored `bug-export-dialog.jsx` onto it
+  (mechanical; `PrintHeader` generalized to `eyebrow/pill/title/subtitle/meta`, `PrintFooter` to
+  `left/pill`, `grid-cols-3` preserved as `repeat(N, minmax(0,1fr))`) and rebuilt the sprint export's
+  `SummaryPage` (PrintHeader + 5 KpiBox tiles + two-up Delivery-readout / Work-composition callout
+  panels + Delivery-by-filter card grid) and `IssuesPage` ("WORK BREAKDOWN" appendix: accent filter
+  bands + issue rows with clickable `KeyLink` chips, progress pills, health badges, zebra) on the
+  PORTRAIT geometry — scale-3 PNG capture + `pdf.setProperties` + `overlayLinks`; PNG variant kept
+  (scale 2 for canvas-height safety). Threaded `team` + `jiraBaseUrl` into `ExportDialog`
+  (`dashboard.jsx`). Hit + fixed one lint issue (`Date.now()` in a memo → `useState` lazy init, the
+  bugs-export pattern) and one **real render defect** caught in the first headless PDF: the long
+  sprint-window subtitle wrapped two lines and collided with the gradient rule → `PrintHeader` subtitle
+  is now single-line truncate. **Verified:** `yarn lint` clean; `prisma migrate status` up to date (no
+  schema change); **cold `rm -rf .next` DB/env-free `yarn build` green — 44 ƒ Dynamic unchanged**
+  (`.env` moved aside via `mv`, restored; dev server stopped for the build and restarted); **headless
+  Chrome + minted admin cookie against Naveen's real "Configurator & Website Setup" / "August 2026
+  Release" board** — sprint PDF is A4 portrait, `setProperties` metadata correct, **20 real clickable
+  `/URI` Jira `browse/…` annotations + `/Annots`** (not a flat image), 3 pages, zero page errors;
+  page 1/2 rasterized and eyeballed (purple eyebrow, gradient rule, KpiBox row, readout callouts, filter
+  cards, blue KeyLink chips); and the refactored **`/bugs` dialog preview is pixel-identical to the
+  reference PDF** (regression-clean). Headless captures collapse inter-word spaces (documented
+  html2canvas quirk; real-browser export spaces correctly). No schema/route/dependency change. New spec
+  @context/features/export-visual-consistency.md; doc-synced project-overview §5 + a dated §11 note +
+  `Last reviewed` 2026-08-07. **Done** — pending Naveen's real-browser export acceptance. On
+  `feature/enhancing-bug-board` (rides with the uncommitted bug-export work it refactors). **Next:**
+  that acceptance, then commit on his go-ahead.

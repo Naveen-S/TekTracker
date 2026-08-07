@@ -101,7 +101,7 @@ function Cell({ cell, delta, href, breachedHref, emphasis, rowMax, groupStart, i
   );
 }
 
-export function BugMatrix({ matrix, diff, scopes, buildHref, buildBreachHref }) {
+export function BugMatrix({ matrix, diff, scopes, buildHref, buildBreachHref, emphasizeScopeId = null }) {
   if (matrix.rows.length === 0) return null;
 
   return (
@@ -140,18 +140,30 @@ export function BugMatrix({ matrix, diff, scopes, buildHref, buildBreachHref }) 
               >
                 Category
               </th>
-              {scopes.map((scope, scopeIndex) => (
-                <th
-                  key={scope.id}
-                  colSpan={scope.bands.length + 1}
-                  className={cn(
-                    "sticky top-0 z-2 bg-secondary px-2.5 py-2.5 text-center text-[11px] font-bold tracking-wider uppercase text-secondary-foreground",
-                    scopeIndex === 0 ? "border-l" : "border-l-2 border-l-border-strong",
-                  )}
-                >
-                  {scope.name}
-                </th>
-              ))}
+              {scopes.map((scope, scopeIndex) => {
+                // External is highlighted (enhancing-bug-board.md decision 1) in the All view only —
+                // one accent channel (a dot + primary-tinted name), not a full column recolour.
+                const emphasized = scope.id === emphasizeScopeId;
+                return (
+                  <th
+                    key={scope.id}
+                    colSpan={scope.bands.length + 1}
+                    className={cn(
+                      "sticky top-0 z-2 bg-secondary px-2.5 py-2.5 text-center text-[11px] font-bold tracking-wider uppercase",
+                      emphasized ? "text-primary" : "text-secondary-foreground",
+                      scopeIndex === 0 ? "border-l" : "border-l-2 border-l-border-strong",
+                    )}
+                  >
+                    {emphasized && (
+                      <span
+                        className="mr-1 inline-block size-1.5 rounded-full bg-primary align-middle"
+                        aria-hidden="true"
+                      />
+                    )}
+                    {scope.name}
+                  </th>
+                );
+              })}
               <th
                 rowSpan={2}
                 className="sticky top-0 z-2 border-l-2 border-l-border-strong bg-secondary px-3 py-2.5 text-right text-[11px] font-bold tracking-wider uppercase text-secondary-foreground"

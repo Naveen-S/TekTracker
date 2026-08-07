@@ -109,6 +109,8 @@ export const bugReportConfigSchema = z
     bands: z.array(bandSchema).min(1, "at least one band is required"),
     categories: z.array(categorySchema).default([]),
     fallbackCategoryName: z.string().trim().min(1).nullish(),
+    // Sprint-ownership glob (bug-sprint-ownership.md), e.g. `GM-*`. Empty ⇒ the grouping is off.
+    sprintOwnershipPattern: z.string().trim().max(120).nullish(),
   })
   .superRefine((val, ctx) => {
     const dupe = (list, pick, what, path) => {
