@@ -19,7 +19,10 @@ import {
   HeroTitle,
 } from "@/components/ui/hero-shell";
 import { MetricGrid } from "@/components/dashboard/metric-grid";
-import { StoryPointsHighlight } from "@/components/dashboard/story-points-highlight";
+import {
+  compositionBreakdown,
+  StoryPointsHighlight,
+} from "@/components/dashboard/story-points-highlight";
 import { PlannerPanel } from "@/components/dashboard/planner-panel";
 
 export const dynamic = "force-dynamic";
@@ -127,20 +130,7 @@ export default async function SharePage({ params }) {
         <StoryPointsHighlight
           completedPoints={metrics.completedPoints}
           totalPoints={metrics.points}
-          breakdown={{
-            committed: {
-              points: metrics.committedPoints,
-              completedPoints: metrics.committedCompletedPoints,
-            },
-            techDebt: {
-              points: metrics.techDebtPoints,
-              completedPoints: metrics.techDebtCompletedPoints,
-            },
-            unplanned: {
-              points: metrics.unplannedPoints,
-              completedPoints: metrics.unplannedCompletedPoints,
-            },
-          }}
+          breakdown={compositionBreakdown(metrics)}
           capacity={capacity}
         />
 

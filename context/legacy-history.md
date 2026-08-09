@@ -1897,3 +1897,35 @@
   packaged, **not deployed**. **Next:** Naveen commits + pushes to `tekion-apps/storyboard` `main`;
   DevOps executes RELB-28979 (host→LB binding, internal Postgres, Jenkins job, cron) + first
   `yarn db:deploy` / `yarn db:seed`.
+
+- **Unplanned work → External / Internal split + a per-team composition chart (2026-08-09).**
+  Follow-on to committed-unplanned-work.md, on `feature/unplanned-split-chart` (off `main` @
+  `d631492`). The delivery scoreboard's **Unplanned Bugs** segment bifurcates into **External**
+  (`SUPPORT`) + **Internal** (`INTERNAL_BUG`) across `/`, `/rollup`, `/share/[token]` and the PDF/PNG
+  export. **Additive + presentation only:** `metrics.mjs` gained `external*`/`internal*` fields beside
+  the untouched `unplanned*` (before/after fixture diff proved every prior field byte-identical;
+  `external + internal == unplanned`); no §12 health/velocity/lens change. The 4th categorical channel
+  is a **validated** token `--on-ink-cat-4` orchid `#d385b0` (CIEDE2000 + Machado-2009-CVD sweep —
+  worst-case ΔE ≥ 11.6 vs brand-both-themes / gold / rose / alert-red; **purple/violet rejected — it
+  collapses against Modern's blue under CVD**), with the encoding **solid = planned work, hatch =
+  reactive bug** (`.sp-stripe` rose / new `.sp-stripe-2` orchid), hue sub-dividing the two bugs.
+  `compositionBreakdown()` (exported from `story-points-highlight.jsx`) builds the breakdown
+  split-or-`unplanned`-fallback so pre-split frozen shares still render. Export "Unplanned bugs"
+  readout → two rows. **The chart went through two passes.** First a composition **donut** (two
+  concentric rings, both screens, a shared `story-points-scoreboard.jsx` toggle) — Naveen reviewed and
+  rejected it: *"the chart representation is not adding any value"* (a donut of the same four numbers
+  the rail already shows adds nothing). Replaced by a **per-team composition chart on `/rollup`**
+  (`rollup-composition-chart.jsx`): one horizontal stacked bar per team, length ∝ its
+  committed+tech-debt+bug load, segments = the four work types, sorted heaviest-first with
+  delivered/planned/% per row — the one lens the portfolio totals + aggregate rail can't show (which
+  teams carry which kind of work). Toggle became `Condensed · Relaxed · By team` on `rollup-story-points.jsx`
+  (over `useLocalPref`); the **board has no chart** (Naveen), just the bifurcated condensed scoreboard;
+  the donut, its `variant="chart"` branch, and the shared scoreboard wrapper were removed. Designed
+  with the **impeccable** skill. **Lesson:** a chart that only re-encodes numbers already on screen is
+  not a value-add — earn it with a new dimension. **Verified:** `yarn lint` clean; additive + partition
+  fixtures; cold `rm -rf .next` DB/env-free build green — **45 ƒ Dynamic unchanged** (no new routes);
+  no schema change (**9 migrations**); impeccable `detect.mjs` → `[]`; a **headless-Chrome (Playwright)
+  screenshot round** on the live PCX/GM ACTIVE sprint (all 4 work types) — `/` (no toggle, bifurcated)
+  + `/rollup` By-team (desktop + mobile — PCX tech-debt-heavy, D360/DX bug-heavy at a glance) +
+  `/rollup` Relaxed (4-col) all correct. **Done**, uncommitted — pending Naveen's commit + his authed
+  visual pass (both themes) and a real-browser PDF export. See context/features/unplanned-split-and-chart.md.

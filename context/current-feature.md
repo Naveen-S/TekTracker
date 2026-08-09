@@ -1,88 +1,49 @@
 # Current Feature
 
-**Bug Board — group bugs by Sprint ownership (ours vs dependencies)**
-(@context/features/bug-sprint-ownership.md) — the next follow-on in the `/bugs` arc, on the same
-`feature/enhancing-bug-board` branch (uncommitted, tightly coupled). Within each scope
-(External/Internal/All), call out and group bugs by their Jira **Sprint field**: **ours** (sprint
-name matches a per-report pattern like `GM-*`) vs **dependencies** (other teams' sprints) vs **no
-sprint** — config-driven per report. Post-v1, not a master-plan step.
-
-**Also uncommitted on this branch (Done, pending Naveen's commit):** enhancing-bug-board.md (scope
-toggle + Bugs-by-scrum-team drill) and bug-report-pdf-export.md (landscape executive PDF; finish gate
-2026-08-04 — lint clean, 8 migrations, cold DB/env-free build green 44 ƒ Dynamic). Stray untracked
-`output/` and `tmp/` dirs from a parallel session should be cleaned/ignored before committing.
+**Unplanned work → External / Internal split + a per-team composition chart**
+(@context/features/unplanned-split-and-chart.md) — a follow-on to committed-unplanned-work.md.
+The delivery scoreboard's **Unplanned Bugs** segment bifurcates into **External** (`SUPPORT`) +
+**Internal** (`INTERNAL_BUG`) across `/`, `/rollup`, `/share/[token]` and the PDF/PNG export, and
+`/rollup` gains a **"By team" chart** (toggle `Condensed·Relaxed·By team`) showing which teams carry
+which kind of work. (A composition **donut** shipped first and was dropped on Naveen's review — it
+only re-drew the rail's composition; the board has no chart.) Presentation + additive metric fields
+only. Post-v1, not a master-plan step.
 
 ## Status
 
-**Done + verified 2026-08-04** (branch `feature/enhancing-bug-board`, **uncommitted**). Full spec +
-As-built notes: @context/features/bug-sprint-ownership.md.
+**Done + verified 2026-08-09** (branch `feature/unplanned-split-chart`, off `main` @ `d631492`,
+**uncommitted** — pending Naveen's commit). Full spec + As-built notes:
+@context/features/unplanned-split-and-chart.md.
 
-**Verified:** `yarn lint` clean; **50/50 plain-Node fixtures** + a `paginateTeamAppendix` regression;
-`prisma migrate status` up to date (**9 migrations**); **cold `rm -rf .next` DB/env-free build green —
-44 ƒ Dynamic unchanged** (no new routes); impeccable design hook clean on every changed component;
-**live real-Jira refresh + SSR on the real `gm` report** — set `GM-*`, refresh tagged **145/233** bugs'
-`jiraSprintName` → **Ours 136 · Dependencies 9 · No sprint 88**, and read-time reclassification proven
-across pattern changes with **no refresh** (`GM-*, AEP-*` → 141/4/88; `AEP-*` → 5/140/88; empty →
-hidden). The `gm` report is left configured with `GM-*` (the requested pattern).
+**What shipped:**
+- `metrics.mjs` gains `external*`/`internal*` fields (SUPPORT / INTERNAL_BUG) beside the untouched
+  `unplanned*` — additive, before/after fixture diff clean, `external + internal == unplanned`.
+- Scoreboard `StoryPointsHighlight`: 4-category rail (condensed) + 4-column relaxed grid; shared
+  `CompositionLegend`; exported `compositionBreakdown()` helper (split-or-`unplanned`-fallback for
+  pre-split frozen shares). No chart variant here — the board is the plain condensed scoreboard.
+- `/rollup` "By team" chart: new `rollup-composition-chart.jsx` (one stacked bar per team by
+  committed/tech-debt/bug load, sorted heaviest-first) + `rollup-story-points.jsx` owns the
+  `Condensed · Relaxed · By team` toggle over `useLocalPref`. Representation follows the `/bugs`
+  per-team grammar (full-width track lane + partial fill + right-hand total, roomy rows) and reuses
+  the scoreboard's `.sp-board`/`.sp-part` **hover-isolation** — hovering a work type (or legend chip)
+  keeps it lit across every team while the rest dim (zero new CSS).
+- Export "Unplanned bugs" readout → two rows (External / Internal). `/` + `/share` wired via
+  `compositionBreakdown`.
+- Palette: validated token `--on-ink-cat-4` orchid `#d385b0` (CVD sweep — purple rejected vs Modern
+  blue); encoding **solid = planned work, hatch = reactive bug** (`.sp-stripe` / `.sp-stripe-2`).
+- **Dropped:** the first-pass composition donut + the board view toggle + the shared
+  `story-points-scoreboard.jsx` wrapper (Naveen: the donut "isn't adding value" — it re-drew the rail).
 
-**Next:** commit on Naveen's go-ahead (this + enhancing-bug-board + PDF all ship together from the
-same branch; clean the stray `output/`/`tmp/` dirs first); then Naveen's authed visual pass + a
-real-browser PDF export to see the ownership appendix. Deferred post-v1 ideas remain (export-embedded
-AI narrative, AI Q&A, stage suggestions, a share link for `/bugs`, leaderboard rank-delta arrows).
+**Verified:** `yarn lint` clean; additive + partition fixtures pass; **cold `rm -rf .next` DB/env-free
+build green — 45 ƒ Dynamic unchanged** (44 + office-deployment `/p/health`; no new routes); no schema
+change (**9 migrations**); impeccable `detect.mjs` → `[]`; **headless-Chrome (Playwright) screenshot
+round** on the live PCX/GM ACTIVE sprint (all 4 work types) — `/` (no toggle, bifurcated) + `/rollup`
+By-team (desktop + mobile — PCX tech-debt-heavy, D360/DX bug-heavy at a glance) + `/rollup` Relaxed
+(4-col) all read correctly.
 
-**Branch decision (Naveen, 2026-08-04):** **stayed on `feature/enhancing-bug-board`** — `HEAD == main
-== ad6cdb7`, the enhancing-bug-board + PDF work is uncommitted here, and this feature builds directly
-on it (same `/bugs` page, KPI cards, PDF export, `refresh.js`, `schema.prisma`), so a fresh branch
-off `main` would isolate nothing.
-
-Within each scope (External/Internal/All), the page gains a config-driven **"ours vs dependencies"**
-grouping keyed on the Jira **Sprint field** — a per-report `sprintOwnershipPattern` (e.g. `GM-*`):
-1. **Ours** (sprint name matches the pattern) → **Dependencies** (has a sprint, no match) → **No
-   sprint** (field empty, its own group + a hygiene signal). Ours in accent, Dependencies in warn.
-2. Surfaced as a **drill section** (bucket → sprint → inline issues, Jira links) **+ a top KPI card**,
-   both scope-toggle-aware for free, **plus an appendix in the PDF export** (clickable links).
-3. **Read-time, config-driven** (mirrors the by-team join): new raw-fact column
-   `BugReportIssue.jiraSprintName`, computed against the pattern at read time — a config edit
-   re-renders instantly, no Jira refresh needed.
-
-## Goals
-
-- **(a) Schema** — `BugReportIssue.jiraSprintName String?` (raw fact) + `BugReport.sprintOwnershipPattern
-  String?` (config); migration `add_bug_report_sprint_ownership`; §9 byte-synced. `prisma/schema.prisma`.
-- **(b) Refresh** — new pure `src/lib/bug-report/sprint-field.mjs` (`resolveSprintFieldId`,
-  `extractSprintName`, `DEFAULT_SPRINT_FIELD`); `refresh.js` resolves the sprint field id (env
-  `JIRA_SPRINT_FIELD_ID` → `/field` discovery → `customfield_10020`), appends to `issueFields`, sets
-  `jiraSprintName` in `toBugIssueRow`; documented in `.env.example`. Missing field → null, never throws.
-- **(c) Pure logic** — new `src/lib/bug-report/sprint-ownership.mjs` (`compileSprintMatcher`,
-  `groupBySprintOwnership`), reusing `isBreached`/`daysOverSla` from `matrix.mjs`.
-- **(d) Read path** — `src/lib/bug-report-data.js`: `buildView` adds `bySprintOwnership` (no extra query).
-- **(e) UI** — new `src/components/bugs/bug-sprint-ownership-section.jsx` (clone `bug-team-section.jsx`:
-  split-header + bucket → sprint → issue drill); `ownership` card in `bug-kpi-cards.jsx`; wire both +
-  `exportViews` in `bugs-page.jsx` (section directly under the matrix). No new routes/pages (44 ƒ
-  Dynamic unchanged).
-- **(f) PDF** — ownership appendix in `bug-export-dialog.jsx` + pagination in `pdf-layout.mjs`.
-- **(g) Config** — `sprintOwnershipPattern` in `bugReportConfigSchema` (`src/lib/schemas/bug-report.js`),
-  persisted in the config PUT route, edited via a new "Sprint ownership" section in
-  `src/components/admin/bug-report-config.jsx`.
-
-## Notes
-
-- **Read installed docs first** (versions differ from training data): Prisma 7 additive migration
-  (`prisma-change` skill, `yarn db:migrate`, never `db push`); Next 16 RSC server-component-as-prop
-  pattern (reuse the existing `bug-scope-view.jsx` slot mechanism — the section lives in the
-  per-scope pre-rendered body subtree); Tailwind v4 `@theme`.
-- **Matcher semantics** — `*` wildcard; a pattern with no `*` ⇒ prefix; comma/newline-separated
-  patterns OR'd; case-insensitive, anchored.
-- **Sprint field id ≠ JQL display name** — the REST `fields` param needs `customfield_XXXXX`; resolve
-  env `JIRA_SPRINT_FIELD_ID` → `/field` discovery (name/clause "sprint") → `customfield_10020`.
-  `extractSprintName` (ported from `transform.js:67-81`) handles array-of-sprints / single object /
-  legacy `name=...` string / null defensively.
-- **Read-time derivation, config-driven, hidden when unset** — cache stays a dumb Jira mirror; a
-  config edit re-renders instantly (matrix.mjs / by-team.mjs precedent). `metrics.mjs`/`IssueProgress`/
-  sprint data untouched (§12 purity). Existing cached bugs read "No sprint" until the next Refresh
-  repopulates `jiraSprintName`.
-- **Bug cache has `assigneeName` but no `assigneeAccountId`** (unchanged) — not needed here; grouping
-  is by sprint, the drill sub-level is by sprint name.
+**Next:** commit on Naveen's go-ahead; then his authed visual pass (both themes) + a real-browser PDF
+export. Deferred post-v1 ideas remain (export-embedded AI narrative, AI Q&A, stage suggestions, a
+share link for `/bugs`, leaderboard rank-delta arrows).
 
 ## Carry-forward — critical for any new feature
 
@@ -92,16 +53,14 @@ details live in [legacy-history.md](legacy-history.md); house conventions live i
 layer that sits between them.)
 
 **Repo / branch state (2026-08-09)**
-- **Baseline invariants to preserve:** **44 ƒ Dynamic** routes, **9 Prisma migrations**, Node 22,
-  dev on **:3002**. A feature that changes either count must say so and justify it.
-- **Uncommitted on `feature/enhancing-bug-board`:** four coupled features ship together —
-  enhancing-bug-board, bug-report-pdf-export, bug-sprint-ownership, export-visual-consistency
-  (`HEAD == main == ad6cdb7`). Clean the stray `output/` and `tmp/` dirs before committing.
-- **Uncommitted on `feature/office-deployment`** (off `main`, parallel/unrelated): office-infra
-  deployment — `Dockerfile` / `.dockerignore` / `output:"standalone"` / `GET /p/health` / `DEPLOY.md`
-  (adds one route → **45 ƒ Dynamic on this branch**). Done + verified 2026-08-09; see
-  context/features/office-deployment.md. Must land on `tekion-apps/storyboard` `main` for DevOps to
-  build (RELB-28979).
+- **Baseline invariants to preserve:** **45 ƒ Dynamic** routes (44 + office-deployment `/p/health`),
+  **9 Prisma migrations**, Node 22, dev on **:3002**. A feature that changes either count must say
+  so and justify it.
+- **`main` is at `d631492`** and now includes the previously-uncommitted bug-board arc
+  (enhancing-bug-board, bug-report-pdf-export, bug-sprint-ownership, export-visual-consistency) AND
+  the office-deployment work (`Dockerfile` / `.dockerignore` / `output:"standalone"` / `GET /p/health`
+  / `DEPLOY.md`; must land on `tekion-apps/storyboard` `main` for DevOps to build — RELB-28979).
+- **This feature is on `feature/unplanned-split-chart`** (off `main`), uncommitted, pending commit.
 - **Naveen runs all commits** (the Tekion gitleaks pre-commit hook can't fetch its config from
   Claude's shell). Never auto-commit — hand him the command and ask first (per `ai-interaction.md`).
 
@@ -121,7 +80,8 @@ layer that sits between them.)
 - **No test suite (deliberate).** Verify with: pure-Node fixtures for pure logic + SSR/API smoke
   using **minted iron-session cookies** (`sealData`) against Neon (tear fixtures down to 0 rows).
   Visual = **headless Chrome** (the browser extension has never been connected, so an authed
-  real-browser visual pass is always **Naveen's** acceptance step).
+  real-browser visual pass is always **Naveen's** acceptance step). Playwright-core + a cached
+  Chromium (`~/Library/Caches/ms-playwright/chromium-*`) are available for scripted screenshots.
 - **Two smoke gotchas:** Next 16 + Turbopack **dev** resolves `redirect()`/`notFound()` to HTTP
   **200** — assert on content, not status. RSC flight markup inserts `<!-- -->` between adjacent
   JSX text nodes — strip those before substring assertions.
@@ -136,6 +96,14 @@ layer that sits between them.)
 - **Read the installed version docs first** — Next 16, Prisma 7, Tailwind v4 all diverge from
   training data (`node_modules/next/dist/docs/`, the `prisma-change` skill, `@theme` CSS config).
 - **Append-don't-rewrite** dated entries in `context/**` (rename notes, decision history).
+
+**On-ink categorical palette (delivery scoreboard)**
+- Four validated categorical channels on the ink surface: brand-accent (Committed) · gold
+  `--on-ink-cat-2` (Tech Debt) · rose `--on-ink-cat-3` (External bugs) · orchid `--on-ink-cat-4`
+  `#d385b0` (Internal bugs). **Solid = planned work, hatch = reactive bug** (`.sp-stripe` /
+  `.sp-stripe-2`); hue sub-divides. **Purple/violet is NOT available** — it collapses against
+  Modern's blue brand under CVD. A 5th category faces an even tighter hue space; reach for a
+  texture/second channel before a new hue, and validate ΔE (CIEDE2000 + Machado CVD), never eyeball.
 
 **Open post-v1 backlog (deferred, not forgotten)**
 - Export-embedded AI narrative · AI Q&A over sprint data · AI stage suggestions · a share link for

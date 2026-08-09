@@ -28,6 +28,7 @@ import { TeamSummaryTable } from "@/components/rollup/team-summary-table";
 import { RollupRiskSection } from "@/components/rollup/rollup-risk-section";
 import { RollupDigestButton } from "@/components/rollup/rollup-digest-button";
 import { RollupStoryPoints } from "@/components/rollup/rollup-story-points";
+import { compositionBreakdown } from "@/components/dashboard/story-points-highlight";
 import { AppShell } from "@/components/ui/app-shell";
 
 export const dynamic = "force-dynamic";
@@ -107,21 +108,9 @@ export default async function RollupPage({ searchParams }) {
               completedPoints={combined.completedPoints}
               totalPoints={combined.points}
               scope={`this sprint · ${perTeam.length} ${perTeam.length === 1 ? "team" : "teams"}`}
-              breakdown={{
-                committed: {
-                  points: combined.committedPoints,
-                  completedPoints: combined.committedCompletedPoints,
-                },
-                techDebt: {
-                  points: combined.techDebtPoints,
-                  completedPoints: combined.techDebtCompletedPoints,
-                },
-                unplanned: {
-                  points: combined.unplannedPoints,
-                  completedPoints: combined.unplannedCompletedPoints,
-                },
-              }}
+              breakdown={compositionBreakdown(combined)}
               capacity={combinedCapacity}
+              teams={perTeam}
             />
             <MetricGrid
               metrics={combined}

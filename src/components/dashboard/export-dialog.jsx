@@ -497,7 +497,10 @@ function SummaryPage({
             />
           </div>
         </ReportPanel>
-        <ReportPanel title="Work composition" subtitle="Committed vs tech debt vs unplanned">
+        <ReportPanel
+          title="Work composition"
+          subtitle="Committed vs tech debt vs external / internal bugs"
+        >
           <div className="mt-2 grid gap-2">
             <ExecutiveReadout
               label="Committed (roadmap)"
@@ -516,10 +519,16 @@ function SummaryPage({
               tone="warn"
             />
             <ExecutiveReadout
-              label="Unplanned bugs"
-              value={`${round(exportMetrics.unplannedCompletedPoints)} / ${round(exportMetrics.unplannedPoints)} pts`}
-              detail="Support + internal bugs"
+              label="External bugs"
+              value={`${round(exportMetrics.externalCompletedPoints ?? 0)} / ${round(exportMetrics.externalPoints ?? 0)} pts`}
+              detail="Support / customer-reported"
               tone="danger"
+            />
+            <ExecutiveReadout
+              label="Internal bugs"
+              value={`${round(exportMetrics.internalCompletedPoints ?? 0)} / ${round(exportMetrics.internalPoints ?? 0)} pts`}
+              detail="Found internally (QA / eng)"
+              tone="neutral"
             />
           </div>
         </ReportPanel>
