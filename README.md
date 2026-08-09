@@ -30,4 +30,4 @@ Prisma 7 with the connection configured in `prisma.config.mjs`.
 - [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) — working conventions for AI-assisted
   development.
 - [`legacy/`](legacy/README.md) — the retired single-user Vite prototype, kept as a reference
-  backup (runs on Node 20 only).
+  backup (runs on Node 20 only). 
