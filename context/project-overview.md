@@ -6,7 +6,7 @@
 > **[BUILT]**, **[PARTIAL]**, **[PLANNED]**, or **[GAP]** so the as-built state is never confused
 > with the target state.
 >
-> Last reviewed: 2026-08-07 · Owner: Naveen · Audience: engineers + Claude Code.
+> Last reviewed: 2026-08-09 · Owner: Naveen · Audience: engineers + Claude Code.
 >
 > **Rename note (2026-07-31):** the product was renamed to **StoryBoard** (was "Sprint Tracker",
 > earlier codename "Tek Tracker" / "TekTracker"). The rename is display/branding only — no schema,
@@ -225,6 +225,15 @@ Next.js 16 (App Router) — single deployable
 > filter-bearing team's Issue cache through the step-5 sync engine and upserts the daily per-team
 > `SprintSnapshot` for each ACTIVE sprint (see context/features/background-sync-snapshots.md).
 > §8 stays [PLANNED] overall — Redis and Gemini remain optional-future.
+
+> **[PACKAGED 2026-08-09 — office-infra deployment; not yet deployed]** — the app is now
+> containerized for Tekion office infra: a multi-stage `Dockerfile` (`node:22-alpine`, Next.js
+> `output: "standalone"`, JFrog npm proxy, baked `.env`), `.dockerignore`, a dependency-free
+> liveness route `GET /p/health`, and `DEPLOY.md` (runbook). Target: a dedicated subdomain
+> `storyboard.stage.aecloud.io` (stage), internal Tekion Postgres, migrations as a separate
+> `yarn db:deploy` step, daily cron → `POST /api/cron/daily`. Service creation filed as RELB-28979.
+> This is packaging + a filed ticket, **not** a live deployment — §8 stays [PLANNED]. See
+> context/features/office-deployment.md.
 
 Migration guidance:
 - Port every `server.js` route to a Next.js Route Handler under `app/api/...`. Keep the same
