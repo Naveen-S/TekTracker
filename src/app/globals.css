@@ -106,9 +106,22 @@
 
      The ONE weak pair (brand↔cat-3 in Tekion) is why cat-3 is always drawn as a HATCH, never a
      flat fill: texture is the second channel that makes it separable without colour. Do not
-     "simplify" that hatch away. */
+     "simplify" that hatch away.
+
+     cat-4 (added 2026-08-09, unplanned-split-and-chart.md) bifurcates the old "Unplanned Bugs"
+     rose (cat-3) into External (SUPPORT, keeps cat-3 rose) + Internal (INTERNAL_BUG, cat-4 orchid).
+     The scoreboard now encodes TWO axes: TEXTURE says planned-vs-reactive (solid = Committed/Tech
+     Debt, HATCH = External/Internal bugs — so the hatch still means "unplanned"), and HUE
+     sub-divides within each. cat-4 is a dusty ORCHID, deliberately in the rose family so both bugs
+     read as one family, but far enough to separate: measured worst-case ΔE across normal + protan +
+     deutan is cat-3↔cat-4 12.2, and cat-4 clears every other slot too —
+       brand-Tekion 10.1 · brand-Modern 15.4 · gold 34.5 · rose 12.2 · alert-red 23.6 · success 18.4.
+     Contrast on ink 6.7:1 (Tekion) / 6.6:1 (Modern). Purple/violet was rejected: it collapses
+     against Modern's blue brand under CVD (ΔE < 5); orchid is the one rose-adjacent hue that holds.
+     Both bugs stay hatched (.sp-stripe / .sp-stripe-2) so texture keeps meaning "reactive". */
   --on-ink-cat-2: #e3a72f;
   --on-ink-cat-3: #f2a8b6;
+  --on-ink-cat-4: #d385b0;
 
   --chart-1: #00bfa5;
   --chart-2: #0ea5e9;
@@ -250,6 +263,7 @@
   --color-on-ink-alert: var(--on-ink-alert);
   --color-on-ink-cat-2: var(--on-ink-cat-2);
   --color-on-ink-cat-3: var(--on-ink-cat-3);
+  --color-on-ink-cat-4: var(--on-ink-cat-4);
 
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -380,6 +394,17 @@
     to {
       opacity: 1;
       transform: translateY(0) scaleY(1);
+    }
+  }
+  /* Roll-up per-team composition bars grow from their leading edge on arrival
+     (rollup-composition-chart.jsx). `backwards` so the stagger delay hands the property back rather
+     than pinning the end state (same discipline as the sp-* keyframes above). */
+  @keyframes sp-grow {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
     }
   }
 
@@ -575,11 +600,23 @@
     color-mix(in oklab, var(--on-ink-cat-3) 42%, var(--ink)) 4px 8px
   );
 }
+/* Internal bugs (cat-4 orchid). Same 135° hatch as External so "hatched = reactive bug" stays one
+   readable texture family; the two bugs are told apart by HUE (cat-3 rose ↔ cat-4 orchid, ΔE 12.2),
+   not by the stripe angle. See the token block above (unplanned-split-and-chart.md). */
+.sp-stripe-2 {
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--on-ink-cat-4) 0 4px,
+    color-mix(in oklab, var(--on-ink-cat-4) 42%, var(--ink)) 4px 8px
+  );
+}
 .sp-board:has(.sp-part:hover) .sp-part {
   opacity: 0.35;
 }
 .sp-board:has([data-part="committed"]:hover) [data-part="committed"],
 .sp-board:has([data-part="techDebt"]:hover) [data-part="techDebt"],
+.sp-board:has([data-part="external"]:hover) [data-part="external"],
+.sp-board:has([data-part="internal"]:hover) [data-part="internal"],
 .sp-board:has([data-part="unplanned"]:hover) [data-part="unplanned"] {
   opacity: 1;
 }

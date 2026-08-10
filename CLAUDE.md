@@ -58,6 +58,8 @@ There is no test suite yet (deliberate) — run /verify for the house verificati
 - `src/lib/` — domain logic: pure `metrics.mjs`, `dashboard-data.js`, `workflows.mjs`, `rbac.js`,
   `jira/` (all Jira specifics isolated), `sync/`, `cron/`, `schemas/` (zod)
 - `prisma/` — schema (byte-consistent with project-overview §9), migrations, `seed.mjs`
+- `Dockerfile` · `.dockerignore` · `DEPLOY.md` — container image (Next.js standalone, Node 22) +
+  office-infra deploy runbook for `storyboard.stage.aecloud.io` (context/features/office-deployment.md)
 - `legacy/` — the **retired** Vite/Express prototype, backed up at the 2026-07-18 cutover for
   reference only (Node 20; see `legacy/README.md`). Historical docs referring to `web/` mean
   today's repo root.

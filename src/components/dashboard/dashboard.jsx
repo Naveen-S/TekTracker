@@ -18,7 +18,7 @@ import { Toast, useToast } from "@/components/ui/toast";
 import { TopBar } from "./top-bar";
 import { Hero } from "./hero";
 import { MyStatsCard } from "./my-stats-card";
-import { StoryPointsHighlight } from "./story-points-highlight";
+import { compositionBreakdown, StoryPointsHighlight } from "./story-points-highlight";
 import { MetricGrid } from "./metric-grid";
 import { TrendPanel } from "./trend-panel";
 import { RiskCalloutsPanel } from "./risk-callouts-panel";
@@ -311,20 +311,7 @@ export function Dashboard({
                 <StoryPointsHighlight
                   completedPoints={metrics.completedPoints}
                   totalPoints={metrics.points}
-                  breakdown={{
-                    committed: {
-                      points: metrics.committedPoints,
-                      completedPoints: metrics.committedCompletedPoints,
-                    },
-                    techDebt: {
-                      points: metrics.techDebtPoints,
-                      completedPoints: metrics.techDebtCompletedPoints,
-                    },
-                    unplanned: {
-                      points: metrics.unplannedPoints,
-                      completedPoints: metrics.unplannedCompletedPoints,
-                    },
-                  }}
+                  breakdown={compositionBreakdown(metrics)}
                   capacity={capacity}
                 />
                 <MetricGrid

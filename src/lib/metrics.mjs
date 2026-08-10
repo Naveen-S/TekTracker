@@ -38,6 +38,12 @@ const DELIVERY_TYPES = new Set(["FEATURE", "TECH_DEBT"]);
 const COMMITTED_TYPES = new Set(["FEATURE"]);
 const TECH_DEBT_ONLY_TYPES = new Set(["TECH_DEBT"]);
 const UNPLANNED_TYPES = new Set(["SUPPORT", "INTERNAL_BUG"]);
+// Unplanned Bugs bifurcated into its two real categories (unplanned-split-and-chart.md, 2026-08-09):
+// External = SUPPORT (customer/support-reported — the "External Bug" track in one-click-sprint-start.md)
+// and Internal = INTERNAL_BUG. Purely ADDITIVE — `UNPLANNED_TYPES` above is left intact so the
+// aggregate `unplanned*` fields keep flowing for the frozen-share fallback + PDF export.
+const EXTERNAL_TYPES = new Set(["SUPPORT"]);
+const INTERNAL_TYPES = new Set(["INTERNAL_BUG"]);
 
 const averagePercent = (list) =>
   list.length > 0 ? Math.round(list.reduce((sum, i) => sum + i.percent, 0) / list.length) : 0;
@@ -188,6 +194,9 @@ export function computeSprintMetrics(filters, progressByKey, sprint, asOf) {
   const committed = segmentTotals(issues.filter((i) => COMMITTED_TYPES.has(i.workflowType)));
   const techDebtWork = segmentTotals(issues.filter((i) => TECH_DEBT_ONLY_TYPES.has(i.workflowType)));
   const unplanned = segmentTotals(issues.filter((i) => UNPLANNED_TYPES.has(i.workflowType)));
+  // Unplanned bifurcation (additive): external + internal partition `unplanned` exactly.
+  const external = segmentTotals(issues.filter((i) => EXTERNAL_TYPES.has(i.workflowType)));
+  const internal = segmentTotals(issues.filter((i) => INTERNAL_TYPES.has(i.workflowType)));
 
   return {
     issues,
@@ -211,6 +220,12 @@ export function computeSprintMetrics(filters, progressByKey, sprint, asOf) {
     unplannedPoints: unplanned.points,
     unplannedCompletedPoints: unplanned.completedPoints,
     unplannedIssueCount: unplanned.issueCount,
+    externalPoints: external.points,
+    externalCompletedPoints: external.completedPoints,
+    externalIssueCount: external.issueCount,
+    internalPoints: internal.points,
+    internalCompletedPoints: internal.completedPoints,
+    internalIssueCount: internal.issueCount,
     sprintHealth: bandSprintHealth(deliveryHealthCounts, totalDeliveryIssues, deliveryAvgProgress),
     healthCounts,
     deliveryHealthCounts,
@@ -296,6 +311,12 @@ export function aggregateRollup(perTeamMetrics) {
     unplannedPoints: sumOf((m) => m.unplannedPoints),
     unplannedCompletedPoints: sumOf((m) => m.unplannedCompletedPoints),
     unplannedIssueCount: sumOf((m) => m.unplannedIssueCount),
+    externalPoints: sumOf((m) => m.externalPoints),
+    externalCompletedPoints: sumOf((m) => m.externalCompletedPoints),
+    externalIssueCount: sumOf((m) => m.externalIssueCount),
+    internalPoints: sumOf((m) => m.internalPoints),
+    internalCompletedPoints: sumOf((m) => m.internalCompletedPoints),
+    internalIssueCount: sumOf((m) => m.internalIssueCount),
     sprintHealth: bandSprintHealth(deliveryHealthCounts, totalDeliveryIssues, deliveryAvgProgress),
     healthCounts,
     deliveryHealthCounts,

@@ -1,0 +1,25 @@
+# Keep the build context small and reproducible. NOTE: `.env` is deliberately NOT ignored —
+# runtime secrets are baked into the image (deployment decision). Keep it in the context.
+.git
+.gitignore
+node_modules
+.next
+out
+build
+
+# Retired Vite/Express prototype and internal docs — not part of the app runtime.
+legacy
+context
+
+# Local/dev-only artifacts
+.claude
+.sessions
+tmp
+output
+coverage
+*.log
+.DS_Store
+
+# CI/editor noise
+.vscode
+.idea

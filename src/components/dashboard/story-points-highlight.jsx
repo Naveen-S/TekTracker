@@ -41,6 +41,37 @@ import { AnimatedNumber } from "@/components/ui/animated-number";
 import { cn } from "@/lib/utils";
 
 /**
+ * Build the scoreboard `breakdown` prop from a `computeSprintMetrics`/`aggregateRollup` result.
+ * Prefers the External/Internal split (unplanned-split-and-chart.md); falls back to the merged
+ * `unplanned` segment for pre-split FROZEN shares whose captured metrics predate the split — the
+ * two branches are mutually exclusive, so the component never double-counts bug scope.
+ */
+export function compositionBreakdown(m) {
+  const hasSplit = m.externalPoints != null || m.internalPoints != null;
+  return {
+    committed: { points: m.committedPoints, completedPoints: m.committedCompletedPoints },
+    techDebt: { points: m.techDebtPoints, completedPoints: m.techDebtCompletedPoints },
+    ...(hasSplit
+      ? {
+          external: {
+            points: m.externalPoints ?? 0,
+            completedPoints: m.externalCompletedPoints ?? 0,
+          },
+          internal: {
+            points: m.internalPoints ?? 0,
+            completedPoints: m.internalCompletedPoints ?? 0,
+          },
+        }
+      : {
+          unplanned: {
+            points: m.unplannedPoints,
+            completedPoints: m.unplannedCompletedPoints,
+          },
+        }),
+  };
+}
+
+/**
  * Fixed order and palette. Committed is the only type wearing the brand hue. `zone` is a type's
  * PLANNED scope, `fill` is what has been delivered inside it — the zones have to stay clearly
  * visible against ink or the rail stops reading as one continuous shape and becomes a row of
@@ -63,6 +94,28 @@ const TYPES = [
     swatch: "bg-on-ink-cat-2",
     value: "text-white",
   },
+  // Unplanned Bugs bifurcated into External (SUPPORT) + Internal (INTERNAL_BUG),
+  // unplanned-split-and-chart.md. TEXTURE encodes planned-vs-reactive: both bugs stay HATCHED (so
+  // the hatch keeps meaning "unplanned"); HUE sub-divides them (rose cat-3 ↔ orchid cat-4, ΔE 12.2).
+  {
+    key: "external",
+    label: "External Bugs",
+    zone: "bg-on-ink-cat-3/20",
+    fill: "sp-stripe",
+    swatch: "sp-stripe",
+    value: "text-white",
+  },
+  {
+    key: "internal",
+    label: "Internal Bugs",
+    zone: "bg-on-ink-cat-4/20",
+    fill: "sp-stripe-2",
+    swatch: "sp-stripe-2",
+    value: "text-white",
+  },
+  // Fallback for pre-split frozen shares: rendered ONLY when a breakdown carries `unplanned` and
+  // NOT external/internal (the call sites make these mutually exclusive), so a share captured
+  // before the split still shows its bug scope as the old single rose segment.
   {
     key: "unplanned",
     label: "Unplanned Bugs",
@@ -84,17 +137,20 @@ const FILL_IN = [
   "motion-safe:animate-[sp-fill_0.4s_var(--ease-out)_0.28s_backwards]",
   "motion-safe:animate-[sp-fill_0.4s_var(--ease-out)_0.34s_backwards]",
   "motion-safe:animate-[sp-fill_0.4s_var(--ease-out)_0.40s_backwards]",
+  "motion-safe:animate-[sp-fill_0.4s_var(--ease-out)_0.46s_backwards]",
 ];
 const LEGEND_IN = [
   "motion-safe:animate-[rise_0.3s_var(--ease-out)_0.30s_backwards]",
   "motion-safe:animate-[rise_0.3s_var(--ease-out)_0.35s_backwards]",
   "motion-safe:animate-[rise_0.3s_var(--ease-out)_0.40s_backwards]",
+  "motion-safe:animate-[rise_0.3s_var(--ease-out)_0.45s_backwards]",
 ];
 
 const COLUMN_IN = [
   "motion-safe:animate-[rise_0.36s_var(--ease-out)_0.30s_backwards]",
   "motion-safe:animate-[rise_0.36s_var(--ease-out)_0.36s_backwards]",
   "motion-safe:animate-[rise_0.36s_var(--ease-out)_0.42s_backwards]",
+  "motion-safe:animate-[rise_0.36s_var(--ease-out)_0.48s_backwards]",
 ];
 
 const pctOf = (part, whole) => (whole > 0 ? (part / whole) * 100 : 0);
@@ -175,6 +231,63 @@ function TypeColumn({ type, planned, delivered, share, capacity, index, classNam
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * Direct labels for every segment (the `condensed` rail's legend) — colour is never the only code,
+ * each entry names its type. `stack` lays them one-per-row; the default is the one-line wrap.
+ * Committed additionally prints capacity.
+ */
+function CompositionLegend({ segments, planned, capacityPoints, overCapacity, capacityGap, stack }) {
+  return (
+    <ul
+      className={cn(
+        "flex",
+        stack ? "flex-col gap-2" : "mt-2.5 flex-wrap items-center gap-x-5 gap-y-1.5",
+      )}
+    >
+      {segments.map((segment, index) => (
+        <li
+          key={segment.type.key}
+          data-part={segment.type.key}
+          className={cn(
+            "sp-part flex items-center gap-1.5 text-[11px]",
+            stack ? "" : "whitespace-nowrap",
+            LEGEND_IN[index] ?? LEGEND_IN[0],
+          )}
+        >
+          <span
+            className={cn("size-2 shrink-0 rounded-[2px]", segment.type.swatch)}
+            aria-hidden="true"
+          />
+          <span className="font-bold tracking-wide text-white/55 uppercase">
+            {segment.type.label}
+          </span>
+          <span className={cn("font-display font-bold tabular-nums", segment.type.value)}>
+            {Math.round(segment.delivered)}
+          </span>
+          <span className="text-white/50 tabular-nums">
+            / {Math.round(segment.planned)} · {Math.round(pctOf(segment.planned, planned))}% of scope
+          </span>
+          {segment.type.key === "committed" && capacityPoints != null && (
+            <span
+              className={cn(
+                "font-semibold tabular-nums",
+                overCapacity ? "text-on-ink-alert" : "text-white/50",
+              )}
+            >
+              · {Math.round(capacityPoints)} cap
+              {capacityGap === 0
+                ? " (on target)"
+                : overCapacity
+                  ? ` (${capacityGap} over)`
+                  : ` (${capacityGap} spare)`}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -399,7 +512,7 @@ export function StoryPointsHighlight({
                 when condensed, or as full per-type columns when relaxed — so the rail is never the
                 only home for a number and the hover layer stays pure emphasis. */}
             {relaxed ? (
-              <div className="mt-5 grid grid-cols-1 gap-y-5 border-t border-white/10 pt-4 sm:grid-cols-3 sm:gap-y-0 sm:divide-x sm:divide-white/10">
+              <div className="mt-5 grid grid-cols-2 gap-x-5 gap-y-6 border-t border-white/10 pt-4 lg:grid-cols-4">
                 {segments.map((segment, index) => (
                   <TypeColumn
                     key={segment.type.key}
@@ -409,56 +522,17 @@ export function StoryPointsHighlight({
                     share={pctOf(segment.planned, planned)}
                     capacity={segment.type.key === "committed" ? capacityPoints : null}
                     index={index}
-                    className={cn(
-                      index > 0 && "sm:pl-5",
-                      index < segments.length - 1 && "sm:pr-5",
-                    )}
                   />
                 ))}
               </div>
             ) : (
-            <ul className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-1.5">
-              {segments.map((segment, index) => (
-                <li
-                  key={segment.type.key}
-                  data-part={segment.type.key}
-                  className={cn(
-                    "sp-part flex items-center gap-1.5 text-[11px] whitespace-nowrap",
-                    LEGEND_IN[index] ?? LEGEND_IN[0],
-                  )}
-                >
-                  <span
-                    className={cn("size-2 shrink-0 rounded-[2px]", segment.type.swatch)}
-                    aria-hidden="true"
-                  />
-                  <span className="font-bold tracking-wide text-white/55 uppercase">
-                    {segment.type.label}
-                  </span>
-                  <span className={cn("font-display font-bold tabular-nums", segment.type.value)}>
-                    {Math.round(segment.delivered)}
-                  </span>
-                  <span className="text-white/50 tabular-nums">
-                    / {Math.round(segment.planned)} · {Math.round(pctOf(segment.planned, planned))}%
-                    of scope
-                  </span>
-                  {segment.type.key === "committed" && capacityPoints != null && (
-                    <span
-                      className={cn(
-                        "font-semibold tabular-nums",
-                        overCapacity ? "text-on-ink-alert" : "text-white/50",
-                      )}
-                    >
-                      · {Math.round(capacityPoints)} cap
-                      {capacityGap === 0
-                        ? " (on target)"
-                        : overCapacity
-                          ? ` (${capacityGap} over)`
-                          : ` (${capacityGap} spare)`}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
+              <CompositionLegend
+                segments={segments}
+                planned={planned}
+                capacityPoints={capacityPoints}
+                overCapacity={overCapacity}
+                capacityGap={capacityGap}
+              />
             )}
 
             {/* Portfolio caveat: on /rollup the capacity total is only as complete as the teams an
