@@ -14,7 +14,7 @@ import { prisma } from "@/lib/db";
 import { NotFoundError } from "@/lib/rbac";
 import { ConflictError } from "@/lib/api/route-helpers";
 import { owningWorkflowType } from "@/lib/workflows.mjs";
-import { buildSeededStages, reshapeStageCompletion } from "@/lib/sync/seeding.mjs";
+import { buildSeededStages, reshapeStageCompletion, resolveStageResync } from "@/lib/sync/seeding.mjs";
 import {
   getJiraAuthForUser,
   fetchMyself,
@@ -195,5 +195,157 @@ export async function syncTeamSprint({ teamId, sprintId, userId }) {
     filters: filterSummaries,
     progressSeeded: toCreate.length,
     workflowsReevaluated: reevaluations.length,
+  };
+}
+
+/**
+ * Per-track "Sync stages from Jira" (sync-stages-from-jira.md): refresh ONE filter's cache from
+ * Jira, then re-derive every one of its issues' stage checklists from the fresh Jira status via
+ * StatusStageMapping — OVERWRITING existing rows (the user-triggered, per-track variant of the
+ * "re-seed forward" the create-only sync deliberately skips, sync-hybrid-seeding.md decision 5).
+ *
+ * Contract vs. {@link syncTeamSprint}:
+ * - Scoped to one filter, but owning workflow is still computed across ALL filters holding a key.
+ * - Overwrites `stageCompletion`/`workflowType`/`seededFromStatus`; PRESERVES blocked/risk fields.
+ * - Resets `updatedById` to null (status-derived, not a manual edit) so re-runs stay idempotent —
+ *   only hand-edits made AFTER an apply count as "manual" again.
+ * - An unmapped status never wipes an existing row (resolveStageResync); it's counted, not applied.
+ *
+ * @param {{ teamId: string, sprintId: string, filterId: string, userId: string }} args
+ * @returns {Promise<{ filterId: string, filterName: string, total: number, applied: number, unmapped: number, overwroteManual: number }>}
+ */
+export async function syncFilterStagesFromJira({ teamId, sprintId, filterId, userId }) {
+  const team = await prisma.team.findUnique({ where: { id: teamId } });
+  if (!team) throw new NotFoundError("Team not found");
+  const sprint = await prisma.sprint.findUnique({
+    where: { id: sprintId },
+    select: { id: true, state: true },
+  });
+  if (!sprint) throw new NotFoundError("Sprint not found");
+  if (sprint.state === SprintState.CLOSED) {
+    throw new ConflictError(
+      "Cannot sync a CLOSED sprint — its historical data is frozen for the leaderboard and history views",
+    );
+  }
+  const filter = await prisma.filter.findFirst({ where: { id: filterId, teamId, sprintId } });
+  if (!filter) throw new NotFoundError("Filter not found");
+
+  const auth = await getJiraAuthForUser(userId);
+  // Same dead-token fail-fast as syncTeamSprint — Jira degrades bad Basic auth to anonymous.
+  try {
+    await fetchMyself(auth);
+  } catch (error) {
+    if (error instanceof JiraAuthError) {
+      throw new JiraAuthError(
+        "Stored Jira token is invalid or expired — log in again to reconnect your Jira account",
+      );
+    }
+    throw error;
+  }
+  const fieldIds = {
+    storyPointsFieldId: team.storyPointsFieldId ?? DEFAULT_STORY_POINTS_FIELD,
+    sprintFieldId: team.sprintFieldId ?? DEFAULT_SPRINT_FIELD,
+  };
+  const requestFields = buildIssueFields(fieldIds);
+
+  // 1. Pull the latest issues for THIS filter and replace its cache (the "pull latest, then map"
+  //    contract). Reuses the same atomic refresh as the full sync.
+  let jql = filter.jql;
+  const filterUpdate = {};
+  if (filter.sourceType === FilterSourceType.JIRA_FILTER) {
+    const jiraFilter = await fetchFilter({ auth, filterId: filter.jiraFilterId });
+    jql = jiraFilter.jql;
+    filterUpdate.jql = jql;
+  }
+  const rawIssues = await searchIssues({ auth, jql, fields: requestFields });
+  const rows = rawIssues.map((issue) => transformJiraIssue(issue, fieldIds));
+  await refreshFilterCache(filter, rows, filterUpdate);
+
+  // The fresh Jira status per key comes straight from the just-refreshed rows (a key may also sit
+  // in another, staler filter — always trust the track we just synced).
+  const freshStatusByKey = new Map(rows.map((row) => [row.jiraKey, row.jiraStatus]));
+  const keys = [...freshStatusByKey.keys()];
+
+  // 2. Owning workflow needs EVERY filter that holds a key (§9 one-progress-row rule).
+  const cache = await prisma.issue.findMany({
+    where: { filter: { teamId, sprintId } },
+    select: { jiraKey: true, filter: { select: { workflowType: true } } },
+  });
+  const typesByKey = new Map();
+  for (const row of cache) {
+    const types = typesByKey.get(row.jiraKey) ?? [];
+    types.push(row.filter.workflowType);
+    typesByKey.set(row.jiraKey, types);
+  }
+
+  const mappings = await prisma.statusStageMapping.findMany({
+    where: { OR: [{ teamId }, { teamId: null }] },
+  });
+  const existingProgress = await prisma.issueProgress.findMany({
+    where: { teamId, sprintId, jiraKey: { in: keys } },
+    select: { id: true, jiraKey: true, updatedById: true },
+  });
+  const progressByKey = new Map(existingProgress.map((progress) => [progress.jiraKey, progress]));
+
+  // 3. Re-derive stages for every key in this filter and stage the writes.
+  const toCreate = [];
+  const toUpdate = [];
+  let unmapped = 0;
+  let overwroteManual = 0;
+  for (const jiraKey of keys) {
+    const owning = owningWorkflowType(typesByKey.get(jiraKey) ?? [filter.workflowType]);
+    const existing = progressByKey.get(jiraKey) ?? null;
+    const plan = resolveStageResync({
+      workflowType: owning,
+      jiraStatus: freshStatusByKey.get(jiraKey),
+      mappings,
+      existing,
+    });
+    if (plan.unmapped) unmapped += 1;
+    if (!plan.write) continue;
+    if (plan.overwroteManual) overwroteManual += 1;
+    if (existing) {
+      toUpdate.push({
+        id: existing.id,
+        workflowType: owning,
+        stageCompletion: plan.stages,
+        seededFromStatus: plan.seededFromStatus,
+      });
+    } else {
+      toCreate.push({
+        teamId,
+        sprintId,
+        jiraKey,
+        workflowType: owning,
+        stageCompletion: plan.stages,
+        seededFromStatus: plan.seededFromStatus,
+      });
+    }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (toCreate.length > 0) {
+      await tx.issueProgress.createMany({ data: toCreate });
+    }
+    for (const change of toUpdate) {
+      await tx.issueProgress.update({
+        where: { id: change.id },
+        data: {
+          workflowType: change.workflowType,
+          stageCompletion: change.stageCompletion,
+          seededFromStatus: change.seededFromStatus,
+          updatedById: null, // status-derived — keeps repeated syncs idempotent (see contract above)
+        },
+      });
+    }
+  });
+
+  return {
+    filterId: filter.id,
+    filterName: filter.name,
+    total: keys.length,
+    applied: toCreate.length + toUpdate.length,
+    unmapped,
+    overwroteManual,
   };
 }

@@ -131,9 +131,17 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
         blocked: true,
         blockedReason: true,
         riskComment: true,
+        updatedById: true,
       },
     });
-    progressByKey = Object.fromEntries(progress.map((row) => [row.jiraKey, row]));
+    // `manuallyEdited` (a human touched the stages) drives the per-track "Sync stages" confirm
+    // count in the matrix — sync/seed writes leave updatedById null (sync-stages-from-jira.md).
+    progressByKey = Object.fromEntries(
+      progress.map(({ updatedById, ...row }) => [
+        row.jiraKey,
+        { ...row, manuallyEdited: updatedById != null },
+      ]),
+    );
     // Daily step-7 cron rows powering the trend/burndown panel (trend-burndown.md (b)).
     snapshots = await prisma.sprintSnapshot.findMany({
       where: { teamId: selectedTeam.id, sprintId: selectedSprint.id },

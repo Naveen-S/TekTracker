@@ -1929,3 +1929,30 @@
   + `/rollup` By-team (desktop + mobile — PCX tech-debt-heavy, D360/DX bug-heavy at a glance) +
   `/rollup` Relaxed (4-col) all correct. **Done**, uncommitted — pending Naveen's commit + his authed
   visual pass (both themes) and a real-browser PDF export. See context/features/unplanned-split-and-chart.md.
+
+- **Sync Jira status → delivery-matrix stages, per track (2026-08-10).** On
+  `feature/sync-stages-from-jira` (off `main` @ `452644e`). Turns the manual per-ticket stage
+  checklist into a one-click, per-track action: each delivery-matrix track header (Roadmap / Tech
+  Debt / External Bug / Internal Bug) gets a `canWrite`-gated **"Sync stages"** button that pulls the
+  latest Jira status for that filter and re-derives every one of its issues' stages from it via
+  `StatusStageMapping` — the user-triggered, per-track **overwrite** variant of the create-only sync's
+  deferred "re-seed forward" (sync-hybrid-seeding.md decision 5). Naveen's three ratified calls
+  (AskUserQuestion): **overwrite-with-confirm** (the confirm names how many tickets carry manual stage
+  edits that will be replaced), **a button per track**, **pull-latest-then-map** (a live Jira call
+  scoped to the one filter). Derived guards: unmapped statuses are **counted, never wiped**;
+  blocked/blockedReason/riskComment preserved; owning workflow honored (one progress row per key);
+  CLOSED sprints 409'd; and `updatedById` is **reset to null** on overwrite so re-runs are idempotent
+  (only hand-edits made afterward count as "manual" next time). New pure `resolveStageResync`
+  (`seeding.mjs`) + `syncFilterStagesFromJira` (`engine.js`, reusing `refreshFilterCache` /
+  `buildSeededStages` / `owningWorkflowType`) + `POST .../filters/[filterId]/sync-stages` (writer
+  roles) — **45 → 46 ƒ Dynamic**; `dashboard-data.js` exposes `manuallyEdited`; button in
+  `planner-panel.jsx`, confirm `<Dialog>` + two-transition handler in `dashboard.jsx`. No
+  schema/migration/dependency change (**9 migrations**). Verified: `yarn lint` clean; **cold
+  `rm -rf .next` DB/env-free build green — 46 ƒ Dynamic**; **5/5** `resolveStageResync` fixtures;
+  **4/4** guard smoke (401 unauth · 403 viewer · 404 unknown filter · 409 CLOSED sprint) with minted
+  iron-session cookies against Neon (fixtures torn down); `prisma validate` + `migrate status` clean.
+  **Done**, uncommitted — pending Naveen's commit + his real-browser acceptance (live Jira
+  status→stages, both themes; the Chrome extension has never been connected). **Next:** commit on
+  Naveen's go-ahead; consider an admin editor for `StatusStageMapping` if real Jira status names miss
+  the seeded mappings (surfaced via the "unmapped" toast count). See
+  context/features/sync-stages-from-jira.md.

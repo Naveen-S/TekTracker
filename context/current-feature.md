@@ -1,49 +1,49 @@
 # Current Feature
 
-**Unplanned work → External / Internal split + a per-team composition chart**
-(@context/features/unplanned-split-and-chart.md) — a follow-on to committed-unplanned-work.md.
-The delivery scoreboard's **Unplanned Bugs** segment bifurcates into **External** (`SUPPORT`) +
-**Internal** (`INTERNAL_BUG`) across `/`, `/rollup`, `/share/[token]` and the PDF/PNG export, and
-`/rollup` gains a **"By team" chart** (toggle `Condensed·Relaxed·By team`) showing which teams carry
-which kind of work. (A composition **donut** shipped first and was dropped on Naveen's review — it
-only re-drew the rail's composition; the board has no chart.) Presentation + additive metric fields
-only. Post-v1, not a master-plan step.
+**Sync Jira status → delivery-matrix stages, per track**
+(@context/features/sync-stages-from-jira.md) — turns the manual per-ticket stage checklist into a
+one-click, per-track action. Each delivery-matrix track header (Roadmap / Tech Debt / External Bug /
+Internal Bug) gets a `canWrite`-gated **"Sync stages"** button that pulls the latest Jira status for
+that filter and re-derives every one of its issues' stages from it via `StatusStageMapping` —
+**overwriting** existing rows behind a confirm. It is the user-triggered, per-track overwrite variant
+of the create-only sync's deferred "re-seed forward" (sync-hybrid-seeding.md decision 5). Post-v1,
+not a master-plan step.
 
 ## Status
 
-**Done + verified 2026-08-09** (branch `feature/unplanned-split-chart`, off `main` @ `d631492`,
+**Done + verified 2026-08-10** (branch `feature/sync-stages-from-jira`, off `main` @ `452644e`,
 **uncommitted** — pending Naveen's commit). Full spec + As-built notes:
-@context/features/unplanned-split-and-chart.md.
+@context/features/sync-stages-from-jira.md.
+
+**Naveen's ratified calls (AskUserQuestion):** overwrite-with-confirm (names how many tickets carry
+manual stage edits that will be replaced) · a button **per track** · **pull-latest-then-map** (a live
+Jira call scoped to the one filter).
 
 **What shipped:**
-- `metrics.mjs` gains `external*`/`internal*` fields (SUPPORT / INTERNAL_BUG) beside the untouched
-  `unplanned*` — additive, before/after fixture diff clean, `external + internal == unplanned`.
-- Scoreboard `StoryPointsHighlight`: 4-category rail (condensed) + 4-column relaxed grid; shared
-  `CompositionLegend`; exported `compositionBreakdown()` helper (split-or-`unplanned`-fallback for
-  pre-split frozen shares). No chart variant here — the board is the plain condensed scoreboard.
-- `/rollup` "By team" chart: new `rollup-composition-chart.jsx` (one stacked bar per team by
-  committed/tech-debt/bug load, sorted heaviest-first) + `rollup-story-points.jsx` owns the
-  `Condensed · Relaxed · By team` toggle over `useLocalPref`. Representation follows the `/bugs`
-  per-team grammar (full-width track lane + partial fill + right-hand total, roomy rows) and reuses
-  the scoreboard's `.sp-board`/`.sp-part` **hover-isolation** — hovering a work type (or legend chip)
-  keeps it lit across every team while the rest dim (zero new CSS).
-- Export "Unplanned bugs" readout → two rows (External / Internal). `/` + `/share` wired via
-  `compositionBreakdown`.
-- Palette: validated token `--on-ink-cat-4` orchid `#d385b0` (CVD sweep — purple rejected vs Modern
-  blue); encoding **solid = planned work, hatch = reactive bug** (`.sp-stripe` / `.sp-stripe-2`).
-- **Dropped:** the first-pass composition donut + the board view toggle + the shared
-  `story-points-scoreboard.jsx` wrapper (Naveen: the donut "isn't adding value" — it re-drew the rail).
+- `src/lib/sync/seeding.mjs` — new pure `resolveStageResync(...)` → the overwrite/skip/baseline
+  decision (unmapped status never wipes an existing row; new key still gets an all-false baseline).
+- `src/lib/sync/engine.js` — new `syncFilterStagesFromJira({ teamId, sprintId, filterId, userId })`
+  reusing `refreshFilterCache` / `buildSeededStages` / `owningWorkflowType`. Refreshes the one
+  filter, then creates/updates `IssueProgress` in one transaction; **resets `updatedById` to null**
+  (status-derived → idempotent re-runs) and **preserves** blocked/blockedReason/riskComment; honors
+  the owning workflow (one progress row per key); 409s on CLOSED sprints.
+- `.../filters/[filterId]/sync-stages/route.js` — new `POST`, writer roles, Jira-error mapping
+  (401/502) + `handleRouteError` (404/409). **45 → 46 ƒ Dynamic.**
+- `src/lib/dashboard-data.js` — `progressByKey` rows carry `manuallyEdited` (drives the confirm count).
+- `planner-panel.jsx` — per-track "Sync stages" button (`RefreshCw`); hidden for CUSTOM/empty tracks.
+  `dashboard.jsx` — confirm `<Dialog>` + two-transition handler (mirrors `handleSync`).
 
-**Verified:** `yarn lint` clean; additive + partition fixtures pass; **cold `rm -rf .next` DB/env-free
-build green — 45 ƒ Dynamic unchanged** (44 + office-deployment `/p/health`; no new routes); no schema
-change (**9 migrations**); impeccable `detect.mjs` → `[]`; **headless-Chrome (Playwright) screenshot
-round** on the live PCX/GM ACTIVE sprint (all 4 work types) — `/` (no toggle, bifurcated) + `/rollup`
-By-team (desktop + mobile — PCX tech-debt-heavy, D360/DX bug-heavy at a glance) + `/rollup` Relaxed
-(4-col) all read correctly.
+**Verified:** `yarn lint` clean; **cold `rm -rf .next` DB/env-free build green — 46 ƒ Dynamic** (was
+45; exactly the one new route); **5/5** `resolveStageResync` fixtures; **4/4** guard smoke (401
+unauth · 403 viewer · 404 unknown filter · 409 CLOSED sprint) with minted iron-session cookies
+against Neon (fixtures torn down); `prisma validate` + `migrate status` clean; **no schema change
+(9 migrations)**.
 
-**Next:** commit on Naveen's go-ahead; then his authed visual pass (both themes) + a real-browser PDF
-export. Deferred post-v1 ideas remain (export-embedded AI narrative, AI Q&A, stage suggestions, a
-share link for `/bugs`, leaderboard rank-delta arrows).
+**Next:** commit on Naveen's go-ahead; then his real-browser acceptance (live Jira status→stages,
+both themes; the Chrome extension has never been connected). Consider an admin editor for
+`StatusStageMapping` if real Jira status names miss the seeded mappings — the "unmapped" toast count
+surfaces this. Deferred post-v1 ideas remain (export-embedded AI narrative, AI Q&A, stage
+suggestions, a share link for `/bugs`, leaderboard rank-delta arrows).
 
 ## Carry-forward — critical for any new feature
 
@@ -52,15 +52,16 @@ details live in [legacy-history.md](legacy-history.md); house conventions live i
 `context/coding-standards.md` + `context/ai-interaction.md` — this is the operational hard-won
 layer that sits between them.)
 
-**Repo / branch state (2026-08-09)**
-- **Baseline invariants to preserve:** **45 ƒ Dynamic** routes (44 + office-deployment `/p/health`),
-  **9 Prisma migrations**, Node 22, dev on **:3002**. A feature that changes either count must say
-  so and justify it.
-- **`main` is at `d631492`** and now includes the previously-uncommitted bug-board arc
-  (enhancing-bug-board, bug-report-pdf-export, bug-sprint-ownership, export-visual-consistency) AND
-  the office-deployment work (`Dockerfile` / `.dockerignore` / `output:"standalone"` / `GET /p/health`
-  / `DEPLOY.md`; must land on `tekion-apps/storyboard` `main` for DevOps to build — RELB-28979).
-- **This feature is on `feature/unplanned-split-chart`** (off `main`), uncommitted, pending commit.
+**Repo / branch state (2026-08-10)**
+- **Baseline invariants to preserve:** **46 ƒ Dynamic** routes (45 + this feature's per-track
+  `.../filters/[filterId]/sync-stages`; the 45 = 44 + office-deployment `/p/health`), **9 Prisma
+  migrations**, Node 22, dev on **:3002**. A feature that changes either count must say so and justify it.
+- **`main` is at `452644e`** ("Internal and External bugs bifurcation" — the unplanned-split feature
+  is now committed) and includes the bug-board arc (enhancing-bug-board, bug-report-pdf-export,
+  bug-sprint-ownership, export-visual-consistency) AND the office-deployment work (`Dockerfile` /
+  `.dockerignore` / `output:"standalone"` / `GET /p/health` / `DEPLOY.md`; must land on
+  `tekion-apps/storyboard` `main` for DevOps to build — RELB-28979).
+- **This feature is on `feature/sync-stages-from-jira`** (off `main` @ `452644e`), uncommitted, pending commit.
 - **Naveen runs all commits** (the Tekion gitleaks pre-commit hook can't fetch its config from
   Claude's shell). Never auto-commit — hand him the command and ask first (per `ai-interaction.md`).
 
