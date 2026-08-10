@@ -63,11 +63,17 @@ async function getMembershipContext(user) {
 }
 
 /**
- * All sprints (Gates are global) + the selection default: requested, else ACTIVE, else latest.
- * Exported for `leaderboard-data.js` (leaderboard.md) — the sprint selector there follows the same
- * default rule as `/` and `/rollup`; kept here rather than duplicated so the three never drift.
+ * All sprints (Gates are global) + the selection default: requested, else the user's pinned
+ * release, else ACTIVE, else latest. Exported for `leaderboard-data.js` (leaderboard.md) — the
+ * sprint selector there follows the same default rule as `/` and `/rollup`; kept here rather than
+ * duplicated so the three never drift.
+ *
+ * `fallbackSprintId` (default-team-release.md) is the caller's pinned default release, passed ONLY
+ * by the `/` board's getDashboardData; /rollup + /leaderboard omit it and are unaffected. It sits
+ * above the ACTIVE default so a pinned release is honored even once CLOSED, and a *deleted* pin
+ * simply misses the `find` and falls through to ACTIVE.
  */
-export async function getSprintSelection(sprintId) {
+export async function getSprintSelection(sprintId, fallbackSprintId) {
   const sprints = await prisma.sprint.findMany({
     orderBy: { developmentStart: "desc" },
     select: {
@@ -82,6 +88,7 @@ export async function getSprintSelection(sprintId) {
   });
   const selectedSprint =
     sprints.find((sprint) => sprint.id === sprintId) ??
+    sprints.find((sprint) => sprint.id === fallbackSprintId) ??
     sprints.find((sprint) => sprint.state === SprintState.ACTIVE) ??
     sprints[0] ??
     null;
@@ -104,10 +111,17 @@ export function serializeUser(user) {
  */
 export async function getDashboardData(user, { teamId, sprintId } = {}) {
   const { roleByTeam, teams } = await getMembershipContext(user);
-  const selectedTeam = teams.find((team) => team.id === teamId) ?? teams[0] ?? null;
+  // Selection precedence (default-team-release.md): explicit ?team= param → the user's pinned
+  // default team → first visible team. A stale pin (team no longer visible) misses both `find`s and
+  // falls through, so it never strands the user.
+  const selectedTeam =
+    teams.find((team) => team.id === teamId) ??
+    teams.find((team) => team.id === user.defaultTeamId) ??
+    teams[0] ??
+    null;
   const myRole = selectedTeam ? (roleByTeam.get(selectedTeam.id) ?? null) : null;
 
-  const { sprints, selectedSprint } = await getSprintSelection(sprintId);
+  const { sprints, selectedSprint } = await getSprintSelection(sprintId, user.defaultSprintId);
 
   let filters = [];
   let progressByKey = {};
@@ -178,6 +192,9 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
     teams: teams.map((team) => ({ ...team, myRole: roleByTeam.get(team.id) ?? null })),
     selectedTeam,
     myRole,
+    // The user's pinned default view (default-team-release.md) — drives the top-bar star's
+    // filled/empty state. Kept out of serializeUser (reused by /leaderboard) since it's board-only.
+    defaults: { teamId: user.defaultTeamId ?? null, sprintId: user.defaultSprintId ?? null },
     can: { write: canWrite, manage: canManage, configureSprint: canConfigureSprint },
     sprints,
     selectedSprint,

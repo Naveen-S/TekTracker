@@ -36,6 +36,13 @@ model User {
   displayName    String
   avatarUrl      String?
   isAdmin        Boolean          @default(false)  // global app admin (team-independent); distinct from TeamMembership.role = ADMIN. RBAC checks this.
+  /// Personal "default board view": the team + release the `/` board opens on when no ?team/?sprint
+  /// param is given (default-team-release.md). Bare ids, no FK — resolution tolerates a stale id
+  /// (deleted team ⇒ falls back to first visible team; deleted release ⇒ falls back to ACTIVE gate),
+  /// mirroring the existing `.find(id) ?? fallback` selection chain. A pinned release is honored even
+  /// once CLOSED. Self-service via PATCH /api/me; only ever read on `/`, never a metric input.
+  defaultTeamId    String?
+  defaultSprintId  String?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 

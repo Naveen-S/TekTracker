@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { NavLink } from "@/components/ui/nav-link";
-import { Plus, RefreshCw } from "lucide-react";
+import { Plus, RefreshCw, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
@@ -15,6 +15,8 @@ export function TopBar({
   sprints,
   selectedSprint,
   onSelect,
+  isDefaultView,
+  onSetDefault,
   onAddFilter,
   onSync,
   syncing,
@@ -63,6 +65,23 @@ export function TopBar({
               </option>
             ))}
           </Select>
+        )}
+        {selectedTeam && onSetDefault && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onSetDefault}
+            disabled={busy}
+            aria-pressed={isDefaultView}
+            title={
+              isDefaultView
+                ? "This is your default board view — click to clear"
+                : "Set this team + release as your default board view"
+            }
+          >
+            <Star className={isDefaultView ? "fill-current text-primary" : ""} />
+            <span className="hidden sm:inline">{isDefaultView ? "Default" : "Set default"}</span>
+          </Button>
         )}
       </div>
 

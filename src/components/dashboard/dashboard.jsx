@@ -66,6 +66,7 @@ export function Dashboard({
   can,
   sprints,
   selectedSprint,
+  defaults,
   filters,
   progressByKey,
   snapshots,
@@ -119,6 +120,32 @@ export function Dashboard({
     // never flips while Next fetches the new team/sprint's board, so switching teams looked inert.
     startMutation(() => router.push(`/?${params.toString()}`));
   };
+
+  // The current team+release is the user's pinned default view (default-team-release.md) — drives
+  // the top-bar star's filled/empty state.
+  const isDefaultView =
+    Boolean(selectedTeam) &&
+    defaults.teamId === selectedTeam.id &&
+    defaults.sprintId === (selectedSprint?.id ?? null);
+
+  // Star toggle: pin the current team+release as the default, or clear it if it already is.
+  const setDefaultView = () =>
+    startMutation(async () => {
+      try {
+        await apiFetch("/api/me", {
+          method: "PATCH",
+          body: isDefaultView
+            ? { defaultTeamId: null, defaultSprintId: null }
+            : { defaultTeamId: selectedTeam.id, defaultSprintId: selectedSprint?.id ?? null },
+        });
+        startMutation(() => {
+          router.refresh();
+          showToast(isDefaultView ? "Default view cleared" : "Default view saved");
+        });
+      } catch (error) {
+        setAlert({ title: "Couldn't save default", body: error.message, tone: "error" });
+      }
+    });
 
   /** Run a mutation, refresh server data, surface failures in the alert modal. */
   const run = (errorTitle, fn) =>
@@ -291,6 +318,8 @@ export function Dashboard({
         sprints={sprints}
         selectedSprint={selectedSprint}
         onSelect={select}
+        isDefaultView={isDefaultView}
+        onSetDefault={setDefaultView}
         onAddFilter={() => setShowAddFilter(true)}
         onSync={handleSync}
         syncing={syncing}
