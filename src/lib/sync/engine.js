@@ -14,6 +14,7 @@ import { prisma } from "@/lib/db";
 import { NotFoundError } from "@/lib/rbac";
 import { ConflictError } from "@/lib/api/route-helpers";
 import { owningWorkflowType } from "@/lib/workflows.mjs";
+import { ensureNeedsAttentionFilter } from "@/lib/needs-attention/ensure-filter";
 import { buildSeededStages, reshapeStageCompletion, resolveStageResync } from "@/lib/sync/seeding.mjs";
 import {
   getJiraAuthForUser,
@@ -29,6 +30,10 @@ import {
   DEFAULT_SPRINT_FIELD,
 } from "@/lib/jira/transform";
 import { FilterSourceType, SprintState } from "@/generated/prisma/client";
+
+// String literal, never `WorkflowType.NEEDS_ATTENTION` — a stale/partial generated client can make
+// that enum member `undefined`, which Prisma strips from a `where` (widening it). See ensure-filter.js.
+const NEEDS_ATTENTION = "NEEDS_ATTENTION";
 
 /** Refresh one filter's Issue cache atomically; returns the added/removed diff (decision 4). */
 async function refreshFilterCache(filter, rows, filterUpdate) {
@@ -87,6 +92,11 @@ export async function syncTeamSprint({ teamId, sprintId, userId }) {
       "Cannot sync a CLOSED sprint — its historical data is frozen for the leaderboard and history views",
     );
   }
+  // Keep the always-on "Needs attention" hygiene track in step with the team's roster BEFORE loading
+  // filters, so it's fetched + cached by the normal loop below like any other track
+  // (needs-attention-roster.md). Clearing the roster deletes it; never generated for CLOSED sprints
+  // (guarded above).
+  await prisma.$transaction((tx) => ensureNeedsAttentionFilter(tx, { team, sprintId }));
   const filters = await prisma.filter.findMany({
     where: { teamId, sprintId },
     orderBy: { sortOrder: "asc" },
@@ -128,8 +138,12 @@ export async function syncTeamSprint({ teamId, sprintId, userId }) {
   }
 
   // 2. Group the refreshed cache by key (an issue may sit in several filters; ONE progress row).
+  //    Exclude the NEEDS_ATTENTION track: untagged items must never spawn IssueProgress rows. A key
+  //    that ALSO lives in a real track is still seeded via that track's row.
   const cache = await prisma.issue.findMany({
-    where: { filter: { teamId, sprintId } },
+    where: {
+      filter: { teamId, sprintId, workflowType: { not: NEEDS_ATTENTION } },
+    },
     select: { jiraKey: true, jiraStatus: true, filter: { select: { workflowType: true } } },
   });
   const byKey = new Map();
@@ -266,9 +280,13 @@ export async function syncFilterStagesFromJira({ teamId, sprintId, filterId, use
   const freshStatusByKey = new Map(rows.map((row) => [row.jiraKey, row.jiraStatus]));
   const keys = [...freshStatusByKey.keys()];
 
-  // 2. Owning workflow needs EVERY filter that holds a key (§9 one-progress-row rule).
+  // 2. Owning workflow needs EVERY filter that holds a key (§9 one-progress-row rule) — except the
+  //    NEEDS_ATTENTION hygiene track, which never owns a progress row (it's always lowest priority
+  //    anyway, so this is defensive/symmetric with syncTeamSprint).
   const cache = await prisma.issue.findMany({
-    where: { filter: { teamId, sprintId } },
+    where: {
+      filter: { teamId, sprintId, workflowType: { not: NEEDS_ATTENTION } },
+    },
     select: { jiraKey: true, filter: { select: { workflowType: true } } },
   });
   const typesByKey = new Map();

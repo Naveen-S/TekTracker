@@ -1,48 +1,66 @@
 # Current Feature
 
-**Default scrum team & release (per-user board default)**
-(@context/features/default-team-release.md) — each user can pin a **default team + release** so the
-board (`/`) opens on their own board instead of the alphabetically-first team + ACTIVE gate. Resolved
-**server-side** (a per-user pref on the `User` row, not localStorage) so it's flash-free and syncs
-across devices; set via a **star** in the top bar. Post-v1, not a master-plan step.
+**Scrum-team member roster + auto "Needs attention" (untagged items) board track**
+(@context/features/needs-attention-roster.md) — admins set a per-team roster of **member email
+addresses**; each team's board then carries an always-present **"Needs attention"** track that
+surfaces the team's own Jira items (`assignee in (roster)`) missing a **sub-component or fix version**
+— a hygiene surface no existing sub-component-scoped filter can catch. Post-v1, not a master-plan
+step. Picked as current because it closes the "orphaned/untagged items are invisible" gap.
 
 ## Status
 
-**Done + verified 2026-08-11** (branch `feature/default-team-release`, off `main` @ `5e96703`
-"Sync stages", **uncommitted** — pending Naveen's commit). Full spec + As-built notes:
-@context/features/default-team-release.md.
+**Done 2026-08-12 — uncommitted** (branch `feature/needs-attention-roster`, off `main` @ `4f4d295`
+"Default view."; baseline **47 ƒ Dynamic routes / 10 migrations**). Pending Naveen's commit (gitleaks
+hook). Full spec + As-built notes: @context/features/needs-attention-roster.md.
 
-**Naveen's ratified calls (AskUserQuestion):** pin **team + the exact release** (honored even once
-CLOSED; falls back to ACTIVE only if the pinned release is deleted) · set it via a **star** in the
-top bar (pin current view / click again to clear; filled = current view is the default).
+**Verified:** `yarn lint` clean · **7/7 pure fixtures** (JQL builder + the byte-identical §12 no-op
+proof) · cold `rm -rf .next` DB/env-free build compiled, **47 ƒ Dynamic unchanged** · `migrate status`
+up-to-date, **11 migrations** · **live-Jira E2E** — `assignee in ("naveens@tekion.com")` returned **17
+real untagged GM items**, synced + cached, panel rendered with chips · **deletion-regression +
+manager-prompt + "View in Jira" link SSR checks pass** on the running dev server (throwaway rows, torn
+down to 0) · dev server healthy (`/login` 200, 0 font errors).
 
-**What shipped:**
-- `prisma/schema.prisma` — two nullable `User` columns `defaultTeamId`/`defaultSprintId` (bare ids,
-  no FK; migration `add_user_default_view`, **9 → 10 migrations**). §9 kept byte-consistent.
-- `src/lib/dashboard-data.js` — team default resolved before `teams[0]`; `getSprintSelection` gained
-  an optional `fallbackSprintId` (above the ACTIVE default, matched by id so a **CLOSED pin wins**),
-  passed ONLY by `getDashboardData` (`/rollup`+`/leaderboard` call it with one arg, unchanged);
-  returns a board-only `defaults: { teamId, sprintId }`.
-- `src/lib/schemas/user.js` + `src/app/api/me/route.js` — new self-service `PATCH /api/me`
-  (`requireUser`; sets/clears/omits each half independently; 403 on pinning a non-member team) — the
-  app's **first `User`-self-mutation route** (**46 → 47 ƒ Dynamic**).
-- `top-bar.jsx` — `Star` toggle after the sprint select (filled `text-primary` when default,
-  `aria-pressed`); `dashboard.jsx` — `isDefaultView` + `setDefaultView` (PATCH → `router.refresh()`
-  + success toast, house two-transition pattern).
+**Post-first-run fixes (2026-08-11/12), all shipped + verified:**
+- **Severe filter-deletion bug** — `ensure-filter.js` matched the NA row via `WorkflowType.NEEDS_ATTENTION`;
+  under a stale client that enum is `undefined`, Prisma strips it, and the roster-empty delete branch
+  removed a REAL track. Fixed: string literal `"NEEDS_ATTENTION"` + `deleteMany` scoped by workflowType.
+  Deleted Aug/Sep tracks (PCX/DX/INT Aug, CALM Sep) recover via re-running Sprint Start (progress
+  reattaches, §9). ⚠️ **still needs Naveen to run that recovery.**
+- **`ReferenceError`** — `engine.js` used `WorkflowType.NEEDS_ATTENTION` un-imported → now string literal.
+- **Discoverability** — manager-only config prompt on the board when no track exists yet.
+- **Server dedupe** of `memberEmails`; **"View in Jira"** deep-link; JSX whitespace fixes.
 
-**Verified:** `yarn lint` clean; **cold `rm -rf .next` DB/env-free build green — 47 ƒ Dynamic** (base
-46 + the one new `/api/me`); **13/13 SSR+API smoke** (minted iron-session cookie, real Neon, fixtures
-torn down to 0) — SSR of `/` selects the pinned team (not alphabetical-first) + pinned CLOSED gate
-over a newer ACTIVE gate, and flips to alphabetical-first when cleared; `PATCH /api/me`
-401-unauth / 400-empty / 403-non-member / 200-set(persisted) / 200-clear(nulls); `prisma validate` +
-`migrate status` clean.
+**Naveen's ratified calls (AskUserQuestion):** filter scope = missing **sub-component OR fix version**
+(broad hygiene net) · trigger = **always present, auto-refreshed** by every Sync + the daily cron when
+the team has a roster (no button; so **no new API route** — generation folds into `syncTeamSprint`).
 
-**Next:** commit on Naveen's go-ahead; then his real-browser acceptance (star fills on the default
-view; sidebar "My board" / logo / bare `/` land on the pinned team + release; toggle-off clears; both
-Tekion + Modern themes — the Chrome extension has never been connected). ⚠️ A pre-existing dev server
-on **:3002** is stale post-migration (old Prisma client) — restart it (`prisma generate` + restart)
-before manual testing. Deferred post-v1 ideas remain (export-embedded AI narrative, AI Q&A, stage
-suggestions, a share link for `/bugs`, leaderboard rank-delta arrows).
+## Goals
+
+- **Roster** — `Team.memberEmails String[]` (migration `add_member_emails_and_needs_attention_workflow`,
+  10 → 11); zod in `src/lib/schemas/team.js`; edited in `src/components/admin/team-config-dialog.jsx`
+  via the existing team POST/PATCH (no route change). Distinct from RBAC `TeamMembership`.
+- **JQL** — `buildNeedsAttentionJql` + `emptyClause`/email-quote helpers in
+  `src/lib/sprint-start/track-jql.mjs` (guarded null on empty roster/projectKeys).
+- **Enum + registry** — `WorkflowType.NEEDS_ATTENTION`; `WORKFLOWS` entry `stages: []`, out of
+  `SEEDABLE_WORKFLOW_TYPES` (`src/lib/workflows.mjs`).
+- **Auto-generate** — `src/lib/needs-attention/ensure-filter.mjs` (upsert/delete the single NA Filter)
+  wired into `src/lib/sync/engine.js` `syncTeamSprint`; NA excluded from progress seeding.
+- **Metrics guard** — one additive no-op line at the top of `computeSprintMetrics`
+  (`src/lib/metrics.mjs`) excluding NA, shielding all call sites.
+- **Render** — `getDashboardData` partitions NA out (`src/lib/dashboard-data.js` + `src/app/page.jsx`);
+  new `src/components/dashboard/needs-attention-panel.jsx` below `PlannerPanel` (`/impeccable`).
+
+## Notes
+
+- **§12 metric core is sacred** — the only `metrics.mjs` change is a provably no-op guard (no NA
+  filters exist in existing fixtures → byte-identical). Prove with a before/after fixture diff.
+- **`prisma-change` for the enum:** keep the migration to the column add + `ALTER TYPE ... ADD VALUE`
+  only; do not reference the new value in the same migration. Keep §9 byte-consistent.
+- **Counts stay honest:** **47 ƒ Dynamic routes unchanged** (no new route — generation is in
+  `syncTeamSprint`); **one additive migration (10 → 11)**.
+- **Emails-in-JQL risk (highest):** if Tekion hides assignee emails, `assignee in (emails)` returns
+  nothing — validate on Naveen's first live Sync; accountId-resolution fallback documented, out of v1.
+- Post-migration dev-server / `rm -rf .next` / DB-free-build hazards below still apply.
 
 ## Carry-forward — critical for any new feature
 
@@ -51,20 +69,22 @@ details live in [legacy-history.md](legacy-history.md); house conventions live i
 `context/coding-standards.md` + `context/ai-interaction.md` — this is the operational hard-won
 layer that sits between them.)
 
-**Repo / branch state (2026-08-10)**
-- **Baseline invariants to preserve:** **47 ƒ Dynamic** routes on this branch (main @ `5e96703` = 46,
-  which is 45 + sync-stages' `.../filters/[filterId]/sync-stages`; the 45 = 44 + office-deployment
-  `/p/health`) + this feature's `/api/me`; **10 Prisma migrations** on this branch (main = 9 +
-  `add_user_default_view`), Node 22, dev on **:3002**. A feature that changes either count must say so
-  and justify it.
-- **`main` is at `5e96703`** ("Sync stages" — the per-track Sync-stages feature is now committed; the
-  prior tip was `452644e` "Internal and External bugs bifurcation"). Main includes the bug-board arc
+**Repo / branch state (2026-08-11)**
+- **Baseline invariants to preserve:** `main` @ `4f4d295` ("Default view." — the
+  `default-team-release` feature is now MERGED) = **47 ƒ Dynamic** routes (46 + `/api/me`; the 46 =
+  45 + sync-stages' `.../filters/[filterId]/sync-stages`; the 45 = 44 + office-deployment `/p/health`)
+  / **10 Prisma migrations** (9 + `add_user_default_view`). This feature
+  (`feature/needs-attention-roster`) adds **no route (stays 47)** and **one migration (10 → 11)** —
+  generation folds into `syncTeamSprint`, nothing new under `src/app/api`. Node 22, dev on **:3002**.
+  A feature that changes either count must say so and justify it.
+- **`main` is at `4f4d295`** ("Default view." — the `default-team-release` feature is now committed;
+  the prior tip was `5e96703` "Sync stages"). Main includes the bug-board arc
   (enhancing-bug-board, bug-report-pdf-export, bug-sprint-ownership, export-visual-consistency), the
   unplanned-split, sync-stages, AND the office-deployment work (`Dockerfile` / `.dockerignore` /
   `output:"standalone"` / `GET /p/health` / `DEPLOY.md`; must land on `tekion-apps/storyboard` `main`
   for DevOps to build — RELB-28979).
-- **This feature is on `feature/default-team-release`** (off `main` @ `5e96703`), uncommitted, pending
-  commit. It adds migration #10 (`add_user_default_view`) and route #47 (`/api/me`).
+- **This feature is on `feature/needs-attention-roster`** (off `main` @ `4f4d295`). It adds migration
+  #11 (`add_member_emails_and_needs_attention_workflow`) and **no** route.
 - **Naveen runs all commits** (the Tekion gitleaks pre-commit hook can't fetch its config from
   Claude's shell). Never auto-commit — hand him the command and ask first (per `ai-interaction.md`).
 

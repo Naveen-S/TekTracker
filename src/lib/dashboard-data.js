@@ -124,6 +124,10 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
   const { sprints, selectedSprint } = await getSprintSelection(sprintId, user.defaultSprintId);
 
   let filters = [];
+  // The always-on "Needs attention" hygiene track (needs-attention-roster.md), partitioned OUT of
+  // `filters` so it never feeds the delivery matrix, the sidebar, search, export, or §12 metrics —
+  // it renders in its own panel. `null` when the team has no roster (no NA filter exists).
+  let needsAttentionTrack = null;
   let progressByKey = {};
   let snapshots = [];
   // committed-unplanned-work.md — admin-configured Committed-points target for this team+sprint.
@@ -131,11 +135,13 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
   // value, not derived from issues; `null` when unconfigured (decision 3).
   let capacity = null;
   if (selectedTeam && selectedSprint) {
-    filters = await prisma.filter.findMany({
+    const allFilters = await prisma.filter.findMany({
       where: { teamId: selectedTeam.id, sprintId: selectedSprint.id },
       orderBy: { sortOrder: "asc" },
       include: { issues: { orderBy: { jiraKey: "asc" } } },
     });
+    needsAttentionTrack = allFilters.find((f) => f.workflowType === "NEEDS_ATTENTION") ?? null;
+    filters = allFilters.filter((f) => f.workflowType !== "NEEDS_ATTENTION");
     const progress = await prisma.issueProgress.findMany({
       where: { teamId: selectedTeam.id, sprintId: selectedSprint.id },
       select: {
@@ -199,6 +205,7 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
     sprints,
     selectedSprint,
     filters,
+    needsAttentionTrack,
     progressByKey,
     snapshots,
     capacity,

@@ -1956,3 +1956,43 @@
   Naveen's go-ahead; consider an admin editor for `StatusStageMapping` if real Jira status names miss
   the seeded mappings (surfaced via the "unmapped" toast count). See
   context/features/sync-stages-from-jira.md.
+
+- **2026-08-12 — Implemented Scrum-team member roster + auto "Needs attention" board track.** A
+  per-team admin-entered `Team.memberEmails String[]` (plain Jira assignee emails, **deliberately
+  decoupled from RBAC `TeamMembership`** — no login required, grants no access) drives an always-on
+  `WorkflowType.NEEDS_ATTENTION` track surfacing the team's own items missing a sub-component or fix
+  version (`assignee in (roster) AND ("sub-component[dropdown]" IS EMPTY OR fixVersion IS EMPTY) AND
+  statusCategory != Done`) — the untagged items every sub-component-scoped filter misses. Naveen's two
+  ratified calls (AskUserQuestion): scope = **sub-component OR fix version**; trigger = **always
+  present, auto-refreshed** by every Sync + the daily cron (no button → **no new API route**;
+  generation folds into `syncTeamSprint`). Realized as a **real Filter of a dedicated enum value**,
+  excluded from all §12 metrics by one additive no-op guard (`metrics.mjs`) and partitioned into its
+  own board panel; untagged items never seed `IssueProgress`. Files: `prisma/schema.prisma`
+  (`memberEmails` + `NEEDS_ATTENTION`; migration `add_member_emails_and_needs_attention_workflow`,
+  **10 → 11**), `schemas/team.js` (JQL-safe email regex + server dedupe), `sprint-start/track-jql.mjs`
+  (`buildNeedsAttentionJql` + `emptyClause`/email-quote), `workflows.mjs`, `metrics.mjs`,
+  `needs-attention/ensure-filter.js` (upsert/refresh/delete the one NA Filter) wired into
+  `sync/engine.js`, `dashboard-data.js` (partition), `admin/team-config-dialog.jsx` (roster editor),
+  `dashboard/needs-attention-panel.jsx` (populated / all-clear / manager config-prompt + a "View in
+  Jira" `/issues/?jql=` deep-link). Baseline re-based to `main` @ `4f4d295` (**47 routes / 10
+  migrations**; sibling default-team-release merged) → this adds **1 migration, 0 routes**.
+  **As-built deviations (two real bugs the plan caused):** (1) `engine.js` referenced
+  `WorkflowType.NEEDS_ATTENTION` un-imported → runtime `ReferenceError` (lint doesn't flag `no-undef`;
+  the line runs post-Jira-auth so fresh-process smokes missed it); (2) **worse** — under a
+  stale/partially-hot-reloaded generated client that enum member is `undefined`, Prisma **strips
+  undefined `where` keys**, widening `ensure-filter`'s `findFirst` to "any filter", and the
+  roster-empty **delete branch deleted REAL tracks** (confirmed against Aug/Sep data via `sortOrder`
+  gaps: PCX/DX/INT Aug FEATURE/INTERNAL_BUG, CALM Sep TECH_DEBT). Both fixed by using the **string
+  literal `"NEEDS_ATTENTION"`** everywhere + a **`deleteMany` scoped by `workflowType`** (structurally
+  can't touch a real track). Also added post-first-run: a **manager-only discoverability prompt** (the
+  track was invisible until roster+sync), **server-side email dedupe**, the **"View in Jira"** link,
+  and **`{" "}` JSX-whitespace fixes** (RSC/Turbopack collapses spaces next to inline elements).
+  Risk #1 (assignee-by-email JQL) **cleared** — Tekion Jira resolved it (17 real GM items live); risk
+  #4 (>2000-item cap throws the sync) **unmitigated** (bounded by `statusCategory != Done`). Verified:
+  `yarn lint` clean; **7/7 pure fixtures** (exact JQL + byte-identical §12 no-op); **cold DB/env-free
+  build compiled, 47 ƒ Dynamic unchanged**; `migrate status` up-to-date (**11 migrations**); **live
+  E2E** (roster → sync → 17 cached → panel with chips) + deletion-regression + manager-prompt +
+  Jira-link SSR checks on the running server (throwaway rows torn to 0). **Done**, uncommitted —
+  pending Naveen's commit. **Next:** commit on Naveen's go-ahead, then he re-runs One-Click Sprint
+  Start on PCX/DX/INT (Aug) + CALM (Sep) to restore the deleted tracks (progress reattaches). See
+  context/features/needs-attention-roster.md.

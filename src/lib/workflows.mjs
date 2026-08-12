@@ -60,6 +60,15 @@ export const WORKFLOWS = {
     stages: [],
     weights: [],
   },
+  NEEDS_ATTENTION: {
+    // The always-on hygiene track (needs-attention-roster.md): untagged items surfaced by assignee.
+    // No stages (renders as a plain issue list), excluded from seeding AND from all §12 metrics, and
+    // lowest priority so it never wins `owningWorkflowType` for a shared key.
+    name: "Needs attention",
+    priority: 100,
+    stages: [],
+    weights: [],
+  },
 };
 
 /** Workflow types that have a fixed stage set (everything except CUSTOM) — the seedable ones. */

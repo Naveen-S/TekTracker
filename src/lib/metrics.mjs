@@ -137,6 +137,12 @@ export function resolveProgress(jiraKey, filterWorkflowType, progressByKey) {
  * appearance (prototype parity). Optional `asOf` is the health clock (frozen shares).
  */
 export function computeSprintMetrics(filters, progressByKey, sprint, asOf) {
+  // The auto-generated "Needs attention" hygiene track (needs-attention-roster.md) is a display-only
+  // surface of UNTAGGED items — never sprint delivery/throughput work — so it is excluded from every
+  // §12 metric here, shielding all call sites at once (dashboard, rollup, share, leaderboard, cron
+  // snapshot, ai-digest). Provably a no-op on existing data: no NEEDS_ATTENTION filters exist until
+  // this feature creates them.
+  filters = filters.filter((filter) => filter.workflowType !== "NEEDS_ATTENTION");
   const issues = filters.flatMap((filter) =>
     (filter.issues ?? []).map((issue) => {
       const { workflowType, stageCompletion, blocked, blockedReason, riskComment } =

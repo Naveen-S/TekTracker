@@ -26,6 +26,7 @@ import { TrendPanel } from "./trend-panel";
 import { RiskCalloutsPanel } from "./risk-callouts-panel";
 import { FilterPanel } from "./filter-panel";
 import { PlannerPanel } from "./planner-panel";
+import { NeedsAttentionPanel } from "./needs-attention-panel";
 import { AddFilterDialog } from "./add-filter-dialog";
 import { SprintConfigDialog } from "./sprint-config-dialog";
 import { SprintStartDialog } from "./sprint-start-dialog";
@@ -68,6 +69,7 @@ export function Dashboard({
   selectedSprint,
   defaults,
   filters,
+  needsAttentionTrack,
   progressByKey,
   snapshots,
   capacity,
@@ -422,6 +424,14 @@ export function Dashboard({
                   />
                 </section>
               </>
+            )}
+
+            {(needsAttentionTrack || can.manage) && (
+              <NeedsAttentionPanel
+                track={needsAttentionTrack}
+                canManage={can.manage}
+                jiraBaseUrl={jiraBaseUrl}
+              />
             )}
           </>
         )}

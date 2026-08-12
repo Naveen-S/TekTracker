@@ -104,6 +104,12 @@ model Team {
   /// assignment noise). `null` ⇒ the team is excluded from the TEAM leaderboard's ranking (its
   /// developers still appear individually on the developer leaderboard).
   developerCount        Int?
+  /// Admin-entered scrum-team roster: the Jira ASSIGNEE email addresses of the developers who own
+  /// this team's work (needs-attention-roster.md). DISTINCT from TeamMembership — these are plain
+  /// Jira identities used only to scope the "Needs attention" hygiene track (`assignee in (...)`),
+  /// NOT app users and grant NO access; they need not have signed in. Empty ⇒ no NA track is
+  /// generated for this team (an empty roster deletes any existing NA filter on next sync).
+  memberEmails          String[]
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
@@ -214,6 +220,11 @@ enum WorkflowType {
   SUPPORT
   INTERNAL_BUG
   CUSTOM
+  /// The auto-generated "Needs attention" hygiene track (needs-attention-roster.md): items
+  /// assigned to a team's memberEmails roster that lack a sub-component or fix version. Has NO
+  /// stages (WORKFLOWS entry is stages:[]), is excluded from SEEDABLE_WORKFLOW_TYPES and from all
+  /// §12 metrics, and is partitioned out of the normal board filter list for separate rendering.
+  NEEDS_ATTENTION
 }
 
 enum FilterSourceType {
