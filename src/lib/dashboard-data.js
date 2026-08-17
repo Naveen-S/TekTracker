@@ -10,7 +10,12 @@ import { prisma } from "@/lib/db";
 import { Role, SprintState } from "@/generated/prisma/client";
 import { aggregateRollup, combineSnapshotsByDay, computeSprintMetrics } from "@/lib/metrics.mjs";
 import { isAiConfigured } from "@/lib/ai/provider";
-import { TEAM_MANAGER_ROLES, TEAM_WRITER_ROLES, hasLeaderboardAccess } from "@/lib/rbac";
+import {
+  TEAM_MANAGER_ROLES,
+  TEAM_WRITER_ROLES,
+  hasLeaderboardAccess,
+  hasProgramAccess,
+} from "@/lib/rbac";
 import { groupSubComponentsByComponent } from "@/lib/sprint-start/track-jql.mjs";
 
 /**
@@ -57,7 +62,9 @@ async function getMembershipContext(user) {
   const teams = await prisma.team.findMany({
     where: user.isAdmin ? {} : { id: { in: [...roleByTeam.keys()] } },
     orderBy: { name: "asc" },
-    select: { id: true, name: true, key: true },
+    // program (program-rollup.md) rides along so the board hero can show the selected team's owning
+    // program; harmless for the team/sprint selectors that only read key·name.
+    select: { id: true, name: true, key: true, program: { select: { id: true, name: true, key: true } } },
   });
   return { roleByTeam, teams };
 }
@@ -287,12 +294,38 @@ export async function getDigestData(teamId, sprintId) {
  * in JS; progress maps stay per team (§9: the same jiraKey may hold different progress in two
  * teams), so metrics are computed per team and summed by the pure `aggregateRollup`.
  *
+ * Program scope (program-rollup.md): a leadership/admin viewer may pass `programId` to re-scope the
+ * team set from "my teams" to ALL of an admin-defined Program's teams. This is the ONLY seam that
+ * changes — everything below (batched reads, per-team metrics, aggregateRollup) is team-set-agnostic
+ * and reused verbatim. `hasProgramAccess` gates it, so a non-leadership viewer's stray `?program=`
+ * is silently ignored (falls back to my-teams) rather than 403'd off the read-only page. With no
+ * `programId` the function behaves exactly as before (the /rollup default + the ai-digest route).
+ *
  * @param {import("@/generated/prisma/client").User} user
- * @param {{ sprintId?: string }} [selection] from searchParams
+ * @param {{ sprintId?: string, programId?: string }} [selection] from searchParams
  */
-export async function getRollupData(user, { sprintId } = {}) {
-  const { roleByTeam, teams } = await getMembershipContext(user);
+export async function getRollupData(user, { sprintId, programId } = {}) {
+  const { roleByTeam, teams: myTeams } = await getMembershipContext(user);
   const { sprints, selectedSprint } = await getSprintSelection(sprintId);
+
+  const canViewPrograms = await hasProgramAccess(user);
+  const programs = canViewPrograms
+    ? await prisma.program.findMany({
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, key: true },
+      })
+    : [];
+  const selectedProgram =
+    canViewPrograms && programId ? (programs.find((program) => program.id === programId) ?? null) : null;
+  // A program roll-up shows EVERY team in the program (not just the viewer's memberships); a team
+  // the viewer isn't on resolves `myRole` to null → the summary table already renders "admin"/"—".
+  const teams = selectedProgram
+    ? await prisma.team.findMany({
+        where: { programId: selectedProgram.id },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, key: true },
+      })
+    : myTeams;
 
   let perTeam = [];
   let combinedSnapshots = [];
@@ -378,6 +411,11 @@ export async function getRollupData(user, { sprintId } = {}) {
   return {
     user: serializeUser(user),
     teams: teams.map((team) => ({ ...team, myRole: roleByTeam.get(team.id) ?? null })),
+    // Program scope (program-rollup.md) — the picker options + the resolved scope. `programs` is
+    // empty (and the picker hidden) for a non-leadership viewer; `selectedProgram` null ⇒ my-teams.
+    programs,
+    selectedProgram,
+    canViewPrograms,
     sprints,
     selectedSprint,
     perTeam,

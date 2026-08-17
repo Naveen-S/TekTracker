@@ -49,6 +49,15 @@ export const TEAM_ALL_ROLES = [...TEAM_WRITER_ROLES, Role.VIEWER];
 export const LEADERBOARD_ROLES = [Role.EM, Role.ED, Role.VIEWER];
 
 /**
+ * Roles that unlock viewing a **Program** roll-up on /rollup (program-rollup.md decision 3) — a
+ * leadership audience. Includes TPM (unlike LEADERBOARD_ROLES, which excludes it): TPMs run
+ * programs, so program-level visibility is squarely their job. LEAD/MEMBER are excluded — they get
+ * the membership-derived "my teams" roll-up (the /rollup default), just not the program picker.
+ * Global admin bypasses via `hasProgramAccess`.
+ */
+export const PROGRAM_ROLES = [Role.ED, Role.TPM, Role.EM, Role.VIEWER];
+
+/**
  * Require an authenticated **global admin** (`User.isAdmin`).
  * @returns {Promise<import("@/generated/prisma/client").User>}
  */
@@ -103,6 +112,25 @@ export async function hasLeaderboardAccess(user) {
   if (user.isAdmin) return true;
   const membership = await prisma.teamMembership.findFirst({
     where: { userId: user.id, role: { in: LEADERBOARD_ROLES } },
+    select: { id: true },
+  });
+  return membership !== null;
+}
+
+/**
+ * Whether `user` may view a Program roll-up: global admin, OR holds one of PROGRAM_ROLES on ANY
+ * team — NOT scoped to the viewer's own teams (a program roll-up is inherently cross-membership).
+ * Page-level, not team-scoped (like `hasLeaderboardAccess`) — takes no `teamId` and never throws.
+ * Gates the /rollup program picker (client) AND the server-side program scoping in getRollupData,
+ * so a non-leadership user hitting `?program=` directly is silently ignored, not 403'd off the page.
+ *
+ * @param {import("@/generated/prisma/client").User} user
+ * @returns {Promise<boolean>}
+ */
+export async function hasProgramAccess(user) {
+  if (user.isAdmin) return true;
+  const membership = await prisma.teamMembership.findFirst({
+    where: { userId: user.id, role: { in: PROGRAM_ROLES } },
     select: { id: true },
   });
   return membership !== null;

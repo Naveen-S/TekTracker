@@ -1887,7 +1887,7 @@
   `STORYBOARD` (no `_SERVICE` — verified against real RELB tickets); `type: Backend` (Tekion's
   "Frontend" = a static micro-frontend in the `tekion-web` shell; StoryBoard is a standalone SSR
   server + own DB). **Verified** (Node 22): `yarn lint` clean; `prisma validate` + `migrate status`
-  up to date (**9 migrations, no schema change**); **env-free cold build green — 45 ƒ Dynamic** (44
+  up to date (**12 migrations, no schema change**); **env-free cold build green — 45 ƒ Dynamic** (44
   baseline + `/p/health`); standalone bundle **traces the generated Prisma client + `pg`**, boots,
   and serves `/p/health`→200, `/login`→200, `/`→200 with no `.env` (no Docker CLI locally →
   validated via `node .next/standalone/server.js`). Corrected the pasted template's `node:20`
@@ -1996,3 +1996,51 @@
   pending Naveen's commit. **Next:** commit on Naveen's go-ahead, then he re-runs One-Click Sprint
   Start on PCX/DX/INT (Aug) + CALM (Sep) to restore the deleted tracks (progress reattaches). See
   context/features/needs-attention-roster.md.
+
+- **2026-08-12 — Program grouping + Program roll-up (`feature/program-rollup`, off `main` @ `52d5fc0`).**
+  Added a first-class **Program** entity one level above the scrum team (GM → AI Agentic, DX & SCX,
+  PCX…; other programs Honda, AEP) so leadership can roll up an org-defined program, not just the
+  viewer's own teams. Four AskUserQuestion calls with Naveen: first-class model (not a text field) ·
+  picker on the existing `/rollup` (not a new page) · view access = leadership + admins
+  (`PROGRAM_ROLES = [ED, TPM, EM, VIEWER]` + admin bypass; TPM included, unlike `LEADERBOARD_ROLES`) ·
+  one program per team (`Team.programId`, `onDelete: SetNull`). The whole roll-up pipeline is reused —
+  `getRollupData` gained `{ programId }` and swaps ONLY the team-set source (`getMembershipContext` →
+  `program.teams`); `aggregateRollup`/§12 metrics **untouched**. New `Program` model + migration
+  `add_program_model` (11 → 12, pure additive, no enum ALTER; §9 schema + ERD byte-synced). New
+  `PROGRAM_ROLES`/`hasProgramAccess` (rbac), `src/lib/schemas/program.js`, `programId` on `teamFields`,
+  optional `programId` on `rollupDigestBodySchema`. **+2 routes** `POST/GET /api/programs` +
+  `PATCH/DELETE /api/programs/[programId]` (49 ƒ Dynamic from 47); team↔program association reuses the
+  team PATCH; ai-digest re-scopes. UI via the **impeccable** workflow (Operate-mode extension,
+  incumbent design preserved): program `<Select>` + a `Layers` "Program" scope chip / program-aware
+  hero on `/rollup`; self-contained `programs-config.jsx` admin section (create/rename/delete +
+  team-count badge, modeled on `jira-components-config.jsx`) + a Program `<Select>` in
+  `team-config-dialog.jsx`. **As-built snag:** `prisma migrate dev`'s client regen didn't stick and
+  the running dev server held a stale client (`prisma.program` undefined) — fixed with explicit
+  `yarn db:generate` + dev restart (the documented post-migration hazard). Verified: `yarn lint`
+  clean; impeccable detector clean; cold `rm -rf .next` **DB/env-free build** (`.env` moved aside,
+  confirmed absent mid-build) → 49 ƒ Dynamic incl. both new routes; `migrate status` up-to-date (**12
+  migrations**); **SSR/API smoke 27/27** (minted iron-session cookies vs Neon, fixtures torn to 0):
+  RBAC gating, program CRUD (admin-only, dup→409, bad-key→400), `/rollup?program=` scoping (all
+  program teams incl. one the viewer isn't on, excludes unassigned), my-teams path byte-unchanged,
+  member `?program=` silently ignored (200 not 403), team↔program PATCH, DELETE→SetNull. **Done**,
+  uncommitted — pending Naveen's commit. Visual acceptance (authed browser pass) is Naveen's step
+  (extension never connected). See context/features/program-rollup.md.
+
+- **2026-08-13/14 — Program roll-up finetuning + finish-feature re-verify (`feature/program-rollup`).**
+  From Naveen's visual review, four polish fixes: (1) **loader feedback** on Add/Save program in
+  `programs-config.jsx` — the house async vocabulary (top `ProgressBar` fires instantly + `Spinner`
+  "Adding…"/"Saving…" on buttons), replacing the silent-disabled "jarring" click; (2) the shared
+  **`Select` base box** now matches `Input` (`h-9 rounded-md py-1`) so bare selects line up with
+  Inputs/Buttons in a row (app-wide; sized `h-7`/`h-8` call sites still override); (3) a **program
+  badge** (`Layers` + name, or muted "No program") on the admin **team card**; (4) a **"{program}
+  program" chip** on the `/` board hero — (3)/(4) fed by a `program {id,name,key}` include added to
+  the admin team query + `getMembershipContext` (harmless for the key·name selectors). Re-verified:
+  `yarn lint` clean; `prisma validate` + `migrate status` up-to-date (12 migrations); cold DB/env-free
+  build exit 0 (49 ƒ Dynamic incl. both program routes); **SSR/API smoke 30/30** (the 27 core checks +
+  3 finetuning: board chip renders, `/admin` renders with the program include) run against `next start`,
+  fixtures torn to 0. A **transient Google Fonts CDN outage** (v20 Inter woff2 → 404) briefly failed
+  both dev and `next build` mid-verify — external + pre-existing (font import in the untouched root
+  layout, so it hits `main` too), cleared on retry once the CDN recovered. **Done**, uncommitted —
+  pending Naveen's SCOPED commit (must exclude the unrelated working-tree edits to `DEPLOY.md` +
+  `context/features/office-deployment.md`, which belong to the office-deployment work, not this
+  feature). Visual acceptance still Naveen's step. See context/features/program-rollup.md.

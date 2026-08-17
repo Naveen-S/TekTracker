@@ -8,7 +8,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarRange, Target, Users, X } from "lucide-react";
+import { CalendarRange, Layers, Target, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,7 @@ import {
 import { apiFetch } from "@/lib/api-client";
 import { BugReportConfig } from "@/components/admin/bug-report-config";
 import { JiraComponentsConfig } from "@/components/admin/jira-components-config";
+import { ProgramsConfig } from "@/components/admin/programs-config";
 import { SprintCapacityConfig } from "@/components/admin/sprint-capacity-config";
 import { TeamConfigDialog } from "@/components/admin/team-config-dialog";
 import { SprintConfigDialog } from "@/components/dashboard/sprint-config-dialog";
@@ -102,11 +103,21 @@ function TeamCard({ team, run, busy, onEdit }) {
     // list; a border per team stacks three levels of rounded box on this page.
     <article className="p-4 transition-colors hover:bg-muted/25">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-baseline gap-2">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-2">
           <strong className="truncate text-sm">{team.name}</strong>
           <span className="rounded border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground">
             {team.key}
           </span>
+          {team.program ? (
+            <Badge tone="brand" className="gap-1">
+              <Layers className="size-3" aria-hidden="true" />
+              {team.program.name}
+            </Badge>
+          ) : (
+            <Badge tone="neutral" className="font-normal text-muted-foreground">
+              No program
+            </Badge>
+          )}
           <Badge tone={(team.subComponents?.length ?? 0) > 0 ? "neutral" : "warn"}>
             {team.subComponents?.length ?? 0} sub-component
             {(team.subComponents?.length ?? 0) === 1 ? "" : "s"}
@@ -233,6 +244,7 @@ function TeamCard({ team, run, busy, onEdit }) {
 
 export function AdminPanel({
   teams,
+  programs = [],
   sprints,
   jiraComponents = [],
   capacityRows = [],
@@ -293,6 +305,7 @@ export function AdminPanel({
           <ul className="mt-3 flex flex-wrap items-center gap-2">
             {[
               { label: "team", value: teams.length },
+              { label: "program", value: programs.length },
               { label: "sprint", value: sprints.length },
               { label: "bug report", value: bugReports.length },
             ].map(({ label, value }) => (
@@ -370,12 +383,15 @@ export function AdminPanel({
         </div>
       </SectionCard>
 
+      <ProgramsConfig programs={programs} />
+
       <JiraComponentsConfig components={jiraComponents} />
 
       {teamDialog && (
         <TeamConfigDialog
           mode={teamDialog.mode}
           team={teamDialog.team}
+          programs={programs}
           jiraComponents={jiraComponents}
           onClose={() => setTeamDialog(null)}
         />

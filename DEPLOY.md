@@ -96,6 +96,10 @@ Generate the two app secrets with `openssl rand -base64 32`.
 
 **Required:**
 ```
+# sslmode must MATCH the in-house cluster's TLS config (ask DevOps): `require` if TLS is
+# enforced/available (encrypts; an internal/self-signed cert is NOT CA-verified — fine),
+# `verify-full` if they mandate CA verification (mount their CA), or `disable` if the cluster
+# has no TLS (with `require` against a non-TLS server the connection fails).
 DATABASE_URL=postgresql://USER:PASSWORD@INTERNAL_PG_HOST/storyboard?sslmode=require
 SESSION_PASSWORD=<32+ char random>            # seals the iron-session cookie
 TOKEN_ENCRYPTION_KEY=<base64 of 32 bytes>     # AES-256-GCM for stored Jira tokens
@@ -119,8 +123,9 @@ GEMINI_API_KEY=...            # (or ANTHROPIC_API_KEY=...)
 AI_MODEL=gemini-3.5-flash     # optional cost lever
 ```
 
-> If a pooled Postgres endpoint can't run DDL (some PgBouncer setups), also set `DIRECT_URL`
-> to the non-pooled host and wire it into `prisma.config.mjs` for migrations only.
+> Only if the in-house DB is fronted by a transaction-pooler (e.g. PgBouncer) that can't run DDL:
+> also set `DIRECT_URL` to the non-pooled host and wire it into `prisma.config.mjs` for migrations
+> only. A direct instance endpoint needs no `DIRECT_URL`.
 
 ---
 

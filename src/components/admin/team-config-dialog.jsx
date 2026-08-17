@@ -28,10 +28,11 @@ const parseIssueTypes = (text) =>
 const parseEmails = (text) =>
   [...new Set(text.split(/[\s,]+/).map((v) => v.trim().toLowerCase()).filter(Boolean))];
 
-export function TeamConfigDialog({ mode, team, jiraComponents, onClose }) {
+export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, onClose }) {
   const router = useRouter();
   const [name, setName] = useState(team?.name ?? "");
   const [key, setKey] = useState(team?.key ?? "");
+  const [programId, setProgramId] = useState(team?.programId ?? "");
   const [description, setDescription] = useState(team?.description ?? "");
   const [developerCount, setDeveloperCount] = useState(
     team?.developerCount != null ? String(team.developerCount) : "",
@@ -81,6 +82,7 @@ export function TeamConfigDialog({ mode, team, jiraComponents, onClose }) {
     const body = {
       name: name.trim(),
       key: key.trim(),
+      programId: programId || null,
       description: description.trim() || null,
       developerCount: developerCount.trim() === "" ? null : Number(developerCount),
       memberEmails: parseEmails(memberEmails),
@@ -154,6 +156,27 @@ export function TeamConfigDialog({ mode, team, jiraComponents, onClose }) {
               className="w-28"
             />
           </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="team-program">Program</Label>
+          <Select
+            id="team-program"
+            value={programId}
+            onChange={(event) => setProgramId(event.target.value)}
+            disabled={saving || programs.length === 0}
+          >
+            <option value="">— No program —</option>
+            {programs.map((program) => (
+              <option key={program.id} value={program.id}>
+                {program.key} · {program.name}
+              </option>
+            ))}
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {programs.length === 0
+              ? "No programs yet — create one in the Programs section, then assign this team."
+              : "Groups this team under a program for the leadership roll-up."}
+          </p>
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="team-description">Description (optional)</Label>

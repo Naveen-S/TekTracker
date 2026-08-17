@@ -67,6 +67,11 @@ Key relationships:
   belong to many teams with different roles. EM/SEM and ED-level views are **cross-team roll-ups**, not
   a separate data source.
 - Each scrum team has dedicated **filters/tracks**: Roadmap, Tech Debt, Support, Internal Bugs.
+- **Program** (BUILT 2026-08-12, program-rollup.md) — a first-class grouping one level **above** the
+  scrum team (e.g. GM → AI Agentic, Configurator & Website Setup, DX & SCX, PCX; other programs are
+  Honda, AEP). A team belongs to at most one program. Leadership (ED/TPM/EM/VIEWER + admin) can scope
+  `/rollup` to a program to see the aggregate across **all** its teams regardless of their own
+  memberships — the cross-membership view the ED/TPM/VP personas need. Still one implicit org.
 
 > **[GAP — legacy app only; moot since cutover 2026-07-18]** The **legacy Vite build** (retired
 > to `legacy/`) has no team, role, or multi-team concept — it is single-user and
@@ -130,6 +135,7 @@ Key relationships:
 | Velocity / LeaderBoard (`/leaderboard`) | **[BUILT]** | Team velocity leaderboard (`completedPoints ÷ Team.developerCount`) + org-wide developer leaderboard, sprint-scoped + all-time, computed live (no snapshot table); gated to `LEADERBOARD_ROLES` (TPM excluded), LEAD/MEMBER get a personal "my stats" card. See context/features/leaderboard.md. |
 | Committed / Tech Debt / Unplanned work breakdown + per-sprint capacity | **[BUILT]** | Delivery scoreboard on `/`, `/rollup`, `/share/[token]`, export: composition rail (Committed=`FEATURE`, Tech Debt=`TECH_DEBT`, Unplanned Bugs = External `SUPPORT` + Internal `INTERNAL_BUG`) vs an admin per-team-per-sprint `SprintCapacity` target. Display-only/additive (never wired into §12); `/rollup` adds a "By team" chart. See context/features/committed-unplanned-work.md, unplanned-split-and-chart.md. |
 | Default scrum team & release (per-user board default) | **[BUILT]** | Each user pins a default team + release (`User.defaultTeamId`/`defaultSprintId`), resolved server-side in `getDashboardData`/`getSprintSelection`; set via a **star** in the top bar (`PATCH /api/me`). Board-only, additive. See context/features/default-team-release.md. |
+| Program grouping + Program roll-up | **[BUILT]** | First-class `Program` groups scrum teams (`Team.programId`, SetNull); admins CRUD programs + assign teams (Programs admin section + team-dialog picker). Leadership (`PROGRAM_ROLES` + admin) scope `/rollup` to a program via a picker → aggregate across **all** its teams; reuses the entire roll-up stack (only the team-set source changes). See context/features/program-rollup.md. |
 | Scrum-team member roster + auto "Needs attention" track | **[BUILT]** | Admin-entered per-team `Team.memberEmails String[]` (Jira assignee identities, distinct from RBAC `TeamMembership`) power an always-on `WorkflowType.NEEDS_ATTENTION` board track auto-generated/refreshed inside `syncTeamSprint` from `assignee in (roster) AND ("sub-component[dropdown]" IS EMPTY OR fixVersion IS EMPTY)` — the team's own items missing a sub-component/fix version that every sub-component-scoped filter misses. Partitioned out of the delivery matrix into its own panel; excluded from all §12 metrics (one additive no-op guard). See context/features/needs-attention-roster.md. |
 
 ---
@@ -353,13 +359,35 @@ enum Role {
   VIEWER     // read-only (share-view recipients, VPs)
 }
 
+/// A Program groups several scrum Teams — one level ABOVE the team (e.g. "GM" → AI Agentic,
+/// Configurator & Website Setup, DX & SCX, PCX…; other programs are Honda, AEP…). It is the first
+/// grouping above Team in the otherwise "single implicit org" model (see the Team note below):
+/// still ONE implicit org, but teams now roll up into an admin-defined Program. Admin-managed CRUD;
+/// a Team carries at most one Program (Team.programId, SetNull on delete). Powers the program-scoped
+/// roll-up on /rollup (program-rollup.md). No sprint/metric coupling — purely a grouping key.
+model Program {
+  id          String   @id @default(cuid())
+  name        String
+  key         String   @unique         // short handle, e.g. "GM"
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  teams       Team[]
+}
+
 /// A scrum team. ED roll-ups are just "the set of teams a user is an ED/TPM member of".
-/// Single implicit org (decided 2026-06-10): no Org table; sprints are global.
+/// Single implicit org (decided 2026-06-10): no Org table; sprints are global. A team may belong to
+/// one admin-defined Program (program-rollup.md) — the first grouping above Team; still one org.
 model Team {
   id                 String           @id @default(cuid())
   name               String
   key                String           @unique         // short handle, e.g. "GM"
   description        String?
+  /// Owning Program (program-rollup.md), or null when unassigned. SetNull on program delete so
+  /// deleting a Program orphans its teams rather than cascading (mirrors JiraSubComponent.teamId).
+  programId          String?
+  program            Program?         @relation(fields: [programId], references: [id], onDelete: SetNull)
   jiraProjectKeys    String[]                         // projects this team owns
   storyPointsFieldId String?                          // Jira custom field override (default customfield_10008)
   sprintFieldId      String?                          // Jira custom field override (default customfield_10020)
@@ -394,6 +422,8 @@ model Team {
   statusMappings  StatusStageMapping[]
   subComponents   JiraSubComponent[]
   capacities      SprintCapacity[]
+
+  @@index([programId])
 }
 
 model TeamMembership {
@@ -838,6 +868,8 @@ erDiagram
     USER |o--o{ ISSUE_PROGRESS : "last edited"
     USER ||--o{ SHARED_VIEW : "created"
 
+    PROGRAM |o--o{ TEAM : "groups"
+
     TEAM ||--o{ TEAM_MEMBERSHIP : "has"
     TEAM ||--o{ FILTER_TEMPLATE : "owns"
     TEAM ||--o{ FILTER : "owns"
@@ -877,10 +909,16 @@ erDiagram
         string cloudId
         string baseUrl
     }
+    PROGRAM {
+        string id PK
+        string key UK
+        string name
+    }
     TEAM {
         string id PK
         string key UK
         string name
+        string programId FK "null = unassigned"
         string_arr jiraProjectKeys
     }
     TEAM_MEMBERSHIP {
@@ -1098,6 +1136,14 @@ erDiagram
   missing row means unconfigured, not zero — the Committed/Tech Debt/Unplanned Bugs breakdown it
   feeds is a display-only composition lens and never an input to Sprint Health/Completion/velocity.
   See context/features/committed-unplanned-work.md.
+- **`Program` (added 2026-08-12) is the first grouping ABOVE `Team`** — a plain admin-managed entity
+  (name + unique key) with `Team.programId` (`onDelete: SetNull`, so deleting a program un-assigns
+  its teams rather than cascading, mirroring `JiraSubComponent.teamId`). It carries **no** sprint,
+  metric, or lifecycle coupling — it exists only to define the team set for a program-scoped
+  `/rollup`. "Single implicit org" still holds (no `Org` table); a Program is a grouping key, not a
+  tenant boundary. The roll-up reuses `aggregateRollup` unchanged — a program roll-up is just
+  `getRollupData` with the team set sourced from `program.teams` instead of the viewer's
+  memberships. See context/features/program-rollup.md.
 
 ---
 
@@ -1166,6 +1212,7 @@ UI/UX *direction* is the spec above; this table is the *history* of what shipped
 | 2026-08-04 | `/bugs` sprint-ownership grouping (ours vs dependencies) | bug-sprint-ownership.md |
 | 2026-08-07 | Sprint export adopts the `/bugs` PDF design system | export-visual-consistency.md |
 | 2026-08-09 | Unplanned bifurcation + per-team composition chart | unplanned-split-and-chart.md |
+| 2026-08-12 | Program picker + program-scoped roll-up hero; admin Programs section | program-rollup.md |
 | 2026-08-11 | Admin roster editor + board "Needs attention" hygiene panel | needs-attention-roster.md |
 
 ---
@@ -1440,6 +1487,15 @@ All previously open decisions are now resolved:
   folds into `syncTeamSprint`, so **no new API route**). Realized as a real Filter of a dedicated enum
   value, excluded from all §12 metrics by one additive no-op guard and partitioned into its own panel;
   untagged items never seed `IssueProgress`. See context/features/needs-attention-roster.md.
+- **Program grouping + Program roll-up (ratified 2026-08-12).** Four AskUserQuestion calls: (1) a
+  **first-class `Program` model** (admin CRUD) over a free-text field; (2) the program picker lives on
+  the **existing `/rollup`** (`?program=` scope) not a separate page, with "my teams" the default; (3)
+  **view access = leadership + admins** — new `PROGRAM_ROLES = [ED, TPM, EM, VIEWER]` (+ admin), TPM
+  included unlike `LEADERBOARD_ROLES`, and a non-leadership viewer's `?program=` is silently ignored
+  (never a 403); (4) **one program per team** (`Team.programId`, `onDelete: SetNull`). A program
+  roll-up reuses the entire roll-up pipeline unchanged — only the team-set source swaps from
+  `getMembershipContext` to `program.teams`; §12 metrics untouched. See
+  context/features/program-rollup.md.
 
 ---
 

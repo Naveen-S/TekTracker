@@ -18,7 +18,7 @@ const ROLLUP_INTRO =
   "call-outs — comparing every team in this sprint. Known/acknowledged risks are reported as " +
   "managed context, not new alarms. Copy it into your weekly update.";
 
-export function RollupDigestButton({ sprintId, jiraBaseUrl }) {
+export function RollupDigestButton({ sprintId, programId, jiraBaseUrl }) {
   const [open, setOpen] = useState(false);
   const [toast, showToast] = useToast();
 
@@ -30,7 +30,7 @@ export function RollupDigestButton({ sprintId, jiraBaseUrl }) {
       {open && (
         <AiDigestDialog
           endpoint="/api/rollup/ai-digest"
-          body={{ sprintId }}
+          body={programId ? { sprintId, programId } : { sprintId }}
           jiraBaseUrl={jiraBaseUrl}
           intro={ROLLUP_INTRO}
           onClose={() => setOpen(false)}

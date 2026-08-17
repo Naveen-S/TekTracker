@@ -53,6 +53,9 @@ const teamFields = z.object({
     .max(200)
     .transform((emails) => [...new Set(emails)])
     .optional(),
+  // Owning Program (program-rollup.md), or null to clear the association. Bare cuid FK (SetNull on
+  // program delete); the association is edited via the team POST/PATCH, so no dedicated route.
+  programId: z.string().cuid().nullish(),
 });
 
 export const teamCreateSchema = teamFields;

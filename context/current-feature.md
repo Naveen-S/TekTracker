@@ -1,66 +1,71 @@
 # Current Feature
 
-**Scrum-team member roster + auto "Needs attention" (untagged items) board track**
-(@context/features/needs-attention-roster.md) — admins set a per-team roster of **member email
-addresses**; each team's board then carries an always-present **"Needs attention"** track that
-surfaces the team's own Jira items (`assignee in (roster)`) missing a **sub-component or fix version**
-— a hygiene surface no existing sub-component-scoped filter can catch. Post-v1, not a master-plan
-step. Picked as current because it closes the "orphaned/untagged items are invisible" gap.
+**Program grouping + Program roll-up** (@context/features/program-rollup.md) — a first-class
+**Program** entity groups scrum teams one level above the team (GM → AI Agentic, DX & SCX, PCX…;
+other programs Honda, AEP). Admins CRUD programs + assign each team to one; leadership (ED/TPM/EM/
+VIEWER + admin) scope the existing `/rollup` page to a program via a picker to see the aggregate
+across **all** its teams — the cross-membership ED/TPM/VP view the roll-up couldn't give before.
+Post-v1, not a master-plan step. Picked as current because it closes the "no program-level roll-up"
+gap in the leadership-visibility mission (§2.2).
 
 ## Status
 
-**Done 2026-08-12 — uncommitted** (branch `feature/needs-attention-roster`, off `main` @ `4f4d295`
-"Default view."; baseline **47 ƒ Dynamic routes / 10 migrations**). Pending Naveen's commit (gitleaks
-hook). Full spec + As-built notes: @context/features/needs-attention-roster.md.
+**Done 2026-08-12 — uncommitted** (branch `feature/program-rollup`, off `main` @ `52d5fc0`
+"Need attention."; baseline **47 ƒ Dynamic routes / 11 migrations**). Pending Naveen's commit
+(gitleaks hook). Full spec + As-built notes: @context/features/program-rollup.md.
 
-**Verified:** `yarn lint` clean · **7/7 pure fixtures** (JQL builder + the byte-identical §12 no-op
-proof) · cold `rm -rf .next` DB/env-free build compiled, **47 ƒ Dynamic unchanged** · `migrate status`
-up-to-date, **11 migrations** · **live-Jira E2E** — `assignee in ("naveens@tekion.com")` returned **17
-real untagged GM items**, synced + cached, panel rendered with chips · **deletion-regression +
-manager-prompt + "View in Jira" link SSR checks pass** on the running dev server (throwaway rows, torn
-down to 0) · dev server healthy (`/login` 200, 0 font errors).
+**Verified (finish-feature re-run):** `yarn lint` clean · `prisma validate` + `migrate status`
+up-to-date (**12 migrations**) · cold `rm -rf .next` **DB/env-free build** passed with `.env` moved
+aside (confirmed absent mid-build), route list shows `/api/programs` + `/api/programs/[programId]` →
+**49 ƒ Dynamic** · **SSR/API smoke — 30/30 pass** (minted iron-session cookies vs Neon, torn down to
+0, re-run against `next start`): RBAC gating (leadership/admin see programs, member 403), program
+CRUD (admin-only, dup→409, bad-key→400), `/rollup?program=` scopes to all program teams incl. one the
+viewer isn't on + excludes unassigned, my-teams path byte-unchanged, member `?program=` silently
+ignored (200 not 403), team↔program PATCH, DELETE→SetNull, **+ finetuning** (board "{program}
+program" chip renders, `/admin` renders with the program include). A transient Google Fonts CDN
+outage (v20 Inter woff2 → 404) briefly failed dev + build mid-verify — external, pre-existing (the
+font import is in the untouched root layout), cleared on retry.
 
-**Post-first-run fixes (2026-08-11/12), all shipped + verified:**
-- **Severe filter-deletion bug** — `ensure-filter.js` matched the NA row via `WorkflowType.NEEDS_ATTENTION`;
-  under a stale client that enum is `undefined`, Prisma strips it, and the roster-empty delete branch
-  removed a REAL track. Fixed: string literal `"NEEDS_ATTENTION"` + `deleteMany` scoped by workflowType.
-  Deleted Aug/Sep tracks (PCX/DX/INT Aug, CALM Sep) recover via re-running Sprint Start (progress
-  reattaches, §9). ⚠️ **still needs Naveen to run that recovery.**
-- **`ReferenceError`** — `engine.js` used `WorkflowType.NEEDS_ATTENTION` un-imported → now string literal.
-- **Discoverability** — manager-only config prompt on the board when no track exists yet.
-- **Server dedupe** of `memberEmails`; **"View in Jira"** deep-link; JSX whitespace fixes.
+**Finetuning round (2026-08-13, Naveen's visual review):** (1) loader feedback on Add/Save program
+(`ProgressBar` + button spinners); (2) `Select` base box aligned to `Input` (`h-9 rounded-md py-1`) —
+app-wide; (3) program badge on the admin team card; (4) "{program} program" chip on the `/` board
+hero. Both (3)/(4) fed by a `program {id,name,key}` include on the admin team query + `getMembershipContext`.
 
-**Naveen's ratified calls (AskUserQuestion):** filter scope = missing **sub-component OR fix version**
-(broad hygiene net) · trigger = **always present, auto-refreshed** by every Sync + the daily cron when
-the team has a roster (no button; so **no new API route** — generation folds into `syncTeamSprint`).
+**Next:** hand Naveen the SCOPED commit command (exclude the unrelated `DEPLOY.md` +
+`office-deployment.md` working-tree edits, which are not this feature's); on merge, delete the branch.
+
+**Naveen's ratified calls (AskUserQuestion):** (1) first-class `Program` model over a text field ·
+(2) program picker on the existing `/rollup` (`?program=`), not a separate page · (3) view access =
+leadership + admins (`PROGRAM_ROLES = [ED, TPM, EM, VIEWER]`, TPM included; non-leadership `?program=`
+silently ignored) · (4) one program per team (`Team.programId`, SetNull).
 
 ## Goals
 
-- **Roster** — `Team.memberEmails String[]` (migration `add_member_emails_and_needs_attention_workflow`,
-  10 → 11); zod in `src/lib/schemas/team.js`; edited in `src/components/admin/team-config-dialog.jsx`
-  via the existing team POST/PATCH (no route change). Distinct from RBAC `TeamMembership`.
-- **JQL** — `buildNeedsAttentionJql` + `emptyClause`/email-quote helpers in
-  `src/lib/sprint-start/track-jql.mjs` (guarded null on empty roster/projectKeys).
-- **Enum + registry** — `WorkflowType.NEEDS_ATTENTION`; `WORKFLOWS` entry `stages: []`, out of
-  `SEEDABLE_WORKFLOW_TYPES` (`src/lib/workflows.mjs`).
-- **Auto-generate** — `src/lib/needs-attention/ensure-filter.mjs` (upsert/delete the single NA Filter)
-  wired into `src/lib/sync/engine.js` `syncTeamSprint`; NA excluded from progress seeding.
-- **Metrics guard** — one additive no-op line at the top of `computeSprintMetrics`
-  (`src/lib/metrics.mjs`) excluding NA, shielding all call sites.
-- **Render** — `getDashboardData` partitions NA out (`src/lib/dashboard-data.js` + `src/app/page.jsx`);
-  new `src/components/dashboard/needs-attention-panel.jsx` below `PlannerPanel` (`/impeccable`).
+- **Data model** — `Program` model + `Team.programId` (`onDelete: SetNull`) + `@@index`; migration
+  `add_program_model` (11 → 12). Pure additive, no enum ALTER. §9 schema + ERD byte-synced.
+- **RBAC** — `PROGRAM_ROLES` + `hasProgramAccess(user)` in `src/lib/rbac.js` (mirrors
+  `hasLeaderboardAccess`).
+- **Schemas** — new `src/lib/schemas/program.js`; `teamFields` gained `programId` (cuid nullish);
+  `rollupDigestBodySchema` gained optional `programId`.
+- **API** — `src/app/api/programs/route.js` (GET `hasProgramAccess` + POST admin) +
+  `[programId]/route.js` (PATCH/DELETE admin). Association reuses team PATCH. ai-digest re-scopes.
+- **Data loader** — `getRollupData({ programId })` swaps the team-set source only; returns
+  `programs`/`selectedProgram`/`canViewPrograms`. Byte-identical with no `programId`.
+- **UI (impeccable)** — program `<Select>` + program-aware hero on `/rollup`; self-contained
+  `programs-config.jsx` admin section + Program `<Select>` in `team-config-dialog.jsx`.
 
 ## Notes
 
-- **§12 metric core is sacred** — the only `metrics.mjs` change is a provably no-op guard (no NA
-  filters exist in existing fixtures → byte-identical). Prove with a before/after fixture diff.
-- **`prisma-change` for the enum:** keep the migration to the column add + `ALTER TYPE ... ADD VALUE`
-  only; do not reference the new value in the same migration. Keep §9 byte-consistent.
-- **Counts stay honest:** **47 ƒ Dynamic routes unchanged** (no new route — generation is in
-  `syncTeamSprint`); **one additive migration (10 → 11)**.
-- **Emails-in-JQL risk (highest):** if Tekion hides assignee emails, `assignee in (emails)` returns
-  nothing — validate on Naveen's first live Sync; accountId-resolution fallback documented, out of v1.
-- Post-migration dev-server / `rm -rf .next` / DB-free-build hazards below still apply.
+- **§12 metric core is sacred** — `metrics.mjs`/`aggregateRollup` are **untouched**; a program
+  roll-up reuses `aggregateRollup` (it already sums per-team metrics). Additive only.
+- **`prisma-change`:** the migration is pure additive (new table + nullable FK + index; no enum
+  `ALTER TYPE`). Keep §9 byte-consistent (done).
+- **Counts stay honest:** **+2 routes** (`/api/programs`, `/api/programs/[programId]`) → **49 ƒ
+  Dynamic** (from 47); **one additive migration (11 → 12)**.
+- **Post-migration hazard hit + resolved:** `prisma migrate dev`'s client regen didn't stick and the
+  long-running dev server held a stale client (`prisma.program` undefined) → explicit `yarn
+  db:generate` + dev restart fixed it. Always regenerate + restart before smoke-testing after a
+  migration (see hazards below).
 
 ## Carry-forward — critical for any new feature
 
@@ -69,22 +74,21 @@ details live in [legacy-history.md](legacy-history.md); house conventions live i
 `context/coding-standards.md` + `context/ai-interaction.md` — this is the operational hard-won
 layer that sits between them.)
 
-**Repo / branch state (2026-08-11)**
-- **Baseline invariants to preserve:** `main` @ `4f4d295` ("Default view." — the
-  `default-team-release` feature is now MERGED) = **47 ƒ Dynamic** routes (46 + `/api/me`; the 46 =
-  45 + sync-stages' `.../filters/[filterId]/sync-stages`; the 45 = 44 + office-deployment `/p/health`)
-  / **10 Prisma migrations** (9 + `add_user_default_view`). This feature
-  (`feature/needs-attention-roster`) adds **no route (stays 47)** and **one migration (10 → 11)** —
-  generation folds into `syncTeamSprint`, nothing new under `src/app/api`. Node 22, dev on **:3002**.
-  A feature that changes either count must say so and justify it.
-- **`main` is at `4f4d295`** ("Default view." — the `default-team-release` feature is now committed;
-  the prior tip was `5e96703` "Sync stages"). Main includes the bug-board arc
-  (enhancing-bug-board, bug-report-pdf-export, bug-sprint-ownership, export-visual-consistency), the
-  unplanned-split, sync-stages, AND the office-deployment work (`Dockerfile` / `.dockerignore` /
-  `output:"standalone"` / `GET /p/health` / `DEPLOY.md`; must land on `tekion-apps/storyboard` `main`
-  for DevOps to build — RELB-28979).
-- **This feature is on `feature/needs-attention-roster`** (off `main` @ `4f4d295`). It adds migration
-  #11 (`add_member_emails_and_needs_attention_workflow`) and **no** route.
+**Repo / branch state (2026-08-12)**
+- **Baseline invariants to preserve:** `main` @ `52d5fc0` ("Need attention." — the
+  `needs-attention-roster` feature is now MERGED) = **47 ƒ Dynamic** routes / **11 Prisma migrations**
+  (…`add_member_emails_and_needs_attention_workflow`). This feature (`feature/program-rollup`) adds
+  **2 routes** (`/api/programs`, `/api/programs/[programId]`) → **49 ƒ Dynamic**, and **one migration
+  (11 → 12, `add_program_model`)**. Node 22, dev on **:3002**. A feature that changes either count
+  must say so and justify it — this one does (program CRUD needs its own routes; team↔program
+  association reuses the existing team PATCH).
+- **`main` is at `52d5fc0`** ("Need attention."). Main includes the bug-board arc (enhancing-bug-board,
+  bug-report-pdf-export, bug-sprint-ownership, export-visual-consistency), the unplanned-split,
+  sync-stages, default-team-release, needs-attention-roster, AND the office-deployment work
+  (`Dockerfile` / `.dockerignore` / `output:"standalone"` / `GET /p/health` / `DEPLOY.md`; must land
+  on `tekion-apps/storyboard` `main` for DevOps to build — RELB-28979).
+- **This feature is on `feature/program-rollup`** (off `main` @ `52d5fc0`). It adds migration #12
+  (`add_program_model`) and 2 routes under `src/app/api/programs`.
 - **Naveen runs all commits** (the Tekion gitleaks pre-commit hook can't fetch its config from
   Claude's shell). Never auto-commit — hand him the command and ask first (per `ai-interaction.md`).
 

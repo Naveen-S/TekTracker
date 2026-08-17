@@ -10,7 +10,9 @@ import { cn } from "@/lib/utils";
  * not ours, and native keeps every existing call site's keyboard/touch behavior for free.
  */
 const selectVariants = cva(
-  "w-full appearance-none rounded-lg border bg-background pl-3 pr-9 text-sm shadow-xs outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+  // Match Input's control box (h-9, rounded-md, px-3, py-1, text-sm) so a bare Select lines up with
+  // Inputs/Buttons in the same row; call sites still override height with h-7/h-8 via className.
+  "flex h-9 w-full appearance-none rounded-md border bg-background pl-3 pr-9 py-1 text-sm shadow-xs outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-50",
   {
     variants: {
       variant: {

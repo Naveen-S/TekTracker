@@ -78,13 +78,35 @@ enum Role {
   VIEWER     // read-only (share-view recipients, VPs)
 }
 
+/// A Program groups several scrum Teams — one level ABOVE the team (e.g. "GM" → AI Agentic,
+/// Configurator & Website Setup, DX & SCX, PCX…; other programs are Honda, AEP…). It is the first
+/// grouping above Team in the otherwise "single implicit org" model (see the Team note below):
+/// still ONE implicit org, but teams now roll up into an admin-defined Program. Admin-managed CRUD;
+/// a Team carries at most one Program (Team.programId, SetNull on delete). Powers the program-scoped
+/// roll-up on /rollup (program-rollup.md). No sprint/metric coupling — purely a grouping key.
+model Program {
+  id          String   @id @default(cuid())
+  name        String
+  key         String   @unique         // short handle, e.g. "GM"
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  teams       Team[]
+}
+
 /// A scrum team. ED roll-ups are just "the set of teams a user is an ED/TPM member of".
-/// Single implicit org (decided 2026-06-10): no Org table; sprints are global.
+/// Single implicit org (decided 2026-06-10): no Org table; sprints are global. A team may belong to
+/// one admin-defined Program (program-rollup.md) — the first grouping above Team; still one org.
 model Team {
   id                 String           @id @default(cuid())
   name               String
   key                String           @unique         // short handle, e.g. "GM"
   description        String?
+  /// Owning Program (program-rollup.md), or null when unassigned. SetNull on program delete so
+  /// deleting a Program orphans its teams rather than cascading (mirrors JiraSubComponent.teamId).
+  programId          String?
+  program            Program?         @relation(fields: [programId], references: [id], onDelete: SetNull)
   jiraProjectKeys    String[]                         // projects this team owns
   storyPointsFieldId String?                          // Jira custom field override (default customfield_10008)
   sprintFieldId      String?                          // Jira custom field override (default customfield_10020)
@@ -121,6 +143,8 @@ model Team {
   statusMappings  StatusStageMapping[]
   subComponents   JiraSubComponent[]
   capacities      SprintCapacity[]
+
+  @@index([programId])
 }
 
 model TeamMembership {
