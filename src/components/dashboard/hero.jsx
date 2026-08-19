@@ -77,6 +77,12 @@ export function Hero({
     <HeroShell className="flex flex-col gap-5 px-5 py-6 md:px-8 md:py-7">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
+          {team.program && (
+            <span className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white/80 ring-1 ring-white/15">
+              <Layers className="size-3 text-on-ink-accent" aria-hidden="true" />
+              {team.program.name} program
+            </span>
+          )}
           <HeroEyebrow>
             {sprint.name} · {formatSprintWindow(sprint)}
           </HeroEyebrow>

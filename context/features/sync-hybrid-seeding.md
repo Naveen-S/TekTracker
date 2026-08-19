@@ -83,6 +83,12 @@ again** — Naveen re-logged in, and the step-7 cron drove this engine end-to-en
    only what actually seeded). Existing rows are never re-seeded — manual edits win. *Deferred
    enhancement (noted, not built): re-seed forward if a row still exactly equals its seeded
    baseline; revisit after real usage.*
+   > **[Amended 2026-08-10] The deferred re-seed-forward now partly ships** as a user-triggered,
+   > per-track **overwrite** — the "Sync stages from Jira" button in the delivery matrix
+   > (`syncFilterStagesFromJira`, sync-stages-from-jira.md). The always-on sync stays CREATE-ONLY
+   > (this decision is unchanged); the manual per-track action is the deliberate opt-in that
+   > overwrites existing rows from status (behind a confirm), resetting `updatedById` to null so it
+   > stays idempotent, and never wiping a row whose current status is unmapped.
 6. **Owning-workflow re-evaluation on sync (§9).** After the cache refresh, recompute the owning
    workflow (highest-priority filter containing the key) for every progress row in the team+sprint;
    if it changed, update `workflowType` and **pad/truncate `stageCompletion`** to the new length
@@ -188,7 +194,9 @@ Pure parts verified standalone; the live path needs real creds (Naveen), mirrori
 
 - **Background/cron sync + daily `SprintSnapshot`** — step 7 (the engine is built to be called by
   it).
-- **Re-seed-forward** for untouched seeded rows (decision 5's deferred enhancement).
+- **Re-seed-forward** for untouched seeded rows (decision 5's deferred enhancement). *[Amended
+  2026-08-10 — the user-triggered, per-track overwrite variant now ships; see sync-stages-from-jira.md.
+  An automatic "re-seed forward only untouched rows on every sync" is still out of scope.]*
 - **Issue-detail endpoint, dashboard/scrape proxy routes** (legacy `server.js` extras — port only
   if the UI (step 6) turns out to need them).
 - **Rate-limit retry/backoff, Redis caching, webhooks** (step 7+ / §15).

@@ -1887,7 +1887,7 @@
   `STORYBOARD` (no `_SERVICE` — verified against real RELB tickets); `type: Backend` (Tekion's
   "Frontend" = a static micro-frontend in the `tekion-web` shell; StoryBoard is a standalone SSR
   server + own DB). **Verified** (Node 22): `yarn lint` clean; `prisma validate` + `migrate status`
-  up to date (**9 migrations, no schema change**); **env-free cold build green — 45 ƒ Dynamic** (44
+  up to date (**12 migrations, no schema change**); **env-free cold build green — 45 ƒ Dynamic** (44
   baseline + `/p/health`); standalone bundle **traces the generated Prisma client + `pg`**, boots,
   and serves `/p/health`→200, `/login`→200, `/`→200 with no `.env` (no Docker CLI locally →
   validated via `node .next/standalone/server.js`). Corrected the pasted template's `node:20`
@@ -1929,3 +1929,118 @@
   + `/rollup` By-team (desktop + mobile — PCX tech-debt-heavy, D360/DX bug-heavy at a glance) +
   `/rollup` Relaxed (4-col) all correct. **Done**, uncommitted — pending Naveen's commit + his authed
   visual pass (both themes) and a real-browser PDF export. See context/features/unplanned-split-and-chart.md.
+
+- **Sync Jira status → delivery-matrix stages, per track (2026-08-10).** On
+  `feature/sync-stages-from-jira` (off `main` @ `452644e`). Turns the manual per-ticket stage
+  checklist into a one-click, per-track action: each delivery-matrix track header (Roadmap / Tech
+  Debt / External Bug / Internal Bug) gets a `canWrite`-gated **"Sync stages"** button that pulls the
+  latest Jira status for that filter and re-derives every one of its issues' stages from it via
+  `StatusStageMapping` — the user-triggered, per-track **overwrite** variant of the create-only sync's
+  deferred "re-seed forward" (sync-hybrid-seeding.md decision 5). Naveen's three ratified calls
+  (AskUserQuestion): **overwrite-with-confirm** (the confirm names how many tickets carry manual stage
+  edits that will be replaced), **a button per track**, **pull-latest-then-map** (a live Jira call
+  scoped to the one filter). Derived guards: unmapped statuses are **counted, never wiped**;
+  blocked/blockedReason/riskComment preserved; owning workflow honored (one progress row per key);
+  CLOSED sprints 409'd; and `updatedById` is **reset to null** on overwrite so re-runs are idempotent
+  (only hand-edits made afterward count as "manual" next time). New pure `resolveStageResync`
+  (`seeding.mjs`) + `syncFilterStagesFromJira` (`engine.js`, reusing `refreshFilterCache` /
+  `buildSeededStages` / `owningWorkflowType`) + `POST .../filters/[filterId]/sync-stages` (writer
+  roles) — **45 → 46 ƒ Dynamic**; `dashboard-data.js` exposes `manuallyEdited`; button in
+  `planner-panel.jsx`, confirm `<Dialog>` + two-transition handler in `dashboard.jsx`. No
+  schema/migration/dependency change (**9 migrations**). Verified: `yarn lint` clean; **cold
+  `rm -rf .next` DB/env-free build green — 46 ƒ Dynamic**; **5/5** `resolveStageResync` fixtures;
+  **4/4** guard smoke (401 unauth · 403 viewer · 404 unknown filter · 409 CLOSED sprint) with minted
+  iron-session cookies against Neon (fixtures torn down); `prisma validate` + `migrate status` clean.
+  **Done**, uncommitted — pending Naveen's commit + his real-browser acceptance (live Jira
+  status→stages, both themes; the Chrome extension has never been connected). **Next:** commit on
+  Naveen's go-ahead; consider an admin editor for `StatusStageMapping` if real Jira status names miss
+  the seeded mappings (surfaced via the "unmapped" toast count). See
+  context/features/sync-stages-from-jira.md.
+
+- **2026-08-12 — Implemented Scrum-team member roster + auto "Needs attention" board track.** A
+  per-team admin-entered `Team.memberEmails String[]` (plain Jira assignee emails, **deliberately
+  decoupled from RBAC `TeamMembership`** — no login required, grants no access) drives an always-on
+  `WorkflowType.NEEDS_ATTENTION` track surfacing the team's own items missing a sub-component or fix
+  version (`assignee in (roster) AND ("sub-component[dropdown]" IS EMPTY OR fixVersion IS EMPTY) AND
+  statusCategory != Done`) — the untagged items every sub-component-scoped filter misses. Naveen's two
+  ratified calls (AskUserQuestion): scope = **sub-component OR fix version**; trigger = **always
+  present, auto-refreshed** by every Sync + the daily cron (no button → **no new API route**;
+  generation folds into `syncTeamSprint`). Realized as a **real Filter of a dedicated enum value**,
+  excluded from all §12 metrics by one additive no-op guard (`metrics.mjs`) and partitioned into its
+  own board panel; untagged items never seed `IssueProgress`. Files: `prisma/schema.prisma`
+  (`memberEmails` + `NEEDS_ATTENTION`; migration `add_member_emails_and_needs_attention_workflow`,
+  **10 → 11**), `schemas/team.js` (JQL-safe email regex + server dedupe), `sprint-start/track-jql.mjs`
+  (`buildNeedsAttentionJql` + `emptyClause`/email-quote), `workflows.mjs`, `metrics.mjs`,
+  `needs-attention/ensure-filter.js` (upsert/refresh/delete the one NA Filter) wired into
+  `sync/engine.js`, `dashboard-data.js` (partition), `admin/team-config-dialog.jsx` (roster editor),
+  `dashboard/needs-attention-panel.jsx` (populated / all-clear / manager config-prompt + a "View in
+  Jira" `/issues/?jql=` deep-link). Baseline re-based to `main` @ `4f4d295` (**47 routes / 10
+  migrations**; sibling default-team-release merged) → this adds **1 migration, 0 routes**.
+  **As-built deviations (two real bugs the plan caused):** (1) `engine.js` referenced
+  `WorkflowType.NEEDS_ATTENTION` un-imported → runtime `ReferenceError` (lint doesn't flag `no-undef`;
+  the line runs post-Jira-auth so fresh-process smokes missed it); (2) **worse** — under a
+  stale/partially-hot-reloaded generated client that enum member is `undefined`, Prisma **strips
+  undefined `where` keys**, widening `ensure-filter`'s `findFirst` to "any filter", and the
+  roster-empty **delete branch deleted REAL tracks** (confirmed against Aug/Sep data via `sortOrder`
+  gaps: PCX/DX/INT Aug FEATURE/INTERNAL_BUG, CALM Sep TECH_DEBT). Both fixed by using the **string
+  literal `"NEEDS_ATTENTION"`** everywhere + a **`deleteMany` scoped by `workflowType`** (structurally
+  can't touch a real track). Also added post-first-run: a **manager-only discoverability prompt** (the
+  track was invisible until roster+sync), **server-side email dedupe**, the **"View in Jira"** link,
+  and **`{" "}` JSX-whitespace fixes** (RSC/Turbopack collapses spaces next to inline elements).
+  Risk #1 (assignee-by-email JQL) **cleared** — Tekion Jira resolved it (17 real GM items live); risk
+  #4 (>2000-item cap throws the sync) **unmitigated** (bounded by `statusCategory != Done`). Verified:
+  `yarn lint` clean; **7/7 pure fixtures** (exact JQL + byte-identical §12 no-op); **cold DB/env-free
+  build compiled, 47 ƒ Dynamic unchanged**; `migrate status` up-to-date (**11 migrations**); **live
+  E2E** (roster → sync → 17 cached → panel with chips) + deletion-regression + manager-prompt +
+  Jira-link SSR checks on the running server (throwaway rows torn to 0). **Done**, uncommitted —
+  pending Naveen's commit. **Next:** commit on Naveen's go-ahead, then he re-runs One-Click Sprint
+  Start on PCX/DX/INT (Aug) + CALM (Sep) to restore the deleted tracks (progress reattaches). See
+  context/features/needs-attention-roster.md.
+
+- **2026-08-12 — Program grouping + Program roll-up (`feature/program-rollup`, off `main` @ `52d5fc0`).**
+  Added a first-class **Program** entity one level above the scrum team (GM → AI Agentic, DX & SCX,
+  PCX…; other programs Honda, AEP) so leadership can roll up an org-defined program, not just the
+  viewer's own teams. Four AskUserQuestion calls with Naveen: first-class model (not a text field) ·
+  picker on the existing `/rollup` (not a new page) · view access = leadership + admins
+  (`PROGRAM_ROLES = [ED, TPM, EM, VIEWER]` + admin bypass; TPM included, unlike `LEADERBOARD_ROLES`) ·
+  one program per team (`Team.programId`, `onDelete: SetNull`). The whole roll-up pipeline is reused —
+  `getRollupData` gained `{ programId }` and swaps ONLY the team-set source (`getMembershipContext` →
+  `program.teams`); `aggregateRollup`/§12 metrics **untouched**. New `Program` model + migration
+  `add_program_model` (11 → 12, pure additive, no enum ALTER; §9 schema + ERD byte-synced). New
+  `PROGRAM_ROLES`/`hasProgramAccess` (rbac), `src/lib/schemas/program.js`, `programId` on `teamFields`,
+  optional `programId` on `rollupDigestBodySchema`. **+2 routes** `POST/GET /api/programs` +
+  `PATCH/DELETE /api/programs/[programId]` (49 ƒ Dynamic from 47); team↔program association reuses the
+  team PATCH; ai-digest re-scopes. UI via the **impeccable** workflow (Operate-mode extension,
+  incumbent design preserved): program `<Select>` + a `Layers` "Program" scope chip / program-aware
+  hero on `/rollup`; self-contained `programs-config.jsx` admin section (create/rename/delete +
+  team-count badge, modeled on `jira-components-config.jsx`) + a Program `<Select>` in
+  `team-config-dialog.jsx`. **As-built snag:** `prisma migrate dev`'s client regen didn't stick and
+  the running dev server held a stale client (`prisma.program` undefined) — fixed with explicit
+  `yarn db:generate` + dev restart (the documented post-migration hazard). Verified: `yarn lint`
+  clean; impeccable detector clean; cold `rm -rf .next` **DB/env-free build** (`.env` moved aside,
+  confirmed absent mid-build) → 49 ƒ Dynamic incl. both new routes; `migrate status` up-to-date (**12
+  migrations**); **SSR/API smoke 27/27** (minted iron-session cookies vs Neon, fixtures torn to 0):
+  RBAC gating, program CRUD (admin-only, dup→409, bad-key→400), `/rollup?program=` scoping (all
+  program teams incl. one the viewer isn't on, excludes unassigned), my-teams path byte-unchanged,
+  member `?program=` silently ignored (200 not 403), team↔program PATCH, DELETE→SetNull. **Done**,
+  uncommitted — pending Naveen's commit. Visual acceptance (authed browser pass) is Naveen's step
+  (extension never connected). See context/features/program-rollup.md.
+
+- **2026-08-13/14 — Program roll-up finetuning + finish-feature re-verify (`feature/program-rollup`).**
+  From Naveen's visual review, four polish fixes: (1) **loader feedback** on Add/Save program in
+  `programs-config.jsx` — the house async vocabulary (top `ProgressBar` fires instantly + `Spinner`
+  "Adding…"/"Saving…" on buttons), replacing the silent-disabled "jarring" click; (2) the shared
+  **`Select` base box** now matches `Input` (`h-9 rounded-md py-1`) so bare selects line up with
+  Inputs/Buttons in a row (app-wide; sized `h-7`/`h-8` call sites still override); (3) a **program
+  badge** (`Layers` + name, or muted "No program") on the admin **team card**; (4) a **"{program}
+  program" chip** on the `/` board hero — (3)/(4) fed by a `program {id,name,key}` include added to
+  the admin team query + `getMembershipContext` (harmless for the key·name selectors). Re-verified:
+  `yarn lint` clean; `prisma validate` + `migrate status` up-to-date (12 migrations); cold DB/env-free
+  build exit 0 (49 ƒ Dynamic incl. both program routes); **SSR/API smoke 30/30** (the 27 core checks +
+  3 finetuning: board chip renders, `/admin` renders with the program include) run against `next start`,
+  fixtures torn to 0. A **transient Google Fonts CDN outage** (v20 Inter woff2 → 404) briefly failed
+  both dev and `next build` mid-verify — external + pre-existing (font import in the untouched root
+  layout, so it hits `main` too), cleared on retry once the CDN recovered. **Done**, uncommitted —
+  pending Naveen's SCOPED commit (must exclude the unrelated working-tree edits to `DEPLOY.md` +
+  `context/features/office-deployment.md`, which belong to the office-deployment work, not this
+  feature). Visual acceptance still Naveen's step. See context/features/program-rollup.md.

@@ -36,6 +36,13 @@ model User {
   displayName    String
   avatarUrl      String?
   isAdmin        Boolean          @default(false)  // global app admin (team-independent); distinct from TeamMembership.role = ADMIN. RBAC checks this.
+  /// Personal "default board view": the team + release the `/` board opens on when no ?team/?sprint
+  /// param is given (default-team-release.md). Bare ids, no FK — resolution tolerates a stale id
+  /// (deleted team ⇒ falls back to first visible team; deleted release ⇒ falls back to ACTIVE gate),
+  /// mirroring the existing `.find(id) ?? fallback` selection chain. A pinned release is honored even
+  /// once CLOSED. Self-service via PATCH /api/me; only ever read on `/`, never a metric input.
+  defaultTeamId    String?
+  defaultSprintId  String?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
@@ -71,13 +78,35 @@ enum Role {
   VIEWER     // read-only (share-view recipients, VPs)
 }
 
+/// A Program groups several scrum Teams — one level ABOVE the team (e.g. "GM" → AI Agentic,
+/// Configurator & Website Setup, DX & SCX, PCX…; other programs are Honda, AEP…). It is the first
+/// grouping above Team in the otherwise "single implicit org" model (see the Team note below):
+/// still ONE implicit org, but teams now roll up into an admin-defined Program. Admin-managed CRUD;
+/// a Team carries at most one Program (Team.programId, SetNull on delete). Powers the program-scoped
+/// roll-up on /rollup (program-rollup.md). No sprint/metric coupling — purely a grouping key.
+model Program {
+  id          String   @id @default(cuid())
+  name        String
+  key         String   @unique         // short handle, e.g. "GM"
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  teams       Team[]
+}
+
 /// A scrum team. ED roll-ups are just "the set of teams a user is an ED/TPM member of".
-/// Single implicit org (decided 2026-06-10): no Org table; sprints are global.
+/// Single implicit org (decided 2026-06-10): no Org table; sprints are global. A team may belong to
+/// one admin-defined Program (program-rollup.md) — the first grouping above Team; still one org.
 model Team {
   id                 String           @id @default(cuid())
   name               String
   key                String           @unique         // short handle, e.g. "GM"
   description        String?
+  /// Owning Program (program-rollup.md), or null when unassigned. SetNull on program delete so
+  /// deleting a Program orphans its teams rather than cascading (mirrors JiraSubComponent.teamId).
+  programId          String?
+  program            Program?         @relation(fields: [programId], references: [id], onDelete: SetNull)
   jiraProjectKeys    String[]                         // projects this team owns
   storyPointsFieldId String?                          // Jira custom field override (default customfield_10008)
   sprintFieldId      String?                          // Jira custom field override (default customfield_10020)
@@ -97,6 +126,12 @@ model Team {
   /// assignment noise). `null` ⇒ the team is excluded from the TEAM leaderboard's ranking (its
   /// developers still appear individually on the developer leaderboard).
   developerCount        Int?
+  /// Admin-entered scrum-team roster: the Jira ASSIGNEE email addresses of the developers who own
+  /// this team's work (needs-attention-roster.md). DISTINCT from TeamMembership — these are plain
+  /// Jira identities used only to scope the "Needs attention" hygiene track (`assignee in (...)`),
+  /// NOT app users and grant NO access; they need not have signed in. Empty ⇒ no NA track is
+  /// generated for this team (an empty roster deletes any existing NA filter on next sync).
+  memberEmails          String[]
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
@@ -108,6 +143,8 @@ model Team {
   statusMappings  StatusStageMapping[]
   subComponents   JiraSubComponent[]
   capacities      SprintCapacity[]
+
+  @@index([programId])
 }
 
 model TeamMembership {
@@ -207,6 +244,11 @@ enum WorkflowType {
   SUPPORT
   INTERNAL_BUG
   CUSTOM
+  /// The auto-generated "Needs attention" hygiene track (needs-attention-roster.md): items
+  /// assigned to a team's memberEmails roster that lack a sub-component or fix version. Has NO
+  /// stages (WORKFLOWS entry is stages:[]), is excluded from SEEDABLE_WORKFLOW_TYPES and from all
+  /// §12 metrics, and is partitioned out of the normal board filter list for separate rendering.
+  NEEDS_ATTENTION
 }
 
 enum FilterSourceType {

@@ -17,7 +17,7 @@ proxy, bakes `.env`, migrations left to a separate step, `CMD node server.js` on
 the filed ticket). RELB-28979 body curated (external — Naveen edits the live ticket).
 
 **Verified** (Node 22): `yarn lint` clean; `prisma validate` + `prisma migrate status` → *"Database
-schema is up to date!"* (**9 migrations, no schema change**); **env-free cold `rm -rf .next` build
+schema is up to date!"* (**12 migrations, no schema change**); **env-free cold `rm -rf .next` build
 green** (`.env` genuinely `mv`'d aside, restored after) — **45 `ƒ` Dynamic routes** (44 baseline +
 the new `/p/health`); the **standalone artifact traces the generated Prisma client + `pg` driver**
 into `.next/standalone/node_modules`, **boots**, and served `/p/health` → `{"status":"ok"}`,

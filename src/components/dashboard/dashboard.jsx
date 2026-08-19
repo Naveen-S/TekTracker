@@ -14,6 +14,8 @@ import { buildTrendSeries, snapshotVelocity } from "@/lib/metrics.mjs";
 import { useLocalPref } from "@/lib/use-local-pref";
 import { PageLoader } from "@/components/ui/spinner";
 import { AppShell } from "@/components/ui/app-shell";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { Toast, useToast } from "@/components/ui/toast";
 import { TopBar } from "./top-bar";
 import { Hero } from "./hero";
@@ -24,6 +26,7 @@ import { TrendPanel } from "./trend-panel";
 import { RiskCalloutsPanel } from "./risk-callouts-panel";
 import { FilterPanel } from "./filter-panel";
 import { PlannerPanel } from "./planner-panel";
+import { NeedsAttentionPanel } from "./needs-attention-panel";
 import { AddFilterDialog } from "./add-filter-dialog";
 import { SprintConfigDialog } from "./sprint-config-dialog";
 import { SprintStartDialog } from "./sprint-start-dialog";
@@ -49,6 +52,13 @@ function condenseSync(summary) {
   return parts.join(" · ");
 }
 
+/** One-line outcome for the per-track "Sync stages from Jira" success toast. */
+function condenseStageSync(summary) {
+  const parts = [summary.filterName, `${summary.applied} item${summary.applied === 1 ? "" : "s"} synced`];
+  if (summary.unmapped > 0) parts.push(`${summary.unmapped} unmapped`);
+  return parts.join(" · ");
+}
+
 export function Dashboard({
   user,
   teams,
@@ -57,7 +67,9 @@ export function Dashboard({
   can,
   sprints,
   selectedSprint,
+  defaults,
   filters,
+  needsAttentionTrack,
   progressByKey,
   snapshots,
   capacity,
@@ -81,6 +93,8 @@ export function Dashboard({
   const [showSprintStart, setShowSprintStart] = useState(false);
   const [editingRiskIssue, setEditingRiskIssue] = useState(null);
   const [sprintDialogMode, setSprintDialogMode] = useState(null); // null | "create" | "edit"
+  // Per-track "Sync stages from Jira" confirm — { filterId, filterName, total, manualEdits } | null.
+  const [confirmStages, setConfirmStages] = useState(null);
   const [syncing, setSyncing] = useState(false);
   // busy covers the whole round-trip — the API call AND the router.refresh() re-render — so the
   // UI stays visibly in-flight until the new server data is actually on screen. Post-await
@@ -109,6 +123,32 @@ export function Dashboard({
     startMutation(() => router.push(`/?${params.toString()}`));
   };
 
+  // The current team+release is the user's pinned default view (default-team-release.md) — drives
+  // the top-bar star's filled/empty state.
+  const isDefaultView =
+    Boolean(selectedTeam) &&
+    defaults.teamId === selectedTeam.id &&
+    defaults.sprintId === (selectedSprint?.id ?? null);
+
+  // Star toggle: pin the current team+release as the default, or clear it if it already is.
+  const setDefaultView = () =>
+    startMutation(async () => {
+      try {
+        await apiFetch("/api/me", {
+          method: "PATCH",
+          body: isDefaultView
+            ? { defaultTeamId: null, defaultSprintId: null }
+            : { defaultTeamId: selectedTeam.id, defaultSprintId: selectedSprint?.id ?? null },
+        });
+        startMutation(() => {
+          router.refresh();
+          showToast(isDefaultView ? "Default view cleared" : "Default view saved");
+        });
+      } catch (error) {
+        setAlert({ title: "Couldn't save default", body: error.message, tone: "error" });
+      }
+    });
+
   /** Run a mutation, refresh server data, surface failures in the alert modal. */
   const run = (errorTitle, fn) =>
     startMutation(async () => {
@@ -133,6 +173,30 @@ export function Dashboard({
         });
       } catch (error) {
         setAlert({ title: "Sync failed", body: error.message, tone: "error" });
+      } finally {
+        setSyncing(false);
+      }
+    });
+  };
+
+  // Per-track "Sync stages from Jira": open the confirm first (it overwrites stage edits), then run.
+  const handleSyncTrackStages = (payload) => setConfirmStages(payload);
+
+  const confirmSyncTrackStages = () => {
+    if (!base || !confirmStages) return;
+    const { filterId } = confirmStages;
+    setConfirmStages(null);
+    setSyncing(true);
+    startMutation(async () => {
+      try {
+        const summary = await apiFetch(`${base}/filters/${filterId}/sync-stages`, { method: "POST" });
+        // Toast lands together with the refreshed matrix (same two-transition pattern as handleSync).
+        startMutation(() => {
+          router.refresh();
+          showToast(`Stages synced · ${condenseStageSync(summary)}`);
+        });
+      } catch (error) {
+        setAlert({ title: "Stage sync failed", body: error.message, tone: "error" });
       } finally {
         setSyncing(false);
       }
@@ -256,6 +320,8 @@ export function Dashboard({
         sprints={sprints}
         selectedSprint={selectedSprint}
         onSelect={select}
+        isDefaultView={isDefaultView}
+        onSetDefault={setDefaultView}
         onAddFilter={() => setShowAddFilter(true)}
         onSync={handleSync}
         syncing={syncing}
@@ -354,9 +420,18 @@ export function Dashboard({
                     busy={busy}
                     onToggleStage={handleToggleStage}
                     onToggleBlocked={handleToggleBlocked}
+                    onSyncTrackStages={handleSyncTrackStages}
                   />
                 </section>
               </>
+            )}
+
+            {(needsAttentionTrack || can.manage) && (
+              <NeedsAttentionPanel
+                track={needsAttentionTrack}
+                canManage={can.manage}
+                jiraBaseUrl={jiraBaseUrl}
+              />
             )}
           </>
         )}
@@ -364,6 +439,49 @@ export function Dashboard({
 
       <Toast toast={toast} />
       <AlertDialog alert={alert} onClose={() => setAlert(null)} />
+      {confirmStages && (
+        <Dialog
+          open
+          title={`Sync stages — ${confirmStages.filterName}?`}
+          tone={confirmStages.manualEdits > 0 ? "error" : undefined}
+          size="sm"
+          onClose={() => setConfirmStages(null)}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setConfirmStages(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant={confirmStages.manualEdits > 0 ? "destructive" : "default"}
+                onClick={confirmSyncTrackStages}
+              >
+                Sync stages
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-2 text-sm leading-relaxed">
+            <p>
+              Pull the latest Jira status for all{" "}
+              <strong className="font-semibold text-foreground">
+                {confirmStages.total} item{confirmStages.total === 1 ? "" : "s"}
+              </strong>{" "}
+              in{" "}
+              <strong className="font-semibold text-foreground">{confirmStages.filterName}</strong>{" "}
+              and set their delivery stages from it.
+            </p>
+            {confirmStages.manualEdits > 0 && (
+              <p className="font-medium text-danger-strong">
+                {confirmStages.manualEdits} of them{" "}
+                {confirmStages.manualEdits === 1
+                  ? "has a manual stage edit"
+                  : "have manual stage edits"}{" "}
+                that will be overwritten.
+              </p>
+            )}
+          </div>
+        </Dialog>
+      )}
       {showAddFilter && base && (
         <AddFilterDialog
           onAdd={handleAddFilter}

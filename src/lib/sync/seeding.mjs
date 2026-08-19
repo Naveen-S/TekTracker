@@ -34,6 +34,25 @@ export function buildSeededStages(workflowType, jiraStatus, mappings) {
 }
 
 /**
+ * Decide what a per-track "Sync stages from Jira" pass (sync-stages-from-jira.md) should do to ONE
+ * issue's progress row, given its fresh Jira status. Unlike the create-only sync engine, this
+ * OVERWRITES existing rows from status — with one guard: an unmapped status never WIPES an existing
+ * row (only lays down an all-false baseline for a brand-new key, matching sync's create-only rule).
+ *
+ * @param {{ workflowType: string, jiraStatus: string, mappings: Array<object>, existing: { updatedById: string | null } | null }} args
+ * @returns {{ stages: boolean[], seededFromStatus: string | null, unmapped: boolean, write: boolean, overwroteManual: boolean }}
+ */
+export function resolveStageResync({ workflowType, jiraStatus, mappings, existing }) {
+  const { stages, seededFromStatus } = buildSeededStages(workflowType, jiraStatus, mappings);
+  const unmapped = seededFromStatus === null;
+  // Non-destructive: don't overwrite an existing row whose current status has no mapping — only
+  // seed a baseline for a key that has no row yet.
+  const write = !unmapped || !existing;
+  const overwroteManual = write && Boolean(existing) && existing.updatedById != null;
+  return { stages, seededFromStatus, unmapped, write, overwroteManual };
+}
+
+/**
  * Fit a stage array to another workflow's length: truncate or pad with `false`, prefix preserved
  * (owning-workflow re-evaluation / seed.md shape rule).
  * @param {boolean[]} stageCompletion

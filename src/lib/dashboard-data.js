@@ -10,7 +10,12 @@ import { prisma } from "@/lib/db";
 import { Role, SprintState } from "@/generated/prisma/client";
 import { aggregateRollup, combineSnapshotsByDay, computeSprintMetrics } from "@/lib/metrics.mjs";
 import { isAiConfigured } from "@/lib/ai/provider";
-import { TEAM_MANAGER_ROLES, TEAM_WRITER_ROLES, hasLeaderboardAccess } from "@/lib/rbac";
+import {
+  TEAM_MANAGER_ROLES,
+  TEAM_WRITER_ROLES,
+  hasLeaderboardAccess,
+  hasProgramAccess,
+} from "@/lib/rbac";
 import { groupSubComponentsByComponent } from "@/lib/sprint-start/track-jql.mjs";
 
 /**
@@ -57,17 +62,25 @@ async function getMembershipContext(user) {
   const teams = await prisma.team.findMany({
     where: user.isAdmin ? {} : { id: { in: [...roleByTeam.keys()] } },
     orderBy: { name: "asc" },
-    select: { id: true, name: true, key: true },
+    // program (program-rollup.md) rides along so the board hero can show the selected team's owning
+    // program; harmless for the team/sprint selectors that only read key·name.
+    select: { id: true, name: true, key: true, program: { select: { id: true, name: true, key: true } } },
   });
   return { roleByTeam, teams };
 }
 
 /**
- * All sprints (Gates are global) + the selection default: requested, else ACTIVE, else latest.
- * Exported for `leaderboard-data.js` (leaderboard.md) — the sprint selector there follows the same
- * default rule as `/` and `/rollup`; kept here rather than duplicated so the three never drift.
+ * All sprints (Gates are global) + the selection default: requested, else the user's pinned
+ * release, else ACTIVE, else latest. Exported for `leaderboard-data.js` (leaderboard.md) — the
+ * sprint selector there follows the same default rule as `/` and `/rollup`; kept here rather than
+ * duplicated so the three never drift.
+ *
+ * `fallbackSprintId` (default-team-release.md) is the caller's pinned default release, passed ONLY
+ * by the `/` board's getDashboardData; /rollup + /leaderboard omit it and are unaffected. It sits
+ * above the ACTIVE default so a pinned release is honored even once CLOSED, and a *deleted* pin
+ * simply misses the `find` and falls through to ACTIVE.
  */
-export async function getSprintSelection(sprintId) {
+export async function getSprintSelection(sprintId, fallbackSprintId) {
   const sprints = await prisma.sprint.findMany({
     orderBy: { developmentStart: "desc" },
     select: {
@@ -82,6 +95,7 @@ export async function getSprintSelection(sprintId) {
   });
   const selectedSprint =
     sprints.find((sprint) => sprint.id === sprintId) ??
+    sprints.find((sprint) => sprint.id === fallbackSprintId) ??
     sprints.find((sprint) => sprint.state === SprintState.ACTIVE) ??
     sprints[0] ??
     null;
@@ -104,12 +118,23 @@ export function serializeUser(user) {
  */
 export async function getDashboardData(user, { teamId, sprintId } = {}) {
   const { roleByTeam, teams } = await getMembershipContext(user);
-  const selectedTeam = teams.find((team) => team.id === teamId) ?? teams[0] ?? null;
+  // Selection precedence (default-team-release.md): explicit ?team= param → the user's pinned
+  // default team → first visible team. A stale pin (team no longer visible) misses both `find`s and
+  // falls through, so it never strands the user.
+  const selectedTeam =
+    teams.find((team) => team.id === teamId) ??
+    teams.find((team) => team.id === user.defaultTeamId) ??
+    teams[0] ??
+    null;
   const myRole = selectedTeam ? (roleByTeam.get(selectedTeam.id) ?? null) : null;
 
-  const { sprints, selectedSprint } = await getSprintSelection(sprintId);
+  const { sprints, selectedSprint } = await getSprintSelection(sprintId, user.defaultSprintId);
 
   let filters = [];
+  // The always-on "Needs attention" hygiene track (needs-attention-roster.md), partitioned OUT of
+  // `filters` so it never feeds the delivery matrix, the sidebar, search, export, or §12 metrics —
+  // it renders in its own panel. `null` when the team has no roster (no NA filter exists).
+  let needsAttentionTrack = null;
   let progressByKey = {};
   let snapshots = [];
   // committed-unplanned-work.md — admin-configured Committed-points target for this team+sprint.
@@ -117,11 +142,13 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
   // value, not derived from issues; `null` when unconfigured (decision 3).
   let capacity = null;
   if (selectedTeam && selectedSprint) {
-    filters = await prisma.filter.findMany({
+    const allFilters = await prisma.filter.findMany({
       where: { teamId: selectedTeam.id, sprintId: selectedSprint.id },
       orderBy: { sortOrder: "asc" },
       include: { issues: { orderBy: { jiraKey: "asc" } } },
     });
+    needsAttentionTrack = allFilters.find((f) => f.workflowType === "NEEDS_ATTENTION") ?? null;
+    filters = allFilters.filter((f) => f.workflowType !== "NEEDS_ATTENTION");
     const progress = await prisma.issueProgress.findMany({
       where: { teamId: selectedTeam.id, sprintId: selectedSprint.id },
       select: {
@@ -131,9 +158,17 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
         blocked: true,
         blockedReason: true,
         riskComment: true,
+        updatedById: true,
       },
     });
-    progressByKey = Object.fromEntries(progress.map((row) => [row.jiraKey, row]));
+    // `manuallyEdited` (a human touched the stages) drives the per-track "Sync stages" confirm
+    // count in the matrix — sync/seed writes leave updatedById null (sync-stages-from-jira.md).
+    progressByKey = Object.fromEntries(
+      progress.map(({ updatedById, ...row }) => [
+        row.jiraKey,
+        { ...row, manuallyEdited: updatedById != null },
+      ]),
+    );
     // Daily step-7 cron rows powering the trend/burndown panel (trend-burndown.md (b)).
     snapshots = await prisma.sprintSnapshot.findMany({
       where: { teamId: selectedTeam.id, sprintId: selectedSprint.id },
@@ -170,10 +205,14 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
     teams: teams.map((team) => ({ ...team, myRole: roleByTeam.get(team.id) ?? null })),
     selectedTeam,
     myRole,
+    // The user's pinned default view (default-team-release.md) — drives the top-bar star's
+    // filled/empty state. Kept out of serializeUser (reused by /leaderboard) since it's board-only.
+    defaults: { teamId: user.defaultTeamId ?? null, sprintId: user.defaultSprintId ?? null },
     can: { write: canWrite, manage: canManage, configureSprint: canConfigureSprint },
     sprints,
     selectedSprint,
     filters,
+    needsAttentionTrack,
     progressByKey,
     snapshots,
     capacity,
@@ -255,12 +294,38 @@ export async function getDigestData(teamId, sprintId) {
  * in JS; progress maps stay per team (§9: the same jiraKey may hold different progress in two
  * teams), so metrics are computed per team and summed by the pure `aggregateRollup`.
  *
+ * Program scope (program-rollup.md): a leadership/admin viewer may pass `programId` to re-scope the
+ * team set from "my teams" to ALL of an admin-defined Program's teams. This is the ONLY seam that
+ * changes — everything below (batched reads, per-team metrics, aggregateRollup) is team-set-agnostic
+ * and reused verbatim. `hasProgramAccess` gates it, so a non-leadership viewer's stray `?program=`
+ * is silently ignored (falls back to my-teams) rather than 403'd off the read-only page. With no
+ * `programId` the function behaves exactly as before (the /rollup default + the ai-digest route).
+ *
  * @param {import("@/generated/prisma/client").User} user
- * @param {{ sprintId?: string }} [selection] from searchParams
+ * @param {{ sprintId?: string, programId?: string }} [selection] from searchParams
  */
-export async function getRollupData(user, { sprintId } = {}) {
-  const { roleByTeam, teams } = await getMembershipContext(user);
+export async function getRollupData(user, { sprintId, programId } = {}) {
+  const { roleByTeam, teams: myTeams } = await getMembershipContext(user);
   const { sprints, selectedSprint } = await getSprintSelection(sprintId);
+
+  const canViewPrograms = await hasProgramAccess(user);
+  const programs = canViewPrograms
+    ? await prisma.program.findMany({
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, key: true },
+      })
+    : [];
+  const selectedProgram =
+    canViewPrograms && programId ? (programs.find((program) => program.id === programId) ?? null) : null;
+  // A program roll-up shows EVERY team in the program (not just the viewer's memberships); a team
+  // the viewer isn't on resolves `myRole` to null → the summary table already renders "admin"/"—".
+  const teams = selectedProgram
+    ? await prisma.team.findMany({
+        where: { programId: selectedProgram.id },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, key: true },
+      })
+    : myTeams;
 
   let perTeam = [];
   let combinedSnapshots = [];
@@ -346,6 +411,11 @@ export async function getRollupData(user, { sprintId } = {}) {
   return {
     user: serializeUser(user),
     teams: teams.map((team) => ({ ...team, myRole: roleByTeam.get(team.id) ?? null })),
+    // Program scope (program-rollup.md) — the picker options + the resolved scope. `programs` is
+    // empty (and the picker hidden) for a non-leadership viewer; `selectedProgram` null ⇒ my-teams.
+    programs,
+    selectedProgram,
+    canViewPrograms,
     sprints,
     selectedSprint,
     perTeam,

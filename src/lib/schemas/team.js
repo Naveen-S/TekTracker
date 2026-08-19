@@ -15,6 +15,15 @@ const jiraCustomFieldId = z
 
 const issueTypeArray = z.array(z.string().trim().min(1)).optional();
 
+// A roster member email (needs-attention-roster.md). Validated to an email shape that is also
+// JQL-safe — no whitespace and no double-quote — because these strings are interpolated into the
+// Needs-attention track's JQL as `assignee in ("a@x.com", ...)`.
+const memberEmail = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^[^\s"@]+@[^\s"@]+\.[^\s"@]+$/, "must be a valid email address");
+
 const teamFields = z.object({
   name: z.string().trim().min(1, "name is required").max(80),
   key: z
@@ -35,6 +44,18 @@ const teamFields = z.object({
   // Leaderboard.md decision 3: the team velocity leaderboard's points ÷ developers divisor.
   // null/unset ⇒ excluded from the team leaderboard's ranking.
   developerCount: z.coerce.number().int().min(1).max(200).nullish(),
+  // Scrum-team roster of Jira assignee emails (needs-attention-roster.md) — DISTINCT from
+  // TeamMembership; scopes the "Needs attention" hygiene track. Capped to bound generated JQL size,
+  // and de-duplicated server-side (each element is lowercased by `memberEmail`) so a direct API call
+  // can't persist case-variant duplicates.
+  memberEmails: z
+    .array(memberEmail)
+    .max(200)
+    .transform((emails) => [...new Set(emails)])
+    .optional(),
+  // Owning Program (program-rollup.md), or null to clear the association. Bare cuid FK (SetNull on
+  // program delete); the association is edited via the team POST/PATCH, so no dedicated route.
+  programId: z.string().cuid().nullish(),
 });
 
 export const teamCreateSchema = teamFields;

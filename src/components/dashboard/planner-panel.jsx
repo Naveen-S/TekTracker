@@ -7,7 +7,9 @@
  * Chrome follows the legacy .planner-panel system (src/styles.css :847-971): section headers get
  * a color-mix() 6% tint of the filter accent (inline — data-driven), the first column is frozen.
  */
+import { RefreshCw } from "lucide-react";
 import { WORKFLOWS } from "@/lib/workflows.mjs";
+import { Button } from "@/components/ui/button";
 import { IssueRow } from "./issue-row";
 
 export function PlannerPanel({
@@ -22,6 +24,7 @@ export function PlannerPanel({
   asOf,
   onToggleStage,
   onToggleBlocked,
+  onSyncTrackStages,
 }) {
   return (
     <section className="overflow-hidden rounded-xl border bg-card">
@@ -72,6 +75,12 @@ export function PlannerPanel({
           visibleFilters.map((filter, index) => {
             const workflow = WORKFLOWS[filter.workflowType];
             const accent = filter.accentColor ?? "#00a892";
+            const manualEdits = filter.issues.reduce(
+              (count, issue) => count + (progressByKey[issue.jiraKey]?.manuallyEdited ? 1 : 0),
+              0,
+            );
+            const canSyncStages =
+              canWrite && workflow.stages.length > 0 && filter.issues.length > 0 && onSyncTrackStages;
             return (
               <div key={filter.id} id={`filter-section-${filter.id}`} className={index > 0 ? "mt-5" : undefined}>
                 <div
@@ -87,6 +96,26 @@ export function PlannerPanel({
                   <em className="text-xs font-semibold not-italic text-muted-foreground">
                     {filter.issues.length} items · {workflow.name}
                   </em>
+                  {canSyncStages && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="ml-auto h-7 cursor-pointer self-center px-2 text-muted-foreground hover:text-foreground"
+                      disabled={busy}
+                      onClick={() =>
+                        onSyncTrackStages({
+                          filterId: filter.id,
+                          filterName: filter.name,
+                          total: filter.issues.length,
+                          manualEdits,
+                        })
+                      }
+                      title="Pull the latest Jira status for this track and set each item's stages from it"
+                    >
+                      <RefreshCw className="size-3.5" aria-hidden="true" />
+                      Sync stages
+                    </Button>
+                  )}
                 </div>
 
                 <div

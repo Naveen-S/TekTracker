@@ -13,6 +13,7 @@ import { Dialog, DialogError } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -22,14 +23,21 @@ import { apiFetch } from "@/lib/api-client";
 const parseIssueTypes = (text) =>
   [...new Set(text.split(",").map((v) => v.trim()).filter(Boolean))];
 
-export function TeamConfigDialog({ mode, team, jiraComponents, onClose }) {
+// Roster emails: one per line or comma/space separated, lowercased + de-duplicated. Shape is
+// validated server-side (memberEmail zod); this only normalizes what the admin typed.
+const parseEmails = (text) =>
+  [...new Set(text.split(/[\s,]+/).map((v) => v.trim().toLowerCase()).filter(Boolean))];
+
+export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, onClose }) {
   const router = useRouter();
   const [name, setName] = useState(team?.name ?? "");
   const [key, setKey] = useState(team?.key ?? "");
+  const [programId, setProgramId] = useState(team?.programId ?? "");
   const [description, setDescription] = useState(team?.description ?? "");
   const [developerCount, setDeveloperCount] = useState(
     team?.developerCount != null ? String(team.developerCount) : "",
   );
+  const [memberEmails, setMemberEmails] = useState((team?.memberEmails ?? []).join("\n"));
   const [featureIssueTypes, setFeatureIssueTypes] = useState(
     (team?.featureIssueTypes ?? []).join(", "),
   );
@@ -54,6 +62,7 @@ export function TeamConfigDialog({ mode, team, jiraComponents, onClose }) {
 
   const selectedComponent = jiraComponents.find((c) => c.id === selectedComponentId) ?? null;
   const claimedCount = claimedIds.size;
+  const memberEmailCount = parseEmails(memberEmails).length;
 
   const toggleSubComponent = (subComponentId) => {
     setClaimedIds((current) => {
@@ -73,8 +82,10 @@ export function TeamConfigDialog({ mode, team, jiraComponents, onClose }) {
     const body = {
       name: name.trim(),
       key: key.trim(),
+      programId: programId || null,
       description: description.trim() || null,
       developerCount: developerCount.trim() === "" ? null : Number(developerCount),
+      memberEmails: parseEmails(memberEmails),
       featureIssueTypes: parseIssueTypes(featureIssueTypes),
       techDebtIssueTypes: parseIssueTypes(techDebtIssueTypes),
       internalBugIssueTypes: parseIssueTypes(internalBugIssueTypes),
@@ -147,6 +158,27 @@ export function TeamConfigDialog({ mode, team, jiraComponents, onClose }) {
           </div>
         </div>
         <div className="flex flex-col gap-1.5">
+          <Label htmlFor="team-program">Program</Label>
+          <Select
+            id="team-program"
+            value={programId}
+            onChange={(event) => setProgramId(event.target.value)}
+            disabled={saving || programs.length === 0}
+          >
+            <option value="">— No program —</option>
+            {programs.map((program) => (
+              <option key={program.id} value={program.id}>
+                {program.key} · {program.name}
+              </option>
+            ))}
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {programs.length === 0
+              ? "No programs yet — create one in the Programs section, then assign this team."
+              : "Groups this team under a program for the leadership roll-up."}
+          </p>
+        </div>
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="team-description">Description (optional)</Label>
           <Input
             id="team-description"
@@ -172,6 +204,34 @@ export function TeamConfigDialog({ mode, team, jiraComponents, onClose }) {
           <p className="text-xs text-muted-foreground">
             Used as the Velocity Leaderboard&rsquo;s points &divide; developers divisor. Leave
             blank to exclude this team from the team leaderboard&rsquo;s ranking.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="team-member-emails">Scrum team members (Jira emails)</Label>
+            <Badge tone={memberEmailCount > 0 ? "brand" : "neutral"}>
+              {memberEmailCount} {memberEmailCount === 1 ? "member" : "members"}
+            </Badge>
+          </div>
+          <Textarea
+            id="team-member-emails"
+            value={memberEmails}
+            onChange={(event) => setMemberEmails(event.target.value)}
+            placeholder={"alex@tekion.com\npriya@tekion.com"}
+            rows={3}
+            disabled={saving}
+            spellCheck={false}
+            autoCapitalize="none"
+            autoCorrect="off"
+            className="min-h-20 leading-relaxed"
+          />
+          <p className="text-xs text-muted-foreground">
+            One email per line (commas work too) — the developers who own this team&rsquo;s Jira
+            work. Powers the board&rsquo;s{" "}
+            <strong className="font-medium text-foreground">Needs attention</strong>{" "}
+            track: their items missing a sub-component or fix version. Separate from team
+            membership &amp; roles below — listing an email here grants no app access.
           </p>
         </div>
 

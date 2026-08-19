@@ -15,9 +15,28 @@ import { AvatarChip } from "@/components/ui/avatar-chip";
 import { PageLoader } from "@/components/ui/spinner";
 import { apiFetch } from "@/lib/api-client";
 
-export function RollupTopBar({ user, sprints, selectedSprint, hasBugReport }) {
+export function RollupTopBar({
+  user,
+  programs = [],
+  selectedProgram,
+  sprints,
+  selectedSprint,
+  hasBugReport,
+}) {
   const router = useRouter();
   const [switching, startSwitch] = useTransition();
+
+  // Both selects re-scope the same page; each preserves the OTHER's current value so switching
+  // program keeps the sprint and vice versa (program-rollup.md). "My teams" clears ?program=.
+  const navigate = ({ programId, sprintId }) => {
+    const params = new URLSearchParams();
+    const nextProgram = programId !== undefined ? programId : (selectedProgram?.id ?? "");
+    const nextSprint = sprintId !== undefined ? sprintId : (selectedSprint?.id ?? "");
+    if (nextProgram) params.set("program", nextProgram);
+    if (nextSprint) params.set("sprint", nextSprint);
+    const query = params.toString();
+    startSwitch(() => router.push(query ? `/rollup?${query}` : "/rollup"));
+  };
 
   const handleLogout = async () => {
     try {
@@ -39,16 +58,30 @@ export function RollupTopBar({ user, sprints, selectedSprint, hasBugReport }) {
         </div>
       </div>
 
+      {programs.length > 0 && (
+        <Select
+          aria-label="Program scope"
+          title="Scope the roll-up to a program"
+          className="sm:w-56"
+          value={selectedProgram?.id ?? ""}
+          disabled={switching}
+          onChange={(event) => navigate({ programId: event.target.value })}
+        >
+          <option value="">My teams</option>
+          {programs.map((program) => (
+            <option key={program.id} value={program.id}>
+              {program.key} · {program.name}
+            </option>
+          ))}
+        </Select>
+      )}
+
       {sprints.length > 0 && (
         <Select
           aria-label="Sprint"
           value={selectedSprint?.id ?? ""}
           disabled={switching}
-          onChange={(event) =>
-            startSwitch(() =>
-              router.push(`/rollup?sprint=${encodeURIComponent(event.target.value)}`),
-            )
-          }
+          onChange={(event) => navigate({ sprintId: event.target.value })}
         >
           {sprints.map((sprint) => (
             <option key={sprint.id} value={sprint.id}>

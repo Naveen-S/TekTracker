@@ -23,10 +23,11 @@ export default async function AdminPage() {
     notFound();
   }
 
-  const [teams, sprints, jiraComponents, capacityRows] = await Promise.all([
+  const [teams, programs, sprints, jiraComponents, capacityRows] = await Promise.all([
     prisma.team.findMany({
       orderBy: { name: "asc" },
       include: {
+        program: { select: { id: true, name: true, key: true } },
         memberships: {
           orderBy: { createdAt: "asc" },
           include: {
@@ -38,6 +39,12 @@ export default async function AdminPage() {
           include: { component: { select: { id: true, name: true, projectKey: true } } },
         },
       },
+    }),
+    // program-rollup.md — the Programs admin section + the per-team Program picker; team counts
+    // drive each row's "N teams" badge.
+    prisma.program.findMany({
+      orderBy: { name: "asc" },
+      include: { _count: { select: { teams: true } } },
     }),
     prisma.sprint.findMany({ orderBy: { developmentStart: "desc" } }),
     prisma.jiraComponent.findMany({
@@ -66,6 +73,7 @@ export default async function AdminPage() {
     >
       <AdminPanel
         teams={teams}
+        programs={programs}
         sprints={sprints}
         jiraComponents={jiraComponents}
         capacityRows={capacityRows}

@@ -63,6 +63,19 @@ function compareClause(field, values) {
     : `${field} IN (${values.map(quoteIfNeeded).join(", ")})`;
 }
 
+// `field IS EMPTY` — an absence clause. `quoteIfNeeded`/`compareClause` only build `=`/`IN`, so the
+// Needs-attention track (which selects on a field being UNSET) needs this separately.
+function emptyClause(field) {
+  return `${field} IS EMPTY`;
+}
+
+// Emails carry no whitespace, so `quoteIfNeeded` would leave them BARE — which breaks Jira's
+// `assignee IN (...)` clause (assignee literals must be quoted strings). Roster emails are validated
+// to contain no double-quote or whitespace (memberEmail zod), so this can never inject.
+function quoteEmail(value) {
+  return `"${String(value)}"`;
+}
+
 /**
  * One track's JQL: `type ... AND project ... [AND <field> ... for each componentClause] AND
  * [fixversion ...] ORDER BY issuetype ASC` — field order, `type`/`fixversion` naming, unquoted
@@ -122,4 +135,39 @@ export function buildAllTrackJql({ team, componentGroups, fixVersions = [] }) {
       fixVersions,
     }),
   };
+}
+
+/** Display name for the always-on Needs-attention hygiene track (not a sprint-start track). */
+export const NEEDS_ATTENTION_NAME = "Needs attention";
+
+/**
+ * JQL for the always-on "Needs attention" hygiene track (needs-attention-roster.md). Every other
+ * track scopes by the `"sub-component[dropdown]"` field, so an item missing that tag is invisible on
+ * the board — its only reliable team identity is the ASSIGNEE. This surfaces the team's own work (by
+ * roster email) that lacks a sub-component OR a fix version and isn't already Done:
+ *
+ *   assignee IN ("a@x.com", "b@x.com") AND project in (GM)
+ *     AND ("sub-component[dropdown]" IS EMPTY OR fixVersion IS EMPTY)
+ *     AND statusCategory != Done ORDER BY updated DESC
+ *
+ * Returns `null` when there is nothing to scope by (empty roster or no project keys) — callers must
+ * never emit an unbounded `assignee IN ()` or a project-less scan across everything the token sees.
+ *
+ * @param {{ memberEmails?: string[], projectKeys?: string[], excludeDone?: boolean }} args
+ * @returns {string|null}
+ */
+export function buildNeedsAttentionJql({ memberEmails, projectKeys, excludeDone = true }) {
+  const emails = [
+    ...new Set((memberEmails ?? []).map((e) => String(e).trim().toLowerCase()).filter(Boolean)),
+  ];
+  const projects = [...new Set((projectKeys ?? []).map((p) => String(p).trim()).filter(Boolean))];
+  if (emails.length === 0 || projects.length === 0) return null;
+
+  const clauses = [
+    `assignee IN (${emails.map(quoteEmail).join(", ")})`,
+    compareClause("project", projects),
+    `(${emptyClause(SUB_COMPONENT_FIELD)} OR ${emptyClause("fixVersion")})`,
+  ];
+  if (excludeDone) clauses.push("statusCategory != Done");
+  return `${clauses.join(" AND ")} ORDER BY updated DESC`;
 }

@@ -77,4 +77,7 @@ export const digestContract = {
  */
 export const rollupDigestBodySchema = z.object({
   sprintId: z.string().trim().min(1),
+  // Optional program scope (program-rollup.md) so the digest matches an on-screen program roll-up;
+  // getRollupData re-checks hasProgramAccess, so a non-leadership caller's programId is ignored.
+  programId: z.string().trim().min(1).optional(),
 });

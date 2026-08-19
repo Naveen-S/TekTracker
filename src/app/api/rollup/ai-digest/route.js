@@ -30,9 +30,11 @@ export const dynamic = "force-dynamic";
 export async function POST(request) {
   try {
     const user = await requireUser();
-    const { sprintId } = await parseJsonBody(request, rollupDigestBodySchema);
+    const { sprintId, programId } = await parseJsonBody(request, rollupDigestBodySchema);
 
-    const data = await getRollupData(user, { sprintId });
+    // programId re-scopes to a program's teams; getRollupData enforces hasProgramAccess (a
+    // non-leadership caller's programId is ignored → their own-teams digest, never a leak).
+    const data = await getRollupData(user, { sprintId, programId });
     if (data.teams.length === 0) {
       throw new ForbiddenError("You are not a member of any team");
     }
