@@ -2044,3 +2044,34 @@
   pending Naveen's SCOPED commit (must exclude the unrelated working-tree edits to `DEPLOY.md` +
   `context/features/office-deployment.md`, which belong to the office-deployment work, not this
   feature). Visual acceptance still Naveen's step. See context/features/program-rollup.md.
+
+- **2026-08-27 — Board polish: points display boundary, filter-card Jira quick-link, shared program
+  chip (`program-wise-roll-up`, level with `main` @ `08228a1`).** Three adjacent threads picked up
+  after the program-rollup merge. (1) **`formatPoints`** added to `src/lib/metrics.mjs` — a
+  display-only boundary (round to ≤2dp, drop trailing zeros) applied at every points readout
+  (`issue-row`, `metric-grid`, `filter-panel`, `needs-attention-panel`, `risk-callouts-panel`,
+  `rollup-risk-section`), with `Math.round` on the three whole-number readouts (`metric-grid`
+  Completion denominator, `team-summary-table`, `export-dialog`); **purely additive — a 10-line
+  insertion, no existing metric function or field touched**, and §12 explicitly annotated so it is
+  never mistaken for a metric change. (2) New **`src/lib/jira/url.js` `buildJiraSearchUrl`** (filter
+  id wins over JQL, mirroring `bug-lists.jsx`) behind a per-track **copy-Jira-link button** on the
+  board's filter cards, with `jiraBaseUrl`/`showToast` threaded from `dashboard.jsx`. (3) New shared
+  **`ui/program-chip.jsx`** replacing the two divergent inline program pills in `hero.jsx` and
+  `rollup/page.jsx` (the roll-up's uppercase "Program" variant is gone), plus admin polish —
+  `focus-visible` ring + `title` on delete-program, `role`/`aria-live` on the status message,
+  `bg-info-soft` icon tile, badge cleanup. **No schema change (stays 12 migrations), no new route
+  (stays 49 ƒ Dynamic).** Verified: `yarn lint` clean; `prisma validate` + `migrate status`
+  up-to-date; **cold DB/env-free build** run at a stricter bar than prior rounds — **both `.env` and
+  `.env.production` moved aside** and confirmed absent mid-build (the app reads no `STORYBOARD_*`
+  var, so that file was never load-bearing), exit 0; **pure fixtures 24/24**; **SSR smoke 21/21**
+  against `next start` + a minted iron-session cookie vs Neon (read-only — nothing to tear down):
+  both hero chips render and the chip is correctly absent on the unscoped roll-up, 4 copy buttons =
+  exactly CALM's 4 delivery filters (the 5th, `NEEDS_ATTENTION`, is partitioned out), and **zero**
+  float artifacts in any rendered page. Two as-built findings worth carrying: **(a)** a full scan of
+  live data (572 issues) found **0** artifacts at every aggregation level today — the source values
+  `0.13`/`0.38` are present but small sums still print clean, so this is warranted *hardening*, not a
+  fix for a visible defect (`41 + 2×0.13` → `"41.260000000000005"` proves the mechanism); **(b)**
+  **Next 16 returns HTTP 200 for `redirect()` under `next start`, not only under Turbopack dev** —
+  the carry-forward note under-scoped this, and it cost three false smoke failures before assertions
+  moved to content. **Done**, uncommitted — pending Naveen's commit. Visual acceptance still Naveen's
+  step. See context/features/board-polish-points-and-links.md.

@@ -80,7 +80,7 @@ export function TeamSummaryTable({ perTeam, selectedSprint, asOf, viewerIsAdmin 
               </td>
               <td className="px-3 py-2.5 text-right tabular-nums">{metrics.totalIssues}</td>
               <td className="px-3 py-2.5 text-right tabular-nums">
-                {Math.round(metrics.deliveryCompletedPoints)}/{metrics.deliveryPoints}
+                {Math.round(metrics.deliveryCompletedPoints)}/{Math.round(metrics.deliveryPoints)}
               </td>
               <td className="px-3 py-2.5 text-right tabular-nums">
                 {capacity?.committedPoints != null ? (

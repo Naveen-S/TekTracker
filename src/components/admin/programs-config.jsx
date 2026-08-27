@@ -96,9 +96,10 @@ function ProgramRow({ program, run, busy }) {
             </Button>
             <button
               type="button"
-              className="rounded p-1 text-muted-foreground transition-colors hover:bg-danger-soft hover:text-danger-strong"
+              className="rounded p-1 text-muted-foreground transition-colors hover:bg-danger-soft hover:text-danger-strong focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
               disabled={busy}
               aria-label={`Delete ${program.name}`}
+              title={`Delete ${program.name}`}
               onClick={() => setConfirmingDelete(true)}
             >
               <X className="size-3.5" />
@@ -202,7 +203,7 @@ export function ProgramsConfig({ programs }) {
       <header className="mb-4 flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
         <div className="flex min-w-0 items-center gap-2.5">
           <span
-            className="grid size-7 shrink-0 place-items-center rounded-md bg-muted text-secondary-foreground"
+            className="grid size-7 shrink-0 place-items-center rounded-md bg-info-soft text-info-strong"
             aria-hidden="true"
           >
             <Layers className="size-4" />
@@ -224,6 +225,8 @@ export function ProgramsConfig({ programs }) {
 
       {status && (
         <p
+          role={status.tone === "error" ? "alert" : "status"}
+          aria-live={status.tone === "error" ? "assertive" : "polite"}
           className={`mb-3 text-xs font-semibold ${
             status.tone === "error" ? "text-danger-strong" : "text-success-strong"
           }`}

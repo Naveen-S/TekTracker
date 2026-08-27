@@ -6,7 +6,7 @@
 > **[BUILT]**, **[PARTIAL]**, **[PLANNED]**, or **[GAP]** so the as-built state is never confused
 > with the target state.
 >
-> Last reviewed: 2026-08-09 · Owner: Naveen · Audience: engineers + Claude Code.
+> Last reviewed: 2026-08-27 · Owner: Naveen · Audience: engineers + Claude Code.
 >
 > **Rename note (2026-07-31):** the product was renamed to **StoryBoard** (was "Sprint Tracker",
 > earlier codename "Tek Tracker" / "TekTracker"). The rename is display/branding only — no schema,
@@ -1214,6 +1214,7 @@ UI/UX *direction* is the spec above; this table is the *history* of what shipped
 | 2026-08-09 | Unplanned bifurcation + per-team composition chart | unplanned-split-and-chart.md |
 | 2026-08-12 | Program picker + program-scoped roll-up hero; admin Programs section | program-rollup.md |
 | 2026-08-11 | Admin roster editor + board "Needs attention" hygiene panel | needs-attention-roster.md |
+| 2026-08-27 | Points display boundary + filter-card Jira quick-link + shared program chip | board-polish-points-and-links.md |
 
 ---
 
@@ -1278,6 +1279,13 @@ legacy `src/workflows.js` + `src/utils/sprintMetricsCompute.js` in `legacy/`).
   (`getHealthStatus`, `getWeeklyVelocity`, `computeSprintMetrics`, `getSprintPhase`) take an
   optional `asOf` (default: now). Frozen shared views pass their snapshot's `capturedAt` so
   health/velocity can't drift after capture; all other callers pass nothing and behave as before.
+
+> **Display boundary — `formatPoints` (added 2026-08-27, board-polish-points-and-links.md).**
+> Story points are summed in JS at several levels (track → team → sprint → roll-up), so IEEE-754
+> addition can leak artifacts like `41.260000000000005` into the UI wherever a binary-inexact point
+> value participates (live data holds `0.13` and `0.38`). `formatPoints` rounds to ≤2dp and drops
+> trailing zeros at **render time only**. It is **not** a metric: no value in this section moves,
+> and its result must never be fed back into a calculation.
 
 > All of the above depend on **manual stage completion** today. They become trustworthy only once the
 > hybrid seed-from-Jira model (§6) lands.

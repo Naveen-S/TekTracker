@@ -79,6 +79,8 @@ export function RollupTopBar({
       {sprints.length > 0 && (
         <Select
           aria-label="Sprint"
+          title="Select the sprint (Gate) to roll up"
+          className="sm:w-56"
           value={selectedSprint?.id ?? ""}
           disabled={switching}
           onChange={(event) => navigate({ sprintId: event.target.value })}

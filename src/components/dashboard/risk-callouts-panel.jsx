@@ -1,6 +1,6 @@
 import { AlertTriangle, CheckCircle2, MessageSquarePlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { formatDateUTC } from "@/lib/metrics.mjs";
+import { formatDateUTC, formatPoints } from "@/lib/metrics.mjs";
 
 /**
  * Risk call-outs (trend-burndown iteration, per Naveen 2026-07-19) — the deterministic
@@ -199,7 +199,7 @@ export function RiskCalloutsPanel({ issues = [], series, jiraBaseUrl, onEditComm
                 <span className="flex items-center justify-end gap-1 pt-0.5">
                   {issue.storyPoints > 0 && (
                     <span className="text-[11px] text-muted-foreground tabular-nums">
-                      {issue.storyPoints} pts
+                      {formatPoints(issue.storyPoints)} pts
                     </span>
                   )}
                   {onEditComment && (

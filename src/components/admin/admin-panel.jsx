@@ -109,12 +109,12 @@ function TeamCard({ team, run, busy, onEdit }) {
             {team.key}
           </span>
           {team.program ? (
-            <Badge tone="brand" className="gap-1">
+            <Badge tone="brand">
               <Layers className="size-3" aria-hidden="true" />
               {team.program.name}
             </Badge>
           ) : (
-            <Badge tone="neutral" className="font-normal text-muted-foreground">
+            <Badge tone="neutral" className="font-normal">
               No program
             </Badge>
           )}

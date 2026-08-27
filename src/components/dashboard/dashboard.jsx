@@ -408,6 +408,8 @@ export function Dashboard({
                     onReorderFilters={can.manage ? handleReorderFilters : null}
                     searchQuery={search}
                     onSearchChange={setSearch}
+                    jiraBaseUrl={jiraBaseUrl}
+                    showToast={showToast}
                   />
                   <PlannerPanel
                     allFilters={filters}

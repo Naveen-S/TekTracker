@@ -6,7 +6,6 @@
  * (decision 6 — staleness per team instead); the only client leaf is the top bar.
  */
 import { redirect } from "next/navigation";
-import { Layers } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { getRollupData } from "@/lib/dashboard-data";
 import {
@@ -24,6 +23,7 @@ import {
 import { MetricGrid } from "@/components/dashboard/metric-grid";
 import { TrendPanel } from "@/components/dashboard/trend-panel";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { ProgramChip } from "@/components/ui/program-chip";
 import { RollupTopBar } from "@/components/rollup/rollup-top-bar";
 import { TeamSummaryTable } from "@/components/rollup/team-summary-table";
 import { RollupRiskSection } from "@/components/rollup/rollup-risk-section";
@@ -113,9 +113,7 @@ export default async function RollupPage({ searchParams }) {
             <HeroShell className="flex flex-wrap items-center justify-between gap-4 px-5 py-6 md:px-8 md:py-7">
               <div>
                 {selectedProgram && (
-                  <span className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-on-ink-accent ring-1 ring-white/15">
-                    <Layers className="size-3" aria-hidden="true" /> Program
-                  </span>
+                  <ProgramChip name={selectedProgram.name} className="mb-2" />
                 )}
                 <HeroEyebrow>
                   {selectedSprint.name} · {formatSprintWindow(selectedSprint)}

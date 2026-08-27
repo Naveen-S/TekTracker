@@ -654,7 +654,7 @@ function FilterBand({ row }) {
       </div>
       <div className="flex shrink-0 items-baseline gap-3 text-right">
         <span className="text-[8px] text-[#64748b] tabular-nums">
-          {Math.round(fc)} / {fp} pts
+          {Math.round(fc)} / {Math.round(fp)} pts
         </span>
         <span className="text-[16px] leading-none font-black tabular-nums text-[#0f172a]">
           {fpct}%
