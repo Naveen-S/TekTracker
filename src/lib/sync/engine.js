@@ -15,7 +15,12 @@ import { NotFoundError } from "@/lib/rbac";
 import { ConflictError } from "@/lib/api/route-helpers";
 import { owningWorkflowType } from "@/lib/workflows.mjs";
 import { ensureNeedsAttentionFilter } from "@/lib/needs-attention/ensure-filter";
-import { buildSeededStages, reshapeStageCompletion, resolveStageResync } from "@/lib/sync/seeding.mjs";
+import {
+  buildSeededStages,
+  groupStageUpdates,
+  reshapeStageCompletion,
+  resolveStageResync,
+} from "@/lib/sync/seeding.mjs";
 import {
   getJiraAuthForUser,
   fetchMyself,
@@ -193,17 +198,23 @@ export async function syncTeamSprint({ teamId, sprintId, userId }) {
     });
   }
 
-  await prisma.$transaction(async (tx) => {
-    if (toCreate.length > 0) {
-      await tx.issueProgress.createMany({ data: toCreate });
-    }
-    for (const change of reevaluations) {
-      await tx.issueProgress.update({
-        where: { id: change.id },
-        data: { workflowType: change.workflowType, stageCompletion: change.stageCompletion },
-      });
-    }
-  });
+  // Re-evaluations carry a per-row stage array, so they can't be collapsed like the stage re-sync's
+  // writes (groupStageUpdates) — raise the budget instead: each row is one round-trip to Neon and
+  // the default 5s ceiling is ~100 rows (P2028).
+  await prisma.$transaction(
+    async (tx) => {
+      if (toCreate.length > 0) {
+        await tx.issueProgress.createMany({ data: toCreate });
+      }
+      for (const change of reevaluations) {
+        await tx.issueProgress.update({
+          where: { id: change.id },
+          data: { workflowType: change.workflowType, stageCompletion: change.stageCompletion },
+        });
+      }
+    },
+    { timeout: 30_000 },
+  );
 
   return {
     filters: filterSummaries,
@@ -341,22 +352,26 @@ export async function syncFilterStagesFromJira({ teamId, sprintId, filterId, use
     }
   }
 
-  await prisma.$transaction(async (tx) => {
-    if (toCreate.length > 0) {
-      await tx.issueProgress.createMany({ data: toCreate });
-    }
-    for (const change of toUpdate) {
-      await tx.issueProgress.update({
-        where: { id: change.id },
-        data: {
-          workflowType: change.workflowType,
-          stageCompletion: change.stageCompletion,
-          seededFromStatus: change.seededFromStatus,
-          updatedById: null, // status-derived — keeps repeated syncs idempotent (see contract above)
-        },
-      });
-    }
-  });
+  // One `updateMany` per distinct payload instead of one `update` per issue: a per-row loop over a
+  // real track (~100 issues) spends ~100 sequential round-trips to Neon and overran Prisma's 5s
+  // interactive-transaction budget (P2028). Grouping collapses that to roughly one write per Jira
+  // status in the track; the raised timeout is headroom for a very large track, not the fix.
+  const updateGroups = groupStageUpdates(toUpdate);
+  await prisma.$transaction(
+    async (tx) => {
+      if (toCreate.length > 0) {
+        await tx.issueProgress.createMany({ data: toCreate });
+      }
+      for (const group of updateGroups) {
+        await tx.issueProgress.updateMany({
+          where: { id: { in: group.ids } },
+          // status-derived, not a manual edit — keeps repeated syncs idempotent (see contract above)
+          data: { ...group.data, updatedById: null },
+        });
+      }
+    },
+    { timeout: 30_000 },
+  );
 
   return {
     filterId: filter.id,

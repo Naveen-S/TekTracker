@@ -28,6 +28,7 @@ import { RollupTopBar } from "@/components/rollup/rollup-top-bar";
 import { TeamSummaryTable } from "@/components/rollup/team-summary-table";
 import { RollupRiskSection } from "@/components/rollup/rollup-risk-section";
 import { RollupDigestButton } from "@/components/rollup/rollup-digest-button";
+import { RollupExport } from "@/components/rollup/rollup-export";
 import { RollupStoryPoints } from "@/components/rollup/rollup-story-points";
 import { compositionBreakdown } from "@/components/dashboard/story-points-highlight";
 import { AppShell } from "@/components/ui/app-shell";
@@ -53,11 +54,14 @@ export default async function RollupPage({ searchParams }) {
     selectedSprint,
     perTeam,
     combinedSnapshots,
+    teamSnapshots,
     combinedCapacity,
     combined,
   } = data;
   // Request-time "as of" for the server-rendered staleness labels — deterministic, no client clock.
   const asOf = new Date();
+  // One name for the current scope — the hero title and the export report share it.
+  const scopeLabel = selectedProgram ? selectedProgram.name : "Multi-team roll-up";
   // Combined burndown over the per-day summed snapshots (trend-burndown.md decisions 6–7).
   const trend = selectedSprint ? buildTrendSeries(combinedSnapshots, selectedSprint, asOf) : null;
   const velocityOverride = trend ? snapshotVelocity(trend.points, selectedSprint, asOf) : null;
@@ -119,7 +123,7 @@ export default async function RollupPage({ searchParams }) {
                   {selectedSprint.name} · {formatSprintWindow(selectedSprint)}
                 </HeroEyebrow>
                 <HeroTitle>
-                  {selectedProgram ? selectedProgram.name : "Multi-team roll-up"} — {perTeam.length}{" "}
+                  {scopeLabel} — {perTeam.length}{" "}
                   {perTeam.length === 1 ? "team" : "teams"}
                 </HeroTitle>
                 <HeroCopy className="mt-2">
@@ -137,6 +141,14 @@ export default async function RollupPage({ searchParams }) {
                     jiraBaseUrl={data.jiraBaseUrl}
                   />
                 )}
+                <RollupExport
+                  perTeam={perTeam}
+                  sprint={selectedSprint}
+                  scopeLabel={scopeLabel}
+                  teamSnapshots={teamSnapshots}
+                  jiraBaseUrl={data.jiraBaseUrl}
+                  asOf={asOf}
+                />
               </div>
             </HeroShell>
 

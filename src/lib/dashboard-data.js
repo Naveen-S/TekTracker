@@ -63,8 +63,16 @@ async function getMembershipContext(user) {
     where: user.isAdmin ? {} : { id: { in: [...roleByTeam.keys()] } },
     orderBy: { name: "asc" },
     // program (program-rollup.md) rides along so the board hero can show the selected team's owning
-    // program; harmless for the team/sprint selectors that only read key·name.
-    select: { id: true, name: true, key: true, program: { select: { id: true, name: true, key: true } } },
+    // program; harmless for the team/sprint selectors that only read key·name. developerCount
+    // (rollup-export.md) is the roll-up Velocity report's "points ÷ developers" divisor — the same
+    // admin-entered headcount the leaderboard uses; null just means that team shows totals only.
+    select: {
+      id: true,
+      name: true,
+      key: true,
+      developerCount: true,
+      program: { select: { id: true, name: true, key: true } },
+    },
   });
   return { roleByTeam, teams };
 }
@@ -323,12 +331,15 @@ export async function getRollupData(user, { sprintId, programId } = {}) {
     ? await prisma.team.findMany({
         where: { programId: selectedProgram.id },
         orderBy: { name: "asc" },
-        select: { id: true, name: true, key: true },
+        // developerCount must be selected on BOTH team paths or the Velocity report silently loses
+        // its divisor on program-scoped roll-ups (rollup-export.md).
+        select: { id: true, name: true, key: true, developerCount: true },
       })
     : myTeams;
 
   let perTeam = [];
   let combinedSnapshots = [];
+  let teamSnapshots = [];
   let combinedCapacity = null;
   if (selectedSprint && teams.length > 0) {
     const teamIds = teams.map((team) => team.id);
@@ -366,6 +377,12 @@ export async function getRollupData(user, { sprintId, programId } = {}) {
       },
     });
     combinedSnapshots = combineSnapshotsByDay(snapshotRows);
+    // Raw per-team rows travel too (rollup-export.md): the export lets the reader deselect teams,
+    // and a portfolio burndown that still included a dropped team would be a silently wrong number
+    // in a leadership document. `combinedSnapshots` has already summed teamId away, so the dialog
+    // re-runs the same pure `combineSnapshotsByDay` over just the selected teams. Additive — no
+    // existing field changes, and the rows are tiny (one per team per captured day).
+    teamSnapshots = snapshotRows;
 
     // committed-unplanned-work.md — one batched (no-N+1) read, attached per team below and summed
     // into a portfolio total. `configuredTeamCount`/`totalTeamCount` drive the roll-up's "N of M
@@ -420,6 +437,7 @@ export async function getRollupData(user, { sprintId, programId } = {}) {
     selectedSprint,
     perTeam,
     combinedSnapshots,
+    teamSnapshots,
     combinedCapacity,
     combined: selectedSprint ? aggregateRollup(perTeam.map((entry) => entry.metrics)) : null,
     jiraBaseUrl: process.env.JIRA_BASE_URL?.trim().replace(/\/+$/, "") ?? null,

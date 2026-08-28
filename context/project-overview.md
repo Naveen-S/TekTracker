@@ -6,7 +6,7 @@
 > **[BUILT]**, **[PARTIAL]**, **[PLANNED]**, or **[GAP]** so the as-built state is never confused
 > with the target state.
 >
-> Last reviewed: 2026-08-27 · Owner: Naveen · Audience: engineers + Claude Code.
+> Last reviewed: 2026-08-28 · Owner: Naveen · Audience: engineers + Claude Code.
 >
 > **Rename note (2026-07-31):** the product was renamed to **StoryBoard** (was "Sprint Tracker",
 > earlier codename "Tek Tracker" / "TekTracker"). The rename is display/branding only — no schema,
@@ -126,6 +126,7 @@ Key relationships:
 | Export PDF / PNG | **[BUILT]** | Offscreen A4 pages → PDF/PNG via `html2canvas-pro` + `jsPDF` (dynamic-imported); shares the `/bugs` PDF design system via the shared export kit (`lib/export/`, `components/export/print-kit.jsx`) with clickable Jira-key chips. See context/features/export-visual-consistency.md. |
 | Share view | **[BUILT]** | Server-persisted `SharedView` → public read-only `/share/[token]` (192-bit token, live or frozen w/ `asOf`-pinned metrics, expiry, revocation). See context/features/share-view-export.md. |
 | Multi-team / ED roll-up | **[BUILT]** | Read-only `/rollup` server page (combined `MetricGrid` + per-team table via pure `aggregateRollup`), membership-derived, no Sync. See context/features/ed-rollup.md. |
+| Roll-up export (portfolio PDF / PNG) | **[BUILT]** | A4 **landscape** leadership report off `/rollup`, third consumer of the shared export kit. One dialog, **three** variants — **Executive** (KPIs + composition band + per-scrum-team effort scorecard + burndown), **Full detail** (adds every team's tracks and issue rows, Jira-linked), and **Velocity** (completed sprints only: story points **per developer split by work type** per team + the portfolio rate; no health/completion/risk). Effort metric, risk emphasis, team set and — for Velocity — per-team sizes are chosen at generation time; risk defaults **off** once a sprint is `CLOSED`/released. See context/features/rollup-export.md. |
 | Trend / burndown / "projected by end of sprint" | **[BUILT]** | Daily per-team `SprintSnapshot` (cron) → burndown panel (ideal/actual/projection SVG + snapshot velocity) on `/` and `/rollup`. See context/features/trend-burndown.md. |
 | AI summary (pluggable provider) | **[BUILT in part]** | Provider-agnostic `src/lib/ai/` (Gemini + Anthropic, `AI_PROVIDER` env) behind the on-demand **"AI Digest"** on `/` and `/rollup` (risk call-outs + leadership narrative); Q&A + stage suggestions open. See context/features/ai-insights.md. |
 | Risk call-out comments + roll-up all-risks dialog | **[BUILT]** | `IssueProgress.riskComment` annotates a known/agreed risk (managed context, not a fresh alarm); `/rollup` shows every team's comments + a "View all risks" dialog. See context/features/risk-comments-rollup-digest.md. |
@@ -1215,6 +1216,8 @@ UI/UX *direction* is the spec above; this table is the *history* of what shipped
 | 2026-08-12 | Program picker + program-scoped roll-up hero; admin Programs section | program-rollup.md |
 | 2026-08-11 | Admin roster editor + board "Needs attention" hygiene panel | needs-attention-roster.md |
 | 2026-08-27 | Points display boundary + filter-card Jira quick-link + shared program chip | board-polish-points-and-links.md |
+| 2026-08-27 | Roll-up export dialog + landscape portfolio report (executive / full detail) | rollup-export.md |
+| 2026-08-28 | Roll-up export gains a Velocity report (SP/dev by work type, completed sprints) | rollup-export.md |
 
 ---
 
@@ -1396,6 +1399,21 @@ spec-internal ambiguities to resolve.
     the migration, or `zod` validation at every boundary if staying on JS.
 12. **Internal Bugs lacks its own workflow** (reuses support/techdebt stages). Add `internalbug` if it
     needs distinct stages.
+13. **A stage overwrite is indistinguishable from a first seed after the fact.** `IssueProgress` has no
+    `createdAt` — only `updatedAt` + `updatedById`. The always-on sync is create-only, but the per-track
+    **"Sync stages"** action deliberately overwrites and resets `updatedById` to null
+    (sync-stages-from-jira.md), so a row written by a fresh seed and a row whose hand-set stages were
+    replaced look identical in the data. When someone asks "was my progress overwritten?", the honest
+    answer today is that it cannot be determined. *Fix:* add `createdAt` (and/or record the overwriting
+    action) if stage provenance ever needs auditing. **Pre-existing — surfaced 2026-08-28 while auditing
+    a report of altered filter data; not introduced by any feature.**
+14. **A sync silently empties a track when Jira returns nothing.** `syncTeamSprint` REPLACES a filter's
+    Issue cache with whatever the query returns, so a stale `sub-component[dropdown]` value, a renamed
+    component, or a token that has lost project scope wipes the track rather than erroring — the same
+    failure shape as the dead-token/anonymous trap recorded at migration step 5. Progress rows survive
+    (they are keyed by team+sprint+jiraKey) but become invisible on the board. *Fix:* warn on a sync
+    that takes a non-empty track to zero. **Observed 2026-08-28** on a live team whose Tech Debt track
+    cached 0 issues after a sync.
 
 ---
 
@@ -1504,6 +1522,35 @@ All previously open decisions are now resolved:
   roll-up reuses the entire roll-up pipeline unchanged — only the team-set source swaps from
   `getMembershipContext` to `program.teams`; §12 metrics untouched. See
   context/features/program-rollup.md.
+
+- **Roll-up export (ratified 2026-08-27).** `/rollup` gets a leadership PDF/PNG — the gap `ed-rollup.md`
+  left open at step 8 — as the third consumer of the shared export kit. Decisions: (1) **one dialog with
+  an Executive / Full-detail toggle**, not two hero buttons; (2) **full detail means per-issue rows**,
+  true parity with the scrum-team export; (3) **A4 landscape for both variants**, following the `/bugs`
+  executive report; (4) the **effort metric is a generation-time control** (delivered / planned / both)
+  rather than a fixed reading, and it drives the composition-bar geometry as well as the numerals;
+  (5) **risk emphasis is a generation-time control with a state-derived default** — off once a sprint is
+  `CLOSED` or past its release date, because a finished sprint should report what landed rather than
+  lead with risk (Naveen). Presentation-only: no schema change, no new route, §12 untouched. The one
+  additive data change is `getRollupData` also returning raw `teamSnapshots`, so a team-trimmed report's
+  burndown matches its own totals. As-built, the scorecard owns page 1 and the burndown moved to its own
+  sheet — see the spec for the measurements that forced it. See context/features/rollup-export.md.
+
+- **Roll-up Velocity report (ratified 2026-08-28).** A third export variant answering a leadership ask
+  — *"where is that 6 SP/dev going and what we are achieving in that"* — so it reports story points
+  **per developer split across the four work types**, not a single velocity number. Decisions: offered
+  **only for a completed sprint** (`isSprintComplete` — CLOSED, or phase `released`/`ended` — extracted
+  from `defaultRiskEmphasis` so the two cannot drift); **team size from per-team dialog inputs**
+  prefilled from the admin `Team.developerCount` and never written back (absent ⇒ admin value, explicit
+  blank ⇒ no rate for that team); **a rate, not a roster** (no named individuals, so no new personal
+  data and no cross-org ranking, hence **no new RBAC gate** — the points are already on `/rollup` and
+  gating would exclude TPM); scorecard only, one page; health/completion/teams-complete/risk all
+  dropped. Two correctness properties are load-bearing: the overall rate **divides sized teams only on
+  both sides** (mixing an unsized team's points into the numerator overstated the live headline by
+  13%), and columns are **apportioned by largest remainder so they sum to their row total** (naive
+  independent rounding printed `310+413+133+172 = 1028` beside a TOTAL of `1027`). Presentation-only:
+  no schema change, no new route, §12 untouched; the one additive data change is selecting
+  `developerCount` on both roll-up team paths. See context/features/rollup-export.md.
 
 ---
 

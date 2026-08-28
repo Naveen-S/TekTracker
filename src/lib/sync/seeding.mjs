@@ -67,3 +67,30 @@ export function reshapeStageCompletion(stageCompletion, workflowType) {
   }
   return next;
 }
+
+/**
+ * Collapse a per-track stage re-sync's row updates into the fewest possible write statements
+ * (`updateMany` per distinct payload). A track's issues share very few distinct
+ * (workflowType, stages, seededFromStatus) triples — one per Jira status in play — so this turns
+ * N round-trips into ~"number of distinct statuses", which is what keeps the write inside Prisma's
+ * interactive-transaction budget (a per-row `update` loop over ~100 issues blew the 5s timeout
+ * against Neon → P2028).
+ *
+ * @param {Array<{ id: string, workflowType: string, stageCompletion: boolean[], seededFromStatus: string | null }>} updates
+ * @returns {Array<{ ids: string[], data: { workflowType: string, stageCompletion: boolean[], seededFromStatus: string | null } }>}
+ */
+export function groupStageUpdates(updates) {
+  const groups = new Map();
+  for (const change of updates) {
+    const { id, ...data } = change;
+    // JSON (not a joined string) so a status containing the separator can't collide two payloads.
+    const key = JSON.stringify([data.workflowType, data.seededFromStatus, data.stageCompletion]);
+    const group = groups.get(key);
+    if (group) {
+      group.ids.push(id);
+    } else {
+      groups.set(key, { ids: [id], data });
+    }
+  }
+  return [...groups.values()];
+}

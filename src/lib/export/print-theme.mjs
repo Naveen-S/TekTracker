@@ -46,3 +46,21 @@ export const PORTRAIT = { widthPx: 794, heightPx: 1123, widthMm: 210, heightMm: 
 
 /** 3x capture -> ~288 DPI lossless PNG pages. */
 export const PDF_CAPTURE_SCALE = 3;
+
+/**
+ * The four work-type composition colours for print (rollup-export.md).
+ *
+ * Reuses the exact mapping the sprint export's "Work composition" panel already ships (info / warn /
+ * danger / neutral tones), so the roll-up and sprint PDFs agree by construction. Deliberately NOT
+ * the on-ink `--on-ink-cat-*` palette: that one is tuned for a dark surface and flips with the
+ * active theme, while a print sheet is white and must render identically for every viewer. The
+ * app's "solid = planned, hatch = reactive bug" texture grammar is likewise not carried over — the
+ * hatch utilities colour-mix against `--ink` and are simply wrong on white, and these four hues are
+ * far enough apart on paper that texture is not load-bearing for colour-vision deficiency here.
+ */
+export const WORK_TYPE_PRINT = [
+  { key: "committed", label: "Roadmap", color: BLUE, soft: "#eff6ff" },
+  { key: "techDebt", label: "Tech Debt", color: ORANGE, soft: "#fff7ed" },
+  { key: "external", label: "External Bugs", color: RED, soft: "#fff1f2" },
+  { key: "internal", label: "Internal Bugs", color: PURPLE, soft: "#f5f3ff" },
+];

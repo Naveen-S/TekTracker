@@ -2075,3 +2075,61 @@
   the carry-forward note under-scoped this, and it cost three false smoke failures before assertions
   moved to content. **Done**, uncommitted — pending Naveen's commit. Visual acceptance still Naveen's
   step. See context/features/board-polish-points-and-links.md.
+
+- **2026-08-27 — Roll-up export (leadership PDF/PNG for `/rollup`).** The last major surface with no
+  export path (`ed-rollup.md` had put it out of scope at step 8) gained one, as the third consumer of
+  the shared export kit. One dialog, two variants — **Executive** (portfolio KPIs, composition band,
+  per-scrum-team effort scorecard, burndown + delivery readouts) and **Full detail** (adds every
+  team's tracks and issue rows, Jira-linked) — with three choices made at *generation* time at
+  Naveen's request: the **effort metric** (delivered / planned / both, driving bar geometry as well
+  as numerals), whether to **emphasise risk** (*"for completed sprint there is no point in
+  highlighting the risk"* — defaults off once the sprint is `CLOSED` or past its release date, which
+  also swaps the At-risk KPI tile for "Teams complete" and re-sorts the scorecard by delivered points),
+  and **which teams**. New: `src/lib/export/page-packer.mjs` (the height-budgeted packer + `chunkRows`
+  lifted out of `lib/bug-report/pdf-layout.mjs` now that a second consumer exists — the same
+  extraction `export-visual-consistency.md` performed on the print kit, guarded by a byte-parity
+  fixture), `src/lib/rollup/pdf-layout.mjs`, `rollup-export.jsx`, `rollup-export-pages.jsx`, and
+  `WORK_TYPE_PRINT` in `print-theme.mjs`. **No schema change, no new route** (49 ƒ Dynamic / 12
+  migrations, both unchanged); §12 untouched. One additive data change: `getRollupData` also returns
+  raw `teamSnapshots`, so a team-trimmed report gets a truthful burndown rather than one that still
+  counts a deselected team. Three findings worth carrying: **(a)** the planned page structure was
+  wrong and only rendering proved it — scorecard + burndown together measured **838px against a 738px
+  body** and the scorecard silently clipped **three team rows**, so the scorecard now owns page 1 and
+  the burndown gets its own sheet; **(b)** aggregate points must use `Math.round`, not `formatPoints`
+  — the first render read `1027.19 / 1117.54` where every other surface in the app rounds (per-issue
+  points keep `formatPoints`); **(c)** a page-column `scrollHeight` overflow check is **not** a usable
+  metric (it rounds up — the shipped `/bugs` export shows the same phantom +3 — and drifted 3/6/12
+  between runs), whereas `sheet.scrollHeight > clientHeight` plus a clipping sweep is exact and was
+  proven non-vacuous by forcing a 382px overflow. Verified: lint · 12 migrations · cold env-free
+  build (49 ƒ Dynamic) · heavy libs absent from `/rollup`'s initial payload · packer parity
+  byte-identical · pure fixtures 65/65 · SSR smoke 19/19 · headless browser render 42/42 stable over
+  4 runs · real PDF capture 9/9 · 29 and 88 clickable Jira link annotations. **Done**, uncommitted —
+  pending Naveen's commit; real-browser visual acceptance is his step (headless collapses inter-word
+  spacing). See context/features/rollup-export.md.
+
+- **2026-08-28 — Roll-up export: Velocity report variant.** A third variant beside Executive and Full
+  detail, driven by a live leadership ask (Slack: *"I want details of 6 SP per dev per PDLC sprint …
+  where is that 6SP/Dev going and what we are achieving in that"*, framed as 12 SP/dev = 6 toward GM
+  deliveries + 6 into tech debt). So the report is **not** a single velocity number: it is story
+  points **per developer split across Roadmap / Tech Debt / External / Internal** per scrum team, plus
+  the portfolio rate — the existing composition breakdown divided by team size. Offered **only for a
+  completed sprint** via `isSprintComplete` (CLOSED, or phase `released`/`ended`), extracted from
+  `defaultRiskEmphasis` so the two can never drift; the toggle is disabled with an explanatory title
+  otherwise. Team sizes are per-team dialog inputs prefilled from the admin `Team.developerCount`,
+  never written back (absent ⇒ admin value, explicit blank ⇒ that team reports totals only). Drops
+  health, completion, teams-complete and risk; Sprint health becomes the literal "Completed" and story
+  points show delivered only. **No new RBAC gate** — a rate over admin config, with no named
+  individuals and no cross-org ranking, over teams already on `/rollup`; gating it would have excluded
+  TPM. New: `isSprintComplete`, `parseTeamSize`, `velocityRows`, `velocityTotals`,
+  `orderTeamsByVelocity`, `apportionRounded` in `lib/rollup/pdf-layout.mjs`; `VelocitySummaryPage` +
+  `VelocityScorecardPage` in `rollup-export-pages.jsx`. One additive data change: `developerCount`
+  selected on **both** roll-up team paths. **No schema change, no new route** (49 ƒ Dynamic / 12
+  migrations). Two correctness properties earned their own fixtures: the overall rate **divides sized
+  teams only on both sides** — with one team unsized the live figure is 29.2 SP/dev (904÷31), not 33.1
+  (1027÷31), a 13% overstatement of the number leadership quotes — and columns are **apportioned by
+  largest remainder** so they reconcile with their row total, after the first render printed
+  `310+413+133+172 = 1028` beside a TOTAL of `1027` and `39.4` beside `39.5`. Verified: pure fixtures
+  88/88 · existing fixtures 65/65 + packer parity byte-identical · SSR smoke 14/14 · velocity browser
+  32/32 · shipped-variant regression 23/23 · velocity PDF 5/5 · cold env-free build 49 ƒ Dynamic ·
+  **cross-check against `/leaderboard`: all 6 teams agree exactly**. **Done**, uncommitted — pending
+  Naveen's commit. See context/features/rollup-export.md.

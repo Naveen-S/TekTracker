@@ -141,8 +141,24 @@ re-run to confirm idempotence and the "unmapped" count; check both Tekion + Mode
   prop) over the already-build-verified implementation — `yarn lint` clean, impeccable
   `detect.mjs` → `[]`.
 
+- **Fix 2026-08-28 — P2028 transaction timeout on a real track.** Naveen hit
+  `Transaction API error: A query cannot be executed on an expired transaction … timeout 5000 ms,
+  however 5837 ms passed` from the `tx.issueProgress.update()` loop. The loop issues **one sequential
+  round-trip per issue** to Neon, so a track of ~100 issues overruns Prisma's default 5s interactive
+  budget. Fixed by collapsing the writes instead of merely widening the window: a new pure
+  `groupStageUpdates` (`seeding.mjs`) buckets the staged updates by their identical
+  `(workflowType, stageCompletion, seededFromStatus)` payload — a track has only as many distinct
+  payloads as it has Jira statuses in play — and the engine issues one `updateMany({ id: { in: ids } })`
+  per bucket, typically ~5 writes instead of ~100. `timeout: 30_000` is added as headroom for an
+  unusually large track, not as the fix. Semantics are unchanged: `updateMany` still fires
+  `@updatedAt`, still writes `updatedById: null`, and the same rows receive the same values.
+  The structurally identical loop in `syncTeamSprint`'s owning-workflow re-evaluation carries the
+  same latent limit but genuinely distinct per-row payloads (reshaped stage arrays), so it got the
+  raised budget only.
+
 ## References
 
 - `sync-hybrid-seeding.md` (the create-only hybrid model this extends) · `domain-apis.md` (route
   + RBAC conventions) · `src/lib/workflows.mjs` (stage templates, priorities) · `prisma/seed.mjs`
-  (the 45 global `StatusStageMapping` rows this maps against).
+  (the 46 global `StatusStageMapping` rows this maps against — `Security Validation`
+  added to `TECH_DEBT` 2026-08-28, see `bootstrap-seed.md`).
