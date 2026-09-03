@@ -10,6 +10,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { WORKFLOWS } from "@/lib/workflows.mjs";
 import { apiFetch } from "@/lib/api-client";
+import { buildFilterPatch, buildFilterPayload } from "@/lib/filters/edit.mjs";
 import { buildTrendSeries, snapshotVelocity } from "@/lib/metrics.mjs";
 import { useLocalPref } from "@/lib/use-local-pref";
 import { PageLoader } from "@/components/ui/spinner";
@@ -27,7 +28,7 @@ import { RiskCalloutsPanel } from "./risk-callouts-panel";
 import { FilterPanel } from "./filter-panel";
 import { PlannerPanel } from "./planner-panel";
 import { NeedsAttentionPanel } from "./needs-attention-panel";
-import { AddFilterDialog } from "./add-filter-dialog";
+import { FilterDialog } from "./filter-dialog";
 import { SprintConfigDialog } from "./sprint-config-dialog";
 import { SprintStartDialog } from "./sprint-start-dialog";
 import { RiskCommentDialog } from "./risk-comment-dialog";
@@ -87,6 +88,8 @@ export function Dashboard({
   const [alert, setAlert] = useState(null);
   const [toast, showToast] = useToast();
   const [showAddFilter, setShowAddFilter] = useState(false);
+  // The track being edited (editable-filters.md) — the row itself, so the dialog prefills from it.
+  const [editingFilter, setEditingFilter] = useState(null);
   const [showShare, setShowShare] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showAiDigest, setShowAiDigest] = useState(false);
@@ -203,10 +206,10 @@ export function Dashboard({
     });
   };
 
-  const handleAddFilter = (payload) =>
+  const handleAddFilter = (form) =>
     startMutation(async () => {
       try {
-        await apiFetch(`${base}/filters`, { method: "POST", body: payload });
+        await apiFetch(`${base}/filters`, { method: "POST", body: buildFilterPayload(form) });
       } catch (error) {
         setAlert({ title: "Could not add filter", body: error.message, tone: "error" });
         return;
@@ -227,6 +230,47 @@ export function Dashboard({
         setSyncing(false);
       }
     });
+
+  // Edit an existing track. Re-syncs only when the edit changes what the track PULLS or the shape
+  // of its checklists (buildFilterPatch.needsResync) — a rename or a recolour is a lone PATCH, so
+  // it lands instantly instead of paying for a full Jira sync (editable-filters.md decision 3).
+  const handleEditFilter = (form) => {
+    const target = editingFilter;
+    if (!base || !target) return;
+    const { patch, needsResync } = buildFilterPatch(target, form);
+    startMutation(async () => {
+      try {
+        await apiFetch(`${base}/filters/${target.id}`, { method: "PATCH", body: patch });
+      } catch (error) {
+        setAlert({ title: "Could not update filter", body: error.message, tone: "error" });
+        return;
+      }
+      setEditingFilter(null);
+      // A CLOSED sprint rejects sync by design (leaderboard.md decision 7) — save, say so, move on.
+      if (!needsResync || selectedSprint?.state === "CLOSED") {
+        startMutation(() => {
+          router.refresh();
+          showToast(
+            needsResync ? "Filter updated · sync skipped (sprint closed)" : "Filter updated",
+          );
+        });
+        return;
+      }
+      setSyncing(true);
+      try {
+        const summary = await apiFetch(`${base}/sync`, { method: "POST" });
+        startMutation(() => {
+          router.refresh();
+          showToast(`Filter updated · ${condenseSync(summary)}`);
+        });
+      } catch (error) {
+        setAlert({ title: "Filter updated — sync failed", body: error.message, tone: "error" });
+        startMutation(() => router.refresh());
+      } finally {
+        setSyncing(false);
+      }
+    });
+  };
 
   const handleToggleStage = (jiraKey, index, completed) =>
     run("Could not update stage", () =>
@@ -404,6 +448,7 @@ export function Dashboard({
                     isCollapsed={collapsed}
                     onToggleCollapse={toggleCollapsed}
                     onAddFilter={can.manage ? () => setShowAddFilter(true) : null}
+                    onEditFilter={can.manage ? setEditingFilter : null}
                     onRemoveFilter={can.manage ? handleRemoveFilter : null}
                     onReorderFilters={can.manage ? handleReorderFilters : null}
                     searchQuery={search}
@@ -485,11 +530,20 @@ export function Dashboard({
         </Dialog>
       )}
       {showAddFilter && base && (
-        <AddFilterDialog
-          onAdd={handleAddFilter}
+        <FilterDialog
+          onSubmit={handleAddFilter}
           onClose={() => setShowAddFilter(false)}
           busy={busy}
           existingCount={filters.length}
+        />
+      )}
+      {editingFilter && base && (
+        <FilterDialog
+          key={editingFilter.id}
+          filter={editingFilter}
+          onSubmit={handleEditFilter}
+          onClose={() => setEditingFilter(null)}
+          busy={busy}
         />
       )}
       {editingRiskIssue && base && (

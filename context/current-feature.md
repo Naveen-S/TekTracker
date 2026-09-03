@@ -1,84 +1,84 @@
 # Current Feature
 
-**Roll-up export — leadership PDF/PNG for `/rollup`**
-(@context/features/rollup-export.md) — the roll-up was the last major surface with no export path
-(`ed-rollup.md` put it out of scope at step 8). One dialog, three variants: **Executive** (portfolio
-KPIs, composition band, per-scrum-team effort scorecard, burndown) and **Full detail** (adds every
-team's tracks and issue rows, Jira-linked). Three things are chosen at generation time rather than
-baked in — the **effort metric**, whether to **emphasise risk**, and **which teams**.
+**Editable sprint filters (tracks)**
+(@context/features/editable-filters.md) — a board track could be added, removed and reordered but
+never **corrected**: a typo, a repointed Jira filter, a JQL needing one more clause, or a track
+created under the wrong workflow all forced delete-and-recreate, losing its place in the order and
+its accent colour. A pencil on each Connected-JQL card now opens the *same* dialog that creates a
+track, prefilled.
 
-**Velocity variant added 2026-08-28** — a third option, offered only for a **completed** sprint:
-per-scrum-team story points **per developer split by work type**, plus the portfolio rate. Driven by
-a leadership ask (*"where is that 6SP/Dev going and what we are achieving in that"*), so the answer
-is the composition breakdown divided by team size, not a single number. Team sizes are dialog inputs
-prefilled from the admin `Team.developerCount`. Drops health, completion, teams-complete and risk.
-Post-v1, not a master-plan step.
+Almost entirely UI: `PATCH …/filters/[filterId]` shipped at step 4 (`domain-apis.md`) and had **no
+caller** until now. Three ratified calls: the pencil lives on the **sidebar card**; **name, source
+(Filter ID ↔ JQL), workflow type and accent colour** are all editable; and the board **re-syncs only
+when the source or workflow type changed** — a rename or recolour is a lone PATCH. Post-v1, not a
+master-plan step.
 
 ## Status
 
-**Done 2026-08-28 — uncommitted** (branch `feature/rollup-export`, off `main` @ `ac606eb`). Pending
-Naveen's commit (gitleaks hook). Full spec + As-built: @context/features/rollup-export.md.
+**Done 2026-09-02 — verified twice, uncommitted** (branch `feature/editable-filters`, off `main` @
+`e6fd115`). Pending Naveen's commit (gitleaks hook). Full spec + As-built:
+@context/features/editable-filters.md.
 
-**Implemented:** `rollup-export.jsx` (client leaf: button, dialog, controls, capture) ·
-`rollup-export-pages.jsx` (all print pages + composition bar, burndown SVG, scorecards) ·
-`lib/rollup/pdf-layout.mjs` (pure layout, velocity maths, `apportionRounded`) ·
-`lib/export/page-packer.mjs` (packer extracted from `lib/bug-report/pdf-layout.mjs`) ·
-`WORK_TYPE_PRINT` in `print-theme.mjs` · `developerCount` + `teamSnapshots` selected in
-`dashboard-data.js` · mounted in `app/rollup/page.jsx`.
+**Re-verified 2026-09-02 from scratch** — the first pass's scratch harnesses were gone, so the suite
+was **re-derived from the source rather than replayed**: `yarn lint` clean · **pure fixtures 25/25** ·
+**API smoke 29/29** · **headless browser 10/10** · `prisma validate` valid + **12 migrations, up to
+date** · cold `rm -rf .next` build with both env files aside → exit 0, **no `Environments:` line**,
+**49 ƒ Dynamic** · Neon left at **42 filters, 0 fixture rows**. The load-bearing claim reproduced
+independently: a rename puts **exactly one `PATCH` and no `POST …/sync`** on the wire. Two checks the
+rewrite added: **global admin is not a carve-out** on the `NEEDS_ATTENTION` guard (it sits after RBAC
+and before `parseJsonBody`, so an admin edit of that track is a 400 too — deliberate, it is generated
+data), and **`sortOrder` survives a workflow change**, not merely a rename.
 
-**Verified (full suite, 2026-08-28):** `yarn lint` clean · `prisma validate` valid, **12 migrations
-"up to date"** · cold `rm -rf .next` build with **both `.env` and `.env.production` moved aside and
-confirmed absent** → exit 0, **49 ƒ Dynamic (unchanged)**, env restored · `/rollup`'s initial payload
-references **none** of the 3 chunks holding real html2canvas/jsPDF internals · `/p/health` +
-`/api/health/db` **200** (real Neon connectivity) · **no test suite by design**, weight carried by
-pure fixtures **65/65 + 88/88** and packer-move parity **byte-identical** · **SSR smoke 20/20**
-(authed 200; anon *and* a forged session cookie leak no team, sprint, program, headcount or identity;
-unknown sprint id degrades cleanly) · **browser E2E 30/30** (all three variants; velocity disabled on
-the still-running September sprint; **no sheet overflows or clips on any variant**) · velocity PDF
-one page, landscape A4, `_Velocity_` filename · **cross-check vs `/leaderboard`: all 6 teams agree
-exactly**.
+**Implemented:** `filter-dialog.jsx` (the renamed `add-filter-dialog.jsx`, generalized to
+`FilterDialog` — create + edit, accent swatch row, stage-shrink warning) · `lib/filters/edit.mjs`
+(pure `buildFilterPayload` / `buildFilterPatch`) · pencil in `filter-panel.jsx` · `editingFilter` +
+`handleEditFilter` in `dashboard.jsx` · `NEEDS_ATTENTION` guards on the PATCH route.
 
-**Two correctness properties the velocity report turns on:** (a) the overall per-dev rate divides
-**sized teams only on both sides** — with one team unsized that is 29.2 SP/dev (904÷31), not 33.1
-(1027÷31), a 13% overstatement of the number leadership quotes; (b) columns are **apportioned
-(largest-remainder) so they sum to their row total** — independent rounding printed
-`310+413+133+172 = 1028` beside a TOTAL of `1027`, and `39.4` beside `39.5`.
+**Verified (first pass, 2026-08-28):** `yarn lint` clean · **pure fixtures 23/23** (every produced body re-parsed through the
+real `filterCreateSchema`/`filterPatchSchema`) · **API smoke 23/23** on dev + Neon with minted
+iron-session cookies (NA guards both directions → 400 · MEMBER *and* VIEWER → 403 · cross-team id →
+404 · anonymous → 401 · fixtures torn down to 0 rows) · **headless browser 28/28** (viewer sees no
+pencil; prefill; shrink warning with both stage counts; save renames the sidebar card *and* the
+matrix header, repaints the accent dot, persists; Cancel discards) · **exactly one PATCH and no
+`POST …/sync` on the wire for a rename** — the direct evidence for decision 3 · cold `rm -rf .next`
+DB/env-free build with `.env` **and** `.env.production` moved aside → exit 0, **49 ƒ Dynamic
+(unchanged)** · `prisma migrate status` **12 migrations (unchanged)**.
 
-**⚠ The working tree also holds an unrelated, in-progress change that is NOT part of this feature** —
-a sync P2028 transaction-timeout fix (`src/lib/sync/engine.js`, `src/lib/sync/seeding.mjs`,
-`prisma/seed.mjs`, `context/features/bootstrap-seed.md`, `context/features/sync-stages-from-jira.md`).
-**Commit this feature by explicit path, never `git add -A`.**
+**Three findings worth carrying forward:** (1) the planned payload rule was wrong — always nulling
+the unused source column would have **wiped the sync-resolved `jql` off every JIRA_FILTER track on a
+plain rename**, blanking the card's query line until the next sync; the two columns are deliberately
+asymmetric now. (2) `tsx` can only import `src/lib/schemas/*.js` with `--tsconfig jsconfig.json`
+**and** `const mod = await import(…); mod.default ?? mod` — worth the trouble, since it let the
+fixtures validate against the real zod schemas rather than a hand-copied shape. (3) The success
+toast can be **swallowed on a slow dev refresh** (deferred behind the second `startMutation` while
+its own 3s dismiss timer runs from call time; dev refreshes measured 3–4s) — pre-existing and shared
+with `handleAddFilter`/`handleSaveRiskComment`, so it was recorded, not "fixed".
 
-**Next:** commit (command prepared, Naveen runs it); then his real-browser visual acceptance. Two
-open data findings were handed back from the 2026-08-28 audit and are unrelated to this feature —
-DX → Tech Debt caching 0 issues after a sync, and CALM's 66 orphaned TECH_DEBT progress rows.
+**Next:** Naveen's commit. The tree holds **two** finished features — editable filters and the
+2026-08-29 export type-weight pass (`print-kit.jsx`, `rollup-export-pages.jsx`, `rollup-export.md`) —
+so it is two commits, not one. Visual acceptance in a real browser is his step.
 
 ## Goals
 
-- **`RollupExport`** (`src/components/rollup/rollup-export.jsx`) — self-mounting client leaf
-  (the `BugExport` / `RollupDigestButton` shape, since `/rollup` is a server component).
-- **Print pages** (`src/components/rollup/rollup-export-pages.jsx`) — re-authored, hex-literal,
-  A4 landscape; composition bars, a burndown SVG, the scorecard, risk register, detail pages.
-- **Pure layout** (`src/lib/rollup/pdf-layout.mjs`) — `defaultRiskEmphasis`, `effortCells`,
-  `orderTeamsForReport`, `teamCompositionRow`, `tracksForTeam`, `paginateRollupDetail`.
-- **Shared packer** (`src/lib/export/page-packer.mjs`) — `packSections` + `chunkRows` lifted out of
-  `lib/bug-report/pdf-layout.mjs` now that a second consumer exists (the same extraction
-  `export-visual-consistency.md` performed on the print kit). Guarded by a byte-parity fixture.
-- **`WORK_TYPE_PRINT`** in `print-theme.mjs` — the four work-type colours for print.
+- **One dialog for both modes** — `FilterDialog`, so create and edit can never drift apart in
+  validation, copy or layout.
+- **`buildFilterPayload` shared by create and edit** (`src/lib/filters/edit.mjs`), so the body
+  shape is written once.
+- **`needsResync` as an explicit verdict**, not an implicit "always sync" — the rename path must
+  not pay for a Jira round-trip.
 
 ## Notes
 
-- **§12 metric core untouched** — the export reads `computeSprintMetrics` / `aggregateRollup` output
-  and adds nothing to it. No schema change, no new route.
-- **One additive data change:** `getRollupData` also returns `teamSnapshots` (raw per-team rows) so a
-  team-trimmed report gets a truthful burndown — `combinedSnapshots` has already summed `teamId`
-  away, and a portfolio burndown still counting a deselected team would be a silently wrong number.
-- **Deliberate deviation:** the on-ink "solid = planned, hatch = reactive bug" texture grammar is
-  **not** carried into print — the hatch utilities colour-mix against `--ink` and are wrong on white,
-  and the four print hues are far enough apart that texture is not load-bearing for CVD on paper. If
-  wanted later, use an SVG `pattern` (proven to survive capture), never a repeating-linear-gradient.
-- **Height contract:** the detail pages' row heights (team section 84, track 24, issue 34, body 620)
-  are the shared packer's constants. Change one and the print components must follow.
+- **§12 metric core untouched** — no schema change, no new route, no migration (49 ƒ Dynamic / 12
+  migrations, both unchanged).
+- **The two source columns are asymmetric on purpose.** A JQL track sends `jiraFilterId: null`
+  (`buildJiraSearchUrl` prefers the id, so a leftover one mislinks the card); a JIRA_FILTER track
+  does not send `jql` at all (that column is the JQL sync last resolved *from* the filter — derived
+  display data, not user input).
+- **`sortOrder` is deliberately not re-derived** when the workflow type changes: priority insertion
+  is a create-time concern, order is user-owned once dragged.
+- **The stage re-shape still happens in sync**, not in the PATCH — `reshapeStageCompletion` in
+  `syncTeamSprint` step 4. The dialog only *warns* when the new workflow has fewer stages.
 
 ## Carry-forward — critical for any new feature
 
@@ -87,18 +87,28 @@ details live in [legacy-history.md](legacy-history.md); house conventions live i
 `context/coding-standards.md` + `context/ai-interaction.md` — this is the operational hard-won
 layer that sits between them.)
 
-**Repo / branch state (2026-08-27)**
-- **Baseline invariants to preserve:** `main` @ `ac606eb` ("Polish.", on top of the program-rollup
-  merge) = **49 ƒ Dynamic** routes / **12 Prisma migrations** (…`add_program_model`). Node 22, dev on
-  **:3002**. A feature that changes either count must say so and justify it. Neither the board-polish
-  round nor the 2026-08-27 roll-up export changed either count.
-- **`main` is at `08228a1`.** Main includes the bug-board arc (enhancing-bug-board,
+**Repo / branch state (2026-09-02)**
+- **Baseline invariants to preserve:** **49 ƒ Dynamic** routes / **12 Prisma migrations**
+  (…`add_program_model`). Node 22, dev on **:3002**. A feature that changes either count must say so
+  and justify it. Nothing since the board-polish round has — not the roll-up export (incl. the
+  Velocity variant), not the sync P2028 fix, not editable filters.
+- **`main` is at `e6fd115`** ("Roll up export.", on top of `ac606eb` "Polish.") — it carries the
+  whole roll-up export **and** the sync-stages P2028 fix + the `Security Validation` seed row, which
+  Naveen committed together. Main also includes the bug-board arc (enhancing-bug-board,
   bug-report-pdf-export, bug-sprint-ownership, export-visual-consistency), the unplanned-split,
   sync-stages, default-team-release, needs-attention-roster, program-rollup, AND the
   office-deployment work (`Dockerfile` / `.dockerignore` / `output:"standalone"` / `GET /p/health` /
   `DEPLOY.md`; must land on `tekion-apps/storyboard` `main` for DevOps to build — RELB-28979).
-- **The working branch is `feature/rollup-export`**, cut from `main` @ `ac606eb`, with the roll-up
-  export as uncommitted working-tree changes.
+- **The working branch is `feature/editable-filters`**, cut from `main` @ `e6fd115`, carrying **two**
+  finished-but-uncommitted features in one tree: editable filters, and the 2026-08-29 export
+  type-weight pass (`src/components/export/print-kit.jsx`,
+  `src/components/rollup/rollup-export-pages.jsx`, `context/features/rollup-export.md`). Both are
+  verified; they are **two commits**, not one. `add-filter-dialog.jsx → filter-dialog.jsx` is already
+  staged as a rename — keep `git mv`'s rename detection intact when staging the rest.
+- **A track edit re-syncs only when it changes what the track pulls** (`lib/filters/edit.mjs` →
+  `buildFilterPatch().needsResync`). `buildFilterPayload` is the SINGLE body shaper for both the
+  create and patch routes — send new filter fields through it, and mind that the two source columns
+  are asymmetric on purpose (a JIRA_FILTER track's `jql` is sync-owned derived data; never null it).
 - **`src/lib/export/page-packer.mjs` is the shared height-budgeted page packer** (`packSections`,
   `chunkRows` + the row-height constants), used by BOTH the `/bugs` appendix and the roll-up detail
   pages. Its constants are a contract with the print components' `h-[...]` values — change one and

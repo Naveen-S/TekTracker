@@ -46,7 +46,7 @@ export function PrintHeader({ eyebrow, pill, title, subtitle, meta = [] }) {
             </span>
           ) : null}
         </div>
-        <h3 className="mt-0.5 truncate py-0.5 text-[24px] leading-[30px] font-black tracking-[-0.035em]">
+        <h3 className="mt-0.5 truncate py-0.5 text-[25px] leading-[30px] font-black tracking-[-0.015em]">
           {title}
         </h3>
         {subtitle ? (
@@ -127,7 +127,7 @@ export function ReportPanel({ title, subtitle, children, className }) {
       )}
     >
       <div className="flex items-baseline justify-between gap-3 border-b border-[#e2e8f0] pb-1.5">
-        <h4 className="shrink-0 text-[11px] font-extrabold text-[#0f172a]">{title}</h4>
+        <h4 className="shrink-0 text-[11px] font-black tracking-[-0.01em] text-[#0f172a]">{title}</h4>
         {subtitle ? (
           <span className="text-right text-[8px] whitespace-nowrap text-[#64748b]">{subtitle}</span>
         ) : null}

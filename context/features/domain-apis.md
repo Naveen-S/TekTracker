@@ -287,6 +287,13 @@ directly via Prisma (clean up after; note what was fabricated).
   sprint/user cleanup); the script itself was removed.
 - **Next 16 async `params` confirmed** against the installed route.md docs (`await params` in every
   dynamic handler) — no surprises beyond the known Promise change.
+- **[Amended 2026-08-28, editable-filters.md]** `PATCH …/filters/[filterId]` shipped here with **no
+  caller** — the board could add, remove and reorder tracks but never edit one. It has one now (the
+  filter card's pencil → the prefilled create dialog), and gained the guard it never needed while
+  unreachable: it **refuses the generated `NEEDS_ATTENTION` track in both directions** (editing that
+  track, and setting any track's `workflowType` to it), matched on the string literal per the
+  `ensure-filter.js` hazard note. `filterPatchSchema` itself is unchanged — it already accepted the
+  full editable set and already validated the source pair whenever `sourceType` is present.
 
 ## References
 

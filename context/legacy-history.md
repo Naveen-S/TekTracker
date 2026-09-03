@@ -2133,3 +2133,76 @@
   32/32 · shipped-variant regression 23/23 · velocity PDF 5/5 · cold env-free build 49 ƒ Dynamic ·
   **cross-check against `/leaderboard`: all 6 teams agree exactly**. **Done**, uncommitted — pending
   Naveen's commit. See context/features/rollup-export.md.
+
+### 2026-08-28 — Editable sprint filters (tracks)
+
+**Done.** A board track can finally be **corrected** instead of deleted and recreated. A pencil on
+each Connected-JQL card opens the same dialog that creates a track, prefilled — name, source
+(Filter ID ↔ JQL), workflow type, and (new) a visible accent-colour swatch row. Almost entirely UI:
+`PATCH …/filters/[filterId]` shipped at step 4 (`domain-apis.md`) and had **no caller** until now.
+Three ratified calls (AskUserQuestion): the pencil lives on the **sidebar card** rather than the
+matrix track header; **all four fields** `filterPatchSchema` already accepted are editable; and the
+board **re-syncs only when the source or workflow type changed**, so a rename or recolour is a lone
+PATCH instead of a full Jira round-trip. Implemented as `filter-dialog.jsx` (the `git mv`'d
+`add-filter-dialog.jsx`, generalized to `FilterDialog`), pure `lib/filters/edit.mjs`
+(`buildFilterPayload` / `buildFilterPatch`), the panel pencil, and `editingFilter` +
+`handleEditFilter` on the house two-transition pattern. The now-reachable route gained the guard it
+never needed while unreachable: it refuses the generated `NEEDS_ATTENTION` track **in both
+directions** (editing it, and converting a real track into it), matched on the string literal per
+the `ensure-filter.js` hazard note. **No schema change, no new route** (49 ƒ Dynamic / 12
+migrations); `sortOrder` deliberately not re-derived on a workflow change; the stage re-shape still
+happens in sync (`reshapeStageCompletion`), the dialog only warns before a shrink. The plan's
+payload rule was **wrong and the fixtures caught it** — always nulling the unused source column
+would have wiped the sync-resolved `jql` off every JIRA_FILTER track on a plain rename, blanking the
+card's query line until the next sync; the two columns are asymmetric now. Verified: `yarn lint`
+clean · pure fixtures 23/23 (bodies re-parsed through the real create/patch zod schemas) · API smoke
+23/23 on dev + Neon with minted iron-session cookies (NA guards → 400, MEMBER *and* VIEWER → 403,
+cross-team id → 404, anonymous → 401, fixtures torn down to 0) · headless browser 28/28 · **one
+PATCH and no `POST …/sync` on the wire for a rename** · cold env-free build 49 ƒ Dynamic. Noted, not
+fixed: the success toast can be swallowed on a slow dev refresh — it is deferred behind the second
+`startMutation` while its own 3s dismiss timer runs from call time, a pre-existing trait of the
+shared pattern. **Done**, uncommitted — pending Naveen's commit. See
+context/features/editable-filters.md.
+
+- **2026-08-29 — Export type-weight and spacing pass (all three exports).** Naveen's review of the
+  velocity report: *"Font weight of GM, Where the effort went, Velocity by scrum team is very low.
+  They should be bolder and thicker. Padding is less between composition bar and it's legends."*
+  Diagnosed before changing anything — **not** the known WebKit variable-font weight-loss issue: the
+  fonts are static per-weight, Inter 900 loads, and the computed DOM weights were already 900/800, so
+  the thinness was real pre-capture. Sentence-case Inter at 11px simply loses against the
+  wide-tracked uppercase labels and 24px numerals beside it. Fixed in the **shared** `print-kit.jsx`
+  so all three exports improve together: `ReportPanel`'s title → **`font-black`** (+ `-0.01em`), the
+  report title 24px/`-0.035em` → **25px/`-0.015em`** (already weight 900, so size and tracking were
+  the only levers), and the composition-legend gap **6→12px** in `rollup-export-pages.jsx`. **A first
+  attempt also grew block heights (header 82→86px, h4→12px) and broke the `/bugs` summary sheet — two
+  panels started clipping.** Reverted to the original heights and kept only the weight change, so the
+  final pass has **zero layout delta**. `INLINE_SCORECARD_ROWS` **12→11**: the wider gap costs page 1
+  exactly one row, found by *measuring* capacity rather than assuming it — nothing would have caught
+  it, since no portfolio has 12 teams today. Also found, **pre-existing and not fixed**: the `/bugs`
+  executive summary clips one panel by 12px on `main` too (confirmed by reverting `print-kit.jsx` and
+  re-running). Verified: lint · fixtures 65/65 + 88/88 · packer parity byte-identical · 12 migrations
+  up to date · cold env-free build exit 0 / 49 ƒ Dynamic · health 200 · **E2E 13/13** incl.
+  computed-style checks and no-overflow across all three roll-up variants, program scope, the sprint
+  portrait export and the `/bugs` landscape export. **Done.** **Next:** Naveen's commit (selective —
+  the tree also holds his in-progress editable-filters work). See context/features/rollup-export.md.
+
+- **2026-09-02 — Editable sprint filters: completion ritual (re-verified from scratch).** Closing out
+  the 2026-08-28 entry above. The first pass's scratch harnesses were gone, so the whole suite was
+  **re-derived from the source rather than replayed** — a stronger check than a rerun, since a
+  harness that reproduces the same verdicts after being rewritten is not just replaying its own
+  assumptions. `yarn lint` clean · **pure fixtures 25/25** (`buildFilterPayload`/`buildFilterPatch`,
+  every body re-parsed through the real `filterCreateSchema`/`filterPatchSchema`) · **API smoke 29/29**
+  on dev + Neon with minted iron-session cookies · **headless browser 10/10** · `prisma validate`
+  valid + `prisma migrate status` **12 migrations, up to date** · cold `rm -rf .next` build with
+  `.env` **and** `.env.production` moved aside → exit 0, **no `Environments:` line at all**, **49 ƒ
+  Dynamic** · Neon left at **42 filters, 0 fixture rows, 0 renamed tracks**. The load-bearing claim
+  reproduced independently: a rename puts **exactly one `PATCH …/filters/[filterId]` and no `POST
+  …/sync`** on the wire (decision 3). Two checks the rewrite added over the first pass: **global
+  admin is not a carve-out** on the `NEEDS_ATTENTION` guard (the guard sits after RBAC and before
+  `parseJsonBody`, so an admin PATCH of that track is also a 400 — deliberate, since the track is
+  generated data), and **`sortOrder` survives a workflow change**, not merely a rename. Doc-sync also
+  corrected the §11 UI/UX build log, where the two new rows had been appended **out of chronological
+  order** (2026-08-29 before 2026-08-28); `Last reviewed` bumped to 2026-09-02. No code changed today
+  — spec + canonical doc + tracker only. **Done.** **Next:** Naveen's commit (the tree holds two
+  finished features: editable filters and the 2026-08-29 export type-weight pass) and his
+  real-browser visual acceptance. See context/features/editable-filters.md.

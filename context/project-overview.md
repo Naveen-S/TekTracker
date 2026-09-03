@@ -6,7 +6,7 @@
 > **[BUILT]**, **[PARTIAL]**, **[PLANNED]**, or **[GAP]** so the as-built state is never confused
 > with the target state.
 >
-> Last reviewed: 2026-08-28 · Owner: Naveen · Audience: engineers + Claude Code.
+> Last reviewed: 2026-09-02 · Owner: Naveen · Audience: engineers + Claude Code.
 >
 > **Rename note (2026-07-31):** the product was renamed to **StoryBoard** (was "Sprint Tracker",
 > earlier codename "Tek Tracker" / "TekTracker"). The rename is display/branding only — no schema,
@@ -120,6 +120,7 @@ Key relationships:
 | Update stages per work item | **[BUILT]** | Manual checklist (idempotent PUT, server-owned cascade), hybrid-seeded on sync; a per-track **"Sync stages"** button overwrites stages from live Jira status. See context/features/sync-stages-from-jira.md. |
 | Mark work item as blocked | **[BUILT]** | Health chip → PUT blocked. |
 | Remove Jira filter | **[BUILT]** | DELETE; progress survives by design (§9). |
+| Edit Jira filter (track) | **[BUILT]** | Pencil on each Connected-JQL card → the create dialog, prefilled: name, source (Filter ID ↔ JQL), workflow type, accent colour. Re-syncs only when the source/workflow changed (a rename or recolour is a lone PATCH). Gives the step-4 `PATCH …/filters/[filterId]` its first caller; that route now refuses the generated `NEEDS_ATTENTION` track in both directions. See context/features/editable-filters.md. |
 | Sync Jira (pull live status) | **[BUILT]** | Server-side sync engine + `POST …/sync` with hybrid stage seeding. See context/features/sync-hybrid-seeding.md. |
 | Configure sprint (dates, name) | **[PARTIAL]** | Admin-gated API + admin-only UI (SprintConfig dialog + `/admin`); field-discovery UI still absent. |
 | Reorder filters | **[BUILT]** | Drag → PUT `…/filters/order`. |
@@ -1218,6 +1219,8 @@ UI/UX *direction* is the spec above; this table is the *history* of what shipped
 | 2026-08-27 | Points display boundary + filter-card Jira quick-link + shared program chip | board-polish-points-and-links.md |
 | 2026-08-27 | Roll-up export dialog + landscape portfolio report (executive / full detail) | rollup-export.md |
 | 2026-08-28 | Roll-up export gains a Velocity report (SP/dev by work type, completed sprints) | rollup-export.md |
+| 2026-08-28 | Editable sprint filters (sidebar pencil → prefilled dialog + accent swatches) | editable-filters.md |
+| 2026-08-29 | Export type-weight pass — black section titles, heavier report title, wider legend gap (all 3 exports) | rollup-export.md |
 
 ---
 
@@ -1551,6 +1554,17 @@ All previously open decisions are now resolved:
   independent rounding printed `310+413+133+172 = 1028` beside a TOTAL of `1027`). Presentation-only:
   no schema change, no new route, §12 untouched; the one additive data change is selecting
   `developerCount` on both roll-up team paths. See context/features/rollup-export.md.
+
+- **Editable sprint filters (ratified 2026-08-28).** A track can finally be corrected instead of
+  deleted and recreated. Four calls: the pencil lives on the **sidebar filter card** (not the matrix
+  track header); **name + source + workflow type + accent colour** are all editable — exactly what
+  `filterPatchSchema` already accepted; and the board **re-syncs only when the source or workflow
+  type changed**, so a rename or recolour is a lone PATCH. Almost entirely UI: the step-4 PATCH route
+  existed with no caller, and gained one guard now that it has one — it refuses the generated
+  `NEEDS_ATTENTION` track in both directions (editing it, and converting a real track into it), since
+  sync rewrites that track from the roster and the board partitions it out. Presentation + wiring
+  only: no schema change, no new route, §12 untouched; `sortOrder` is deliberately NOT re-derived on
+  a workflow change. See context/features/editable-filters.md.
 
 ---
 

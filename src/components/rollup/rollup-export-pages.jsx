@@ -30,10 +30,14 @@ import { WORKFLOWS } from "@/lib/workflows.mjs";
 import { cn } from "@/lib/utils";
 
 /** How many teams ride on page 1 under the KPI/burndown block before the table spills over. */
-export const INLINE_SCORECARD_ROWS = 12;
+/**
+ * Teams that ride on page 1 before the table spills to a continuation page. MEASURED, not guessed:
+ * page 1 fits these many rows beneath the KPI row and composition band. Re-measured 2026-08-29
+ * after the type-weight pass; the wider composition-legend gap costs the executive table one row.
+ */
+export const INLINE_SCORECARD_ROWS = 11;
 export const SCORECARD_ROWS_PER_PAGE = 16;
 export const RISK_ROWS_PER_PAGE = 18;
-/** The velocity scorecard's rows are two-line, so fewer ride page 1 than the executive table's. */
 export const INLINE_VELOCITY_ROWS = 8;
 export const VELOCITY_ROWS_PER_PAGE = 12;
 
@@ -428,7 +432,7 @@ export function ExecutiveSummaryPage({
       >
         <div className="mt-2">
           <PrintCompositionBar segments={composition} mode={effortMode} height={16} />
-          <CompositionLegend segments={composition} mode={effortMode} className="mt-1.5" />
+          <CompositionLegend segments={composition} mode={effortMode} className="mt-3" />
         </div>
       </ReportPanel>
 
@@ -535,7 +539,7 @@ export function VelocitySummaryPage({
       >
         <div className="mt-2">
           <PrintCompositionBar segments={displaySegments} mode="delivered" height={16} />
-          <CompositionLegend segments={displaySegments} mode="delivered" className="mt-1.5" />
+          <CompositionLegend segments={displaySegments} mode="delivered" className="mt-3" />
         </div>
       </ReportPanel>
 

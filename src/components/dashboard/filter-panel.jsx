@@ -6,7 +6,7 @@
  * Styling follows the legacy .filter-panel system (src/styles.css :626-842).
  */
 import { useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Copy, GripVertical, Plus, Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, GripVertical, Pencil, Plus, Search, X } from "lucide-react";
 import { formatPoints } from "@/lib/metrics.mjs";
 import { buildJiraSearchUrl } from "@/lib/jira/url";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,7 @@ export function FilterPanel({
   isCollapsed,
   onToggleCollapse,
   onAddFilter,
+  onEditFilter,
   onRemoveFilter,
   onReorderFilters,
   searchQuery,
@@ -195,6 +196,20 @@ export function FilterPanel({
                       title="Copy Jira link"
                     >
                       <Copy className="size-3.5" />
+                    </button>
+                  )}
+                  {onEditFilter && (
+                    <button
+                      type="button"
+                      className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onEditFilter(filter);
+                      }}
+                      aria-label={`Edit ${filter.name}`}
+                      title="Edit filter"
+                    >
+                      <Pencil className="size-3.5" />
                     </button>
                   )}
                   {onRemoveFilter && (
