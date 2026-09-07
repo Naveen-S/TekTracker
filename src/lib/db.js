@@ -26,6 +26,13 @@ const globalForPrisma = globalThis;
 const createPrismaClient = () =>
   new PrismaClient({
     adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+    // Surface Prisma's own diagnostics (pool exhaustion, connection retries) instead of swallowing
+    // them — on internal Postgres those are the early warning before queries start failing.
+    // Deliberately the stdout form, NOT `{ emit: "event" }` + `$on`: the Prisma 7 `prisma-client`
+    // generator no longer emits `$on`, so routing these through `lib/log.js` is not available here.
+    // They therefore print in Prisma's own format rather than as JSON lines — a known, accepted
+    // seam in the log stream (query errors still reach `logger` via handleRouteError).
+    log: ["warn", "error"],
   });
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();

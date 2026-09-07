@@ -9,13 +9,13 @@
  */
 import { prisma } from "@/lib/db";
 import { requireTeamRole, NotFoundError } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError, ConflictError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError, ConflictError } from "@/lib/api/route-helpers";
 import { subComponentClaimSchema } from "@/lib/schemas/jira-component";
 import { Role } from "@/generated/prisma/client";
 
 export const dynamic = "force-dynamic";
 
-export async function PATCH(request, { params }) {
+export const PATCH = withRoute("teams.sub-components", async (request, { params }) => {
   try {
     const { teamId } = await params;
     await requireTeamRole(teamId, [Role.ADMIN]);
@@ -74,4 +74,4 @@ export async function PATCH(request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

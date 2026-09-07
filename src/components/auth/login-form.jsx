@@ -11,18 +11,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, errorReference } from "@/lib/api-client";
 
 export function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
+  // The failing STAGE and the request id, shown under the message. Login is the one pre-auth
+  // surface, and it used to answer five structurally different deployment failures with the same
+  // "Login failed" — so a screenshot of this card now carries what an admin needs to act on
+  // (observability-and-errors.md pillar 1).
+  const [errorReferenceText, setErrorReferenceText] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
+    setErrorReferenceText(null);
     setLoading(true);
     try {
       await apiFetch("/api/auth/login", {
@@ -33,6 +39,7 @@ export function LoginForm() {
       router.refresh();
     } catch (err) {
       setError(err.message);
+      setErrorReferenceText(errorReference(err));
       setLoading(false);
     }
   };
@@ -88,9 +95,14 @@ export function LoginForm() {
           </div>
 
           {error && (
-            <p className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm font-medium text-danger-strong">
-              {error}
-            </p>
+            <div className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2">
+              <p className="text-sm font-medium text-danger-strong">{error}</p>
+              {errorReferenceText && (
+                <p className="mt-1.5 font-mono text-[11px] break-all text-danger-strong/70">
+                  {errorReferenceText}
+                </p>
+              )}
+            </div>
           )}
 
           <Button type="submit" disabled={loading} className="w-full">

@@ -17,7 +17,7 @@
  */
 import { requireUser } from "@/lib/auth";
 import { ForbiddenError, NotFoundError } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
 import { digestContract, rollupDigestBodySchema } from "@/lib/schemas/ai";
 import { getRollupData } from "@/lib/dashboard-data";
 import { buildTrendSeries, getWeeklyVelocity, snapshotVelocity } from "@/lib/metrics.mjs";
@@ -27,7 +27,7 @@ import { AiNotConfiguredError, AiProviderError } from "@/lib/ai/errors";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request) {
+export const POST = withRoute("rollup.ai-digest", async (request) => {
   try {
     const user = await requireUser();
     const { sprintId, programId } = await parseJsonBody(request, rollupDigestBodySchema);
@@ -78,12 +78,9 @@ export async function POST(request) {
     const { provider, model } = getAiConfig();
     return Response.json({ digest, generatedAt: asOf.toISOString(), provider, model });
   } catch (error) {
-    if (error instanceof AiNotConfiguredError) {
-      return Response.json({ error: error.message }, { status: 503 });
-    }
-    if (error instanceof AiProviderError) {
-      return Response.json({ error: error.message }, { status: 502 });
-    }
+    // AiNotConfiguredError (503) and AiProviderError (502) now carry their own status + code
+    // (lib/ai/errors.js extends AppError), so the shared helper maps them — and unlike the ladder
+    // that used to live here, it also returns the code, requestId and provider status.
     return handleRouteError(error);
   }
-}
+});

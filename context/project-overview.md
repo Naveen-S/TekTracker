@@ -6,7 +6,7 @@
 > **[BUILT]**, **[PARTIAL]**, **[PLANNED]**, or **[GAP]** so the as-built state is never confused
 > with the target state.
 >
-> Last reviewed: 2026-09-02 · Owner: Naveen · Audience: engineers + Claude Code.
+> Last reviewed: 2026-09-04 · Owner: Naveen · Audience: engineers + Claude Code.
 >
 > **Rename note (2026-07-31):** the product was renamed to **StoryBoard** (was "Sprint Tracker",
 > earlier codename "Tek Tracker" / "TekTracker"). The rename is display/branding only — no schema,
@@ -133,6 +133,7 @@ Key relationships:
 | Risk call-out comments + roll-up all-risks dialog | **[BUILT]** | `IssueProgress.riskComment` annotates a known/agreed risk (managed context, not a fresh alarm); `/rollup` shows every team's comments + a "View all risks" dialog. See context/features/risk-comments-rollup-digest.md. |
 | Bug report dashboards (`/bugs`) | **[BUILT]** | Config-driven bug matrix + executive dashboard (categories × scope × priority band, SLA-breach overlay) — all admin config, so a second report (Honda) is configuration not code; External/Internal/All scope toggle, Bugs-by-scrum-team drill, sprint-ownership grouping, and a landscape executive PDF. See context/features/gm-bug-report.md, enhancing-bug-board.md, bug-report-pdf-export.md, bug-sprint-ownership.md. |
 | Admin settings / RBAC | **[PARTIAL]** | Server-side RBAC (`User.isAdmin` + `TeamMembership.role`, `lib/rbac.js`) on all domain routes; admin UI for teams/members/sprints + bug-report config; broader settings UI still absent. |
+| Production observability & error contract | **[BUILT]** | Structured JSON logging + per-request `AsyncLocalStorage` context (`lib/log.js`), one error taxonomy (`lib/errors.js`) behind an additive envelope `{ error, code, requestId, details, debug? }` (`debug` = global admins, or anyone under `DEBUG_ERRORS=1`), `withRoute` on all 60 handlers, Jira cause-chain + timeout + `errorMessages` capture, sync warnings (closes §14.14), `onRequestError` + error boundaries, persisted `ErrorLog` + an /admin panel, and admin-only `GET /api/diagnostics`. Driven by a production login that answered five different failures with two strings. See context/features/observability-and-errors.md. |
 | One-Click Sprint Start | **[BUILT]** | Admin `JiraComponent`/`JiraSubComponent` catalog + per-team Issue Type overrides + `Sprint.fixVersions`; a dashboard action (`TEAM_MANAGER_ROLES`) generates a team's missing tracks against an existing Sprint from generated JQL. See context/features/one-click-sprint-start.md. |
 | Velocity / LeaderBoard (`/leaderboard`) | **[BUILT]** | Team velocity leaderboard (`completedPoints ÷ Team.developerCount`) + org-wide developer leaderboard, sprint-scoped + all-time, computed live (no snapshot table); gated to `LEADERBOARD_ROLES` (TPM excluded), LEAD/MEMBER get a personal "my stats" card. See context/features/leaderboard.md. |
 | Committed / Tech Debt / Unplanned work breakdown + per-sprint capacity | **[BUILT]** | Delivery scoreboard on `/`, `/rollup`, `/share/[token]`, export: composition rail (Committed=`FEATURE`, Tech Debt=`TECH_DEBT`, Unplanned Bugs = External `SUPPORT` + Internal `INTERNAL_BUG`) vs an admin per-team-per-sprint `SprintCapacity` target. Display-only/additive (never wired into §12); `/rollup` adds a "By team" chart. See context/features/committed-unplanned-work.md, unplanned-split-and-chart.md. |
@@ -834,6 +835,35 @@ model BugReportIssue {
   @@index([reportId])
 }
 
+/// A persisted server-side failure — the admin-readable tail of what the logger writes to stdout
+/// (observability-and-errors.md). Production runs on internal Tekion infra where reaching the
+/// container's logs is a ticket, not a command, so /admin renders the last rows.
+/// ONLY status >= 500 is persisted (validation/auth/404 noise stays in the logs), and there are NO
+/// foreign keys on userId/teamId: this must be able to record an error ABOUT a deleted entity, and
+/// a cascade must never delete incident history (the FK-less read-time-join reasoning of
+/// Issue <-> IssueProgress). Pruned to 14 days by the daily cron; the writer degrades to console
+/// when the table is absent, so an unapplied migration never turns one failure into two.
+model ErrorLog {
+  id        String   @id @default(cuid())
+  requestId String                                  // correlates with x-request-id + every log line
+  code      String                                  // stable ERROR_CODES value (lib/errors.js)
+  status    Int
+  source    String                                  // "route" | "render" | "cron"
+  route     String?                                 // logical route name, e.g. teams.sprints.sync
+  path      String?
+  method    String?
+  userId    String?                                 // no FK, see note above
+  teamId    String?                                 // no FK, see note above
+  message   String
+  details   Json?
+  stack     String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([code])
+  @@index([requestId])
+}
+
 /// Daily history of the CLASSIFIED matrix. Self-describing: every dimension carries a key AND the
 /// label as it read that day, so renaming/deleting a category, scope or band never orphans
 /// history. Derived rows use the sentinels `__total__` / `__unattributed__` (NULL-free unique key).
@@ -1058,8 +1088,23 @@ erDiagram
         int count
         int breachedCount
     }
+    ERROR_LOG {
+        string id PK
+        string requestId
+        string code
+        int status
+        string source
+        string route
+        string userId "no FK by design"
+        string teamId "no FK by design"
+        datetime createdAt
+    }
 ```
 
+> **Note — `ErrorLog` has no relationships at all**, which is why it floats free in the diagram
+> above: it records failures *about* entities that may not exist (a deleted team, a user who never
+> signed in, a request that died before auth), and a cascade must never erase incident history.
+>
 > **Note — `Issue` ↔ `IssueProgress` are intentionally decoupled.** There is no FK between them; the
 > cache (`Issue`, keyed by `filterId + jiraKey`) and the product data (`IssueProgress`, keyed by
 > `teamId + sprintId + jiraKey`) are joined by `jiraKey` at read time. This is what lets manual stage
@@ -1221,6 +1266,7 @@ UI/UX *direction* is the spec above; this table is the *history* of what shipped
 | 2026-08-28 | Roll-up export gains a Velocity report (SP/dev by work type, completed sprints) | rollup-export.md |
 | 2026-08-28 | Editable sprint filters (sidebar pencil → prefilled dialog + accent swatches) | editable-filters.md |
 | 2026-08-29 | Export type-weight pass — black section titles, heavier report title, wider legend gap (all 3 exports) | rollup-export.md |
+| 2026-09-04 | Error reference (`CODE · requestId`) on the login card + alert dialog w/ Copy diagnostics; `warn` dialog tone for sync warnings; Admin → Recent errors; app error boundaries | observability-and-errors.md |
 
 ---
 
@@ -1345,6 +1391,16 @@ file store. Token is **plaintext on disk** in `.sessions/`. Acceptable for a loc
    the legacy `SESSION_SECRET` is **retired** — `web/` reads `SESSION_PASSWORD` (iron-session sealing)
    and `TOKEN_ENCRYPTION_KEY` from env/secret store and **fails loudly** if absent (no `dev-secret`
    fallback). Rotation still TODO.
+6. **Error-detail exposure is deliberately tiered** (added 2026-09-04,
+   observability-and-errors.md). Every caller gets `{ error, code, requestId, details }` where
+   `details` is curated, safe context (which track failed, what Jira itself said, which env var is
+   missing **by name**). The `debug` block — error class, stack, `cause` chain, Prisma meta — is
+   **global-admin only**, or open to everyone while `DEBUG_ERRORS=1` is set for a bounded debugging
+   session. `/api/auth/login` is the one PRE-AUTH surface and so cannot use the admin gate: it
+   exposes the failing stage, the code and a remediation message naming a missing variable, but
+   never a value, never a stack. Secrets are additionally scrubbed at the logging boundary by a
+   recursive redactor (`lib/log.js`), which also gates what `ErrorLog.details` persists — so a Jira
+   token cannot reach the logs, the database, or a response.
 
 ---
 
@@ -1416,7 +1472,13 @@ spec-internal ambiguities to resolve.
     failure shape as the dead-token/anonymous trap recorded at migration step 5. Progress rows survive
     (they are keyed by team+sprint+jiraKey) but become invisible on the board. *Fix:* warn on a sync
     that takes a non-empty track to zero. **Observed 2026-08-28** on a live team whose Tech Debt track
-    cached 0 issues after a sync.
+    cached 0 issues after a sync. **[Fixed 2026-09-04]** — `deriveSyncWarnings`
+    (`lib/sync/warnings.mjs`) returns a `TRACK_EMPTIED` warning (with the previous count and the
+    likely causes) on `warnings[]` from both sync entry points; the board shows them in a `warn`-tone
+    dialog instead of the success toast, and each is logged. A brand-new track that matches nothing on
+    its FIRST sync warns too (`TRACK_EMPTY`) — a later sync of a legitimately empty track stays quiet,
+    so it cannot cry wolf. The sync still succeeds: the data is what Jira said, the warning says that
+    what Jira said is suspicious. See context/features/observability-and-errors.md.
 
 ---
 
@@ -1565,6 +1627,19 @@ All previously open decisions are now resolved:
   sync rewrites that track from the roster and the board partitions it out. Presentation + wiring
   only: no schema change, no new route, §12 untouched; `sortOrder` is deliberately NOT re-derived on
   a workflow change. See context/features/editable-filters.md.
+
+- **Production observability & error contract (ratified 2026-09-03).** Prompted by a production login
+  that answered five structurally different failures with two strings. Three AskUserQuestion calls:
+  (1) **admin-gated debug** — everyone gets `{ error, code, requestId, details }`, global admins also
+  get a `debug` block (stack/cause/Prisma meta), and `DEBUG_ERRORS=1` opens it to everyone for a
+  bounded session; (2) **wrap every handler** — all 60 exports across the 41 route files get
+  `withRoute`, for uniform correlation, timing and mapping, over a lower-touch shared-helper-only
+  option; (3) **all four extras ship** — `onRequestError` + error boundaries, an admin diagnostics
+  endpoint, sync warnings (closing §14.14), and a persisted `ErrorLog`. A fourth call was taken by
+  Claude and stated in the plan: the **pre-auth exposure rule** for `/api/auth/login` (§13.6). Two
+  invariants moved and are declared: **49 → 50 ƒ Dynamic** (one new route) and **12 → 13 migrations**
+  (`add_error_log`). §12 metrics are untouched; `error` keeps its exact meaning so no existing client
+  changed. See context/features/observability-and-errors.md.
 
 ---
 

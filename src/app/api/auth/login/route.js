@@ -6,95 +6,142 @@
  * `JiraCredential` with the AES-256-GCM-encrypted token (never the raw token) → set the `{ userId }`
  * iron-session cookie. Response is a superset of the prototype's `{ email, displayName }`
  * (auth-layer.md decision 4); `isAdmin` is read off the `User` row.
+ *
+ * ── Why this route is written in stages (observability-and-errors.md pillar 1) ──
+ * Login is where a broken deployment shows up first, and it used to answer FIVE structurally
+ * different failures with two strings ("Login failed" / "Failed to validate credentials with
+ * Jira"): a missing TOKEN_ENCRYPTION_KEY, a short SESSION_PASSWORD, an unreachable database, an
+ * unapplied migration, and blocked egress to Atlassian. Each stage below now fails with its own
+ * code and a `details.stage`, so the response says which of the five it was:
+ *
+ *   config → CONFIG_MISSING · jira-network → JIRA_UNREACHABLE/JIRA_TIMEOUT ·
+ *   jira-auth → JIRA_AUTH · database → DB_UNAVAILABLE/DB_MIGRATION_MISSING ·
+ *   session → SESSION_WRITE_FAILED
+ *
+ * This is the one PRE-AUTH surface, so the admin-gated `debug` block cannot apply. The deliberate
+ * rule (spec, "pre-auth exposure"): expose the stage, the code, the requestId and a remediation
+ * message that NAMES a missing env var — never its value, never a stack. On an internal tool the
+ * name of an unset variable is not a secret, and withholding it is what made a mis-provisioned
+ * container look exactly like a wrong password.
  */
 import { prisma } from "@/lib/db";
-import { validate } from "@/lib/validation";
+import { withRoute, parseJsonBody } from "@/lib/api/route-helpers";
 import { loginInputSchema } from "@/lib/schemas/auth";
-import { encryptToken } from "@/lib/crypto";
-import { createUserSession } from "@/lib/auth";
+import { encryptToken, assertTokenKey } from "@/lib/crypto";
+import { createUserSession, getSessionCookieInfo, assertSessionPassword } from "@/lib/auth";
+import { logger } from "@/lib/log";
 import { fetchMyself, fetchCloudId, getJiraBaseUrl, JiraAuthError } from "@/lib/jira/client";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request) {
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    body = null;
-  }
+/**
+ * `secure: true` cookies are silently DISCARDED by the browser on a plain-HTTP response: login
+ * answers 200 and the user bounces straight back to /login, with no error raised anywhere. If TLS
+ * terminates at the load balancer and forwards HTTP, this is the signature. Detect it and say so.
+ * @param {Request} request
+ * @returns {string | null} a warning to attach to the 200, or null when the context is fine.
+ */
+function detectInsecureCookieContext(request) {
+  const cookie = getSessionCookieInfo();
+  if (!cookie.secure) return null;
 
-  const parsed = validate(loginInputSchema, body);
-  if (!parsed.success) {
-    return Response.json({ error: parsed.error }, { status: 400 });
-  }
-  const { email, token } = parsed.data;
+  const forwarded = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const proto = forwarded ?? (() => {
+    try {
+      return new URL(request.url).protocol.replace(":", "");
+    } catch {
+      return null;
+    }
+  })();
 
-  let baseUrl;
-  try {
-    baseUrl = getJiraBaseUrl();
-  } catch (error) {
-    console.error("Login: server auth misconfigured:", error);
-    return Response.json({ error: "Server auth is misconfigured" }, { status: 500 });
+  if (proto && proto !== "https") {
+    logger.warn("session.insecure_context", { proto, cookieName: cookie.cookieName });
+    return `The session cookie is marked Secure but this request arrived over ${proto}. The browser will discard it and you will be sent back to the login page — check TLS termination / x-forwarded-proto.`;
   }
+  return null;
+}
 
-  // 1. Validate the credentials against Jira.
+/**
+ * Check EVERY secret this route will need before doing anything else.
+ *
+ * Ordering matters for debuggability: `TOKEN_ENCRYPTION_KEY` is not used until after Jira has been
+ * called and the user upserted, and `SESSION_PASSWORD` not until the very end — so a container
+ * missing either one used to answer a slow, misleading "Login failed" AFTER a successful round trip
+ * to Atlassian. Failing up front makes the answer instant, deterministic, and independent of
+ * whether the caller's credentials happen to be valid.
+ *
+ * @returns {string} the validated Jira base URL.
+ */
+function assertLoginConfig() {
+  const baseUrl = getJiraBaseUrl(); // throws ConfigError naming JIRA_BASE_URL
+  assertTokenKey(); // throws ConfigError naming TOKEN_ENCRYPTION_KEY
+  assertSessionPassword(); // throws ConfigError naming SESSION_PASSWORD
+  return baseUrl;
+}
+
+export const POST = withRoute("auth.login", async (request) => {
+  const { email, token } = await parseJsonBody(request, loginInputSchema);
+
+  // Stage: config — all three secrets, before any network call.
+  const baseUrl = assertLoginConfig();
+
+  // Stage: jira-network / jira-auth — the client distinguishes "cannot reach Atlassian" from
+  // "Atlassian said no", which the old catch-all could not.
   let identity;
   try {
     identity = await fetchMyself({ baseUrl, email, token });
   } catch (error) {
     if (error instanceof JiraAuthError) {
-      return Response.json(
-        { error: "Invalid credentials. Check your Jira email and API token." },
-        { status: 401 },
-      );
+      logger.warn("auth.login_rejected", { email, code: error.code });
+      throw new JiraAuthError("Invalid credentials. Check your Jira email and API token.");
     }
-    console.error("Login: Jira validation failed:", error);
-    return Response.json({ error: "Failed to validate credentials with Jira" }, { status: 500 });
+    throw error;
   }
 
-  // 2. Persist identity + encrypted credential, then open the session.
-  try {
-    const cloudId = (await fetchCloudId({ baseUrl })) ?? baseUrl;
+  const cloudId = (await fetchCloudId({ baseUrl })) ?? baseUrl;
 
-    const user = await prisma.user.upsert({
-      where: { email },
-      update: {
-        jiraAccountId: identity.accountId,
-        displayName: identity.displayName,
-        avatarUrl: identity.avatarUrl,
-      },
-      create: {
-        email,
-        jiraAccountId: identity.accountId,
-        displayName: identity.displayName,
-        avatarUrl: identity.avatarUrl,
-      },
-    });
+  // Stage: database — a missing table (migrations not deployed) or an unreachable/TLS-mismatched
+  // Postgres is classified by handleRouteError into DB_MIGRATION_MISSING / DB_UNAVAILABLE, each
+  // carrying its own remediation hint.
+  const user = await prisma.user.upsert({
+    where: { email },
+    update: {
+      jiraAccountId: identity.accountId,
+      displayName: identity.displayName,
+      avatarUrl: identity.avatarUrl,
+    },
+    create: {
+      email,
+      jiraAccountId: identity.accountId,
+      displayName: identity.displayName,
+      avatarUrl: identity.avatarUrl,
+    },
+  });
 
-    const credentialFields = {
-      jiraEmail: email,
-      encryptedToken: encryptToken(token),
-      cloudId,
-      baseUrl,
-      lastValidatedAt: new Date(),
-    };
-    await prisma.jiraCredential.upsert({
-      where: { userId: user.id },
-      update: credentialFields,
-      create: { userId: user.id, ...credentialFields },
-    });
+  const credentialFields = {
+    jiraEmail: email,
+    encryptedToken: encryptToken(token),
+    cloudId,
+    baseUrl,
+    lastValidatedAt: new Date(),
+  };
+  await prisma.jiraCredential.upsert({
+    where: { userId: user.id },
+    update: credentialFields,
+    create: { userId: user.id, ...credentialFields },
+  });
 
-    await createUserSession(user.id);
+  // Stage: session — SessionWriteError (or ConfigError naming SESSION_PASSWORD).
+  await createUserSession(user.id);
 
-    return Response.json({
-      email: user.email,
-      displayName: user.displayName,
-      isAdmin: user.isAdmin,
-      avatarUrl: user.avatarUrl,
-    });
-  } catch (error) {
-    console.error("Login: persistence/session failed:", error);
-    return Response.json({ error: "Login failed" }, { status: 500 });
-  }
-}
+  const warning = detectInsecureCookieContext(request);
+  logger.info("auth.login_ok", { userId: user.id, email: user.email, isAdmin: user.isAdmin });
+
+  return Response.json({
+    email: user.email,
+    displayName: user.displayName,
+    isAdmin: user.isAdmin,
+    avatarUrl: user.avatarUrl,
+    ...(warning ? { warning } : {}),
+  });
+});

@@ -12,6 +12,7 @@
  * The key is read + validated at call time (not module load) so `yarn build` stays env-free.
  */
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { ConfigError } from "@/lib/errors";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_BYTES = 12;
@@ -21,18 +22,33 @@ const KEY_BYTES = 32;
 /** @returns {Buffer} the 32-byte key; throws loudly if missing/wrong-length. */
 function getKey() {
   const raw = process.env.TOKEN_ENCRYPTION_KEY?.trim();
+  const hint = "Generate one with `openssl rand -base64 32` and set it in this environment.";
   if (!raw) {
-    throw new Error(
-      "TOKEN_ENCRYPTION_KEY is not set (expected a base64-encoded 32-byte key; generate one with `openssl rand -base64 32`)",
-    );
+    throw new ConfigError("TOKEN_ENCRYPTION_KEY is not set (expected a base64-encoded 32-byte key)", {
+      variable: "TOKEN_ENCRYPTION_KEY",
+      hint,
+    });
   }
   const key = Buffer.from(raw, "base64");
   if (key.length !== KEY_BYTES) {
-    throw new Error(
-      `TOKEN_ENCRYPTION_KEY must decode to ${KEY_BYTES} bytes (got ${key.length}); generate one with \`openssl rand -base64 32\``,
+    throw new ConfigError(
+      `TOKEN_ENCRYPTION_KEY must decode to ${KEY_BYTES} bytes (got ${key.length})`,
+      { variable: "TOKEN_ENCRYPTION_KEY", hint },
     );
   }
   return key;
+}
+
+/**
+ * Validate that the encryption key is present and well-formed, without encrypting anything.
+ *
+ * Lets a caller fail on configuration BEFORE doing expensive or user-visible work — the login
+ * route checks it up front rather than discovering it after a successful Jira round trip
+ * (observability-and-errors.md pillar 1).
+ * @throws {ConfigError} naming TOKEN_ENCRYPTION_KEY.
+ */
+export function assertTokenKey() {
+  getKey();
 }
 
 /**

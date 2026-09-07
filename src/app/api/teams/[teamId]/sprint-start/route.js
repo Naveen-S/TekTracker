@@ -12,7 +12,7 @@
  */
 import { prisma } from "@/lib/db";
 import { requireTeamRole, TEAM_MANAGER_ROLES, NotFoundError } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
 import { sprintStartSchema } from "@/lib/schemas/sprint-start";
 import {
   buildAllTrackJql,
@@ -28,7 +28,7 @@ import { FilterSourceType, SprintState } from "@/generated/prisma/client";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request, { params }) {
+export const POST = withRoute("teams.sprint-start", async (request, { params }) => {
   try {
     const { teamId } = await params;
     const { user } = await requireTeamRole(teamId, TEAM_MANAGER_ROLES);
@@ -107,4 +107,4 @@ export async function POST(request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

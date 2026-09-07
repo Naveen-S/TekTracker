@@ -5,13 +5,13 @@
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { requireAdmin } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
 import { sprintCreateSchema, sprintStateSchema } from "@/lib/schemas/sprint";
 import { validate } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request) {
+export const GET = withRoute("sprints", async (request) => {
   try {
     await requireUser();
     const stateParam = new URL(request.url).searchParams.get("state");
@@ -28,9 +28,9 @@ export async function GET(request) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});
 
-export async function POST(request) {
+export const POST = withRoute("sprints", async (request) => {
   try {
     const user = await requireAdmin();
     const data = await parseJsonBody(request, sprintCreateSchema);
@@ -39,4 +39,4 @@ export async function POST(request) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

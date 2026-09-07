@@ -13,6 +13,9 @@
 import { prisma } from "@/lib/db";
 import { NotFoundError } from "@/lib/rbac";
 import { ConflictError } from "@/lib/api/route-helpers";
+import { AppError } from "@/lib/errors";
+import { logger } from "@/lib/log";
+import { deriveSyncWarnings, buildUnmappedWarning } from "@/lib/sync/warnings.mjs";
 import { owningWorkflowType } from "@/lib/workflows.mjs";
 import { ensureNeedsAttentionFilter } from "@/lib/needs-attention/ensure-filter";
 import {
@@ -40,8 +43,13 @@ import { FilterSourceType, SprintState } from "@/generated/prisma/client";
 // that enum member `undefined`, which Prisma strips from a `where` (widening it). See ensure-filter.js.
 const NEEDS_ATTENTION = "NEEDS_ATTENTION";
 
-/** Refresh one filter's Issue cache atomically; returns the added/removed diff (decision 4). */
+/**
+ * Refresh one filter's Issue cache atomically; returns the added/removed diff (decision 4) plus
+ * `previousTotal`/`firstSync`, which are what let deriveSyncWarnings notice a track that Jira just
+ * silently emptied (§14.14). Both are free here — the transaction already reads the existing keys.
+ */
 async function refreshFilterCache(filter, rows, filterUpdate) {
+  const firstSync = filter.lastSyncedAt === null;
   return prisma.$transaction(async (tx) => {
     const existing = await tx.issue.findMany({
       where: { filterId: filter.id },
@@ -68,6 +76,8 @@ async function refreshFilterCache(filter, rows, filterUpdate) {
       id: filter.id,
       name: filter.name,
       total: rows.length,
+      previousTotal: existingKeys.size,
+      firstSync,
       added: addedKeys.length,
       removed: removedKeys.length,
       addedKeys,
@@ -77,9 +87,30 @@ async function refreshFilterCache(filter, rows, filterUpdate) {
 }
 
 /**
+ * Name the track in a failure. A sync walks every filter sequentially, so without this the whole
+ * run reports one Jira error with no clue WHICH track produced it — and with several tracks per
+ * team that is most of the triage. The JQL itself is already attached by `searchIssues`.
+ *
+ * @param {unknown} error
+ * @param {{ id: string, name: string, sourceType: string, jiraFilterId: string | null }} filter
+ * @returns {unknown} the same error, annotated when it is one of ours.
+ */
+function annotateTrackFailure(error, filter) {
+  if (!(error instanceof AppError)) return error;
+  error.message = `Track "${filter.name}" failed: ${error.message}`;
+  return error.withDetails({
+    filterId: filter.id,
+    filterName: filter.name,
+    sourceType: filter.sourceType,
+    ...(filter.jiraFilterId ? { jiraFilterId: filter.jiraFilterId } : {}),
+  });
+}
+
+/**
  * Sync all filters of a team+sprint with the calling user's Jira credential.
  * @param {{ teamId: string, sprintId: string, userId: string }} args
- * @returns {Promise<{ filters: Array<object>, progressSeeded: number, workflowsReevaluated: number }>}
+ * @returns {Promise<{ filters: Array<object>, warnings: Array<object>, progressSeeded: number,
+ *   workflowsReevaluated: number }>}
  */
 export async function syncTeamSprint({ teamId, sprintId, userId }) {
   const team = await prisma.team.findUnique({ where: { id: teamId } });
@@ -130,16 +161,37 @@ export async function syncTeamSprint({ teamId, sprintId, userId }) {
   // 1. Per filter, sequentially (decision 10): fetch from Jira, then replace the cache atomically.
   const filterSummaries = [];
   for (const filter of filters) {
-    let jql = filter.jql;
-    const filterUpdate = {};
-    if (filter.sourceType === FilterSourceType.JIRA_FILTER) {
-      const jiraFilter = await fetchFilter({ auth, filterId: filter.jiraFilterId });
-      jql = jiraFilter.jql; // search the filter's CURRENT jql and refresh our copy (decision 9)
-      filterUpdate.jql = jql;
+    const startedAt = Date.now();
+    try {
+      let jql = filter.jql;
+      const filterUpdate = {};
+      if (filter.sourceType === FilterSourceType.JIRA_FILTER) {
+        const jiraFilter = await fetchFilter({ auth, filterId: filter.jiraFilterId });
+        jql = jiraFilter.jql; // search the filter's CURRENT jql and refresh our copy (decision 9)
+        filterUpdate.jql = jql;
+      }
+      const rawIssues = await searchIssues({ auth, jql, fields: requestFields });
+      const rows = rawIssues.map((issue) => transformJiraIssue(issue, fieldIds));
+      const summary = await refreshFilterCache(filter, rows, filterUpdate);
+      filterSummaries.push(summary);
+      logger.debug("sync.track", {
+        filterName: summary.name,
+        total: summary.total,
+        previousTotal: summary.previousTotal,
+        added: summary.added,
+        removed: summary.removed,
+        ms: Date.now() - startedAt,
+      });
+    } catch (error) {
+      throw annotateTrackFailure(error, filter);
     }
-    const rawIssues = await searchIssues({ auth, jql, fields: requestFields });
-    const rows = rawIssues.map((issue) => transformJiraIssue(issue, fieldIds));
-    filterSummaries.push(await refreshFilterCache(filter, rows, filterUpdate));
+  }
+
+  // A track Jira just emptied is a SUCCESSFUL sync with a suspicious result (§14.14) — surfaced,
+  // never thrown.
+  const warnings = deriveSyncWarnings(filterSummaries);
+  for (const warning of warnings) {
+    logger.warn("sync.warning", warning);
   }
 
   // 2. Group the refreshed cache by key (an issue may sit in several filters; ONE progress row).
@@ -216,8 +268,17 @@ export async function syncTeamSprint({ teamId, sprintId, userId }) {
     { timeout: 30_000 },
   );
 
+  logger.info("sync.done", {
+    tracks: filterSummaries.length,
+    issues: filterSummaries.reduce((sum, filter) => sum + filter.total, 0),
+    progressSeeded: toCreate.length,
+    workflowsReevaluated: reevaluations.length,
+    warnings: warnings.length,
+  });
+
   return {
     filters: filterSummaries,
+    warnings,
     progressSeeded: toCreate.length,
     workflowsReevaluated: reevaluations.length,
   };
@@ -237,7 +298,8 @@ export async function syncTeamSprint({ teamId, sprintId, userId }) {
  * - An unmapped status never wipes an existing row (resolveStageResync); it's counted, not applied.
  *
  * @param {{ teamId: string, sprintId: string, filterId: string, userId: string }} args
- * @returns {Promise<{ filterId: string, filterName: string, total: number, applied: number, unmapped: number, overwroteManual: number }>}
+ * @returns {Promise<{ filterId: string, filterName: string, total: number, applied: number,
+ *   unmapped: number, overwroteManual: number, warnings: Array<object> }>}
  */
 export async function syncFilterStagesFromJira({ teamId, sprintId, filterId, userId }) {
   const team = await prisma.team.findUnique({ where: { id: teamId } });
@@ -275,16 +337,22 @@ export async function syncFilterStagesFromJira({ teamId, sprintId, filterId, use
 
   // 1. Pull the latest issues for THIS filter and replace its cache (the "pull latest, then map"
   //    contract). Reuses the same atomic refresh as the full sync.
-  let jql = filter.jql;
-  const filterUpdate = {};
-  if (filter.sourceType === FilterSourceType.JIRA_FILTER) {
-    const jiraFilter = await fetchFilter({ auth, filterId: filter.jiraFilterId });
-    jql = jiraFilter.jql;
-    filterUpdate.jql = jql;
+  let refreshSummary;
+  let rows;
+  try {
+    let jql = filter.jql;
+    const filterUpdate = {};
+    if (filter.sourceType === FilterSourceType.JIRA_FILTER) {
+      const jiraFilter = await fetchFilter({ auth, filterId: filter.jiraFilterId });
+      jql = jiraFilter.jql;
+      filterUpdate.jql = jql;
+    }
+    const rawIssues = await searchIssues({ auth, jql, fields: requestFields });
+    rows = rawIssues.map((issue) => transformJiraIssue(issue, fieldIds));
+    refreshSummary = await refreshFilterCache(filter, rows, filterUpdate);
+  } catch (error) {
+    throw annotateTrackFailure(error, filter);
   }
-  const rawIssues = await searchIssues({ auth, jql, fields: requestFields });
-  const rows = rawIssues.map((issue) => transformJiraIssue(issue, fieldIds));
-  await refreshFilterCache(filter, rows, filterUpdate);
 
   // The fresh Jira status per key comes straight from the just-refreshed rows (a key may also sit
   // in another, staler filter — always trust the track we just synced).
@@ -321,6 +389,7 @@ export async function syncFilterStagesFromJira({ teamId, sprintId, filterId, use
   const toUpdate = [];
   let unmapped = 0;
   let overwroteManual = 0;
+  const unmappedStatuses = [];
   for (const jiraKey of keys) {
     const owning = owningWorkflowType(typesByKey.get(jiraKey) ?? [filter.workflowType]);
     const existing = progressByKey.get(jiraKey) ?? null;
@@ -330,7 +399,13 @@ export async function syncFilterStagesFromJira({ teamId, sprintId, filterId, use
       mappings,
       existing,
     });
-    if (plan.unmapped) unmapped += 1;
+    if (plan.unmapped) {
+      unmapped += 1;
+      // Keep the STATUS NAMES, not just the count: "3 unmapped" sends you hunting, whereas
+      // "no mapping for \"In Review\"" is the fix.
+      const status = freshStatusByKey.get(jiraKey);
+      if (status) unmappedStatuses.push(status);
+    }
     if (!plan.write) continue;
     if (plan.overwroteManual) overwroteManual += 1;
     if (existing) {
@@ -373,6 +448,26 @@ export async function syncFilterStagesFromJira({ teamId, sprintId, filterId, use
     { timeout: 30_000 },
   );
 
+  const warnings = deriveSyncWarnings([refreshSummary]);
+  const unmappedWarning = buildUnmappedWarning({
+    filterId: filter.id,
+    filterName: filter.name,
+    statuses: unmappedStatuses,
+    count: unmapped,
+  });
+  if (unmappedWarning) warnings.push(unmappedWarning);
+  for (const warning of warnings) {
+    logger.warn("sync.warning", warning);
+  }
+
+  logger.info("sync.stages_done", {
+    filterName: filter.name,
+    total: keys.length,
+    applied: toCreate.length + toUpdate.length,
+    unmapped,
+    overwroteManual,
+  });
+
   return {
     filterId: filter.id,
     filterName: filter.name,
@@ -380,5 +475,6 @@ export async function syncFilterStagesFromJira({ teamId, sprintId, filterId, use
     applied: toCreate.length + toUpdate.length,
     unmapped,
     overwroteManual,
+    warnings,
   };
 }

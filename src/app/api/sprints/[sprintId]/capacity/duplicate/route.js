@@ -10,12 +10,12 @@
  */
 import { prisma } from "@/lib/db";
 import { requireAdmin, NotFoundError } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
 import { sprintCapacityDuplicateSchema } from "@/lib/schemas/sprint-capacity";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request, { params }) {
+export const POST = withRoute("sprints.capacity.duplicate", async (request, { params }) => {
   try {
     await requireAdmin();
     const { sprintId } = await params; // destination
@@ -49,4 +49,4 @@ export async function POST(request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

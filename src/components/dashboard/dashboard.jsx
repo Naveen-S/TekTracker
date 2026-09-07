@@ -35,7 +35,7 @@ import { RiskCommentDialog } from "./risk-comment-dialog";
 import { AiDigestDialog } from "./ai-digest-dialog";
 import { ShareDialog } from "./share-dialog";
 import { ExportDialog } from "./export-dialog";
-import { AlertDialog } from "./alert-dialog";
+import { AlertDialog, alertFromError } from "./alert-dialog";
 import { EmptyState } from "./empty-state";
 
 const COLLAPSED_KEY = "sprintTracker_filtersPanelCollapsed";
@@ -51,6 +51,26 @@ function condenseSync(summary) {
   ];
   if (summary.progressSeeded > 0) parts.push(`${summary.progressSeeded} checklist(s) seeded`);
   return parts.join(" · ");
+}
+
+/**
+ * Multi-line body for a sync that SUCCEEDED but returned something suspicious (§14.14) — most
+ * importantly a track Jira just emptied, which used to blank a board silently. Warnings get the
+ * modal rather than the toast: a toast disappears, and this is the one sync outcome someone has to
+ * act on.
+ */
+function formatSyncWarnings(warnings) {
+  return warnings
+    .map((warning) => {
+      const headline =
+        warning.code === "TRACK_EMPTIED"
+          ? `${warning.filterName}: ${warning.previous} issues → 0`
+          : warning.code === "UNMAPPED_STATUSES"
+            ? `${warning.filterName}: ${warning.count} issue(s) with an unmapped status`
+            : `${warning.filterName}: no issues matched`;
+      return `• ${headline}\n  ${warning.hint}`;
+    })
+    .join("\n\n");
 }
 
 /** One-line outcome for the per-track "Sync stages from Jira" success toast. */
@@ -148,7 +168,7 @@ export function Dashboard({
           showToast(isDefaultView ? "Default view cleared" : "Default view saved");
         });
       } catch (error) {
-        setAlert({ title: "Couldn't save default", body: error.message, tone: "error" });
+        setAlert(alertFromError("Couldn't save default", error));
       }
     });
 
@@ -159,7 +179,7 @@ export function Dashboard({
         await fn();
         startMutation(() => router.refresh());
       } catch (error) {
-        setAlert({ title: errorTitle, body: error.message, tone: "error" });
+        setAlert(alertFromError(errorTitle, error));
       }
     });
 
@@ -172,10 +192,18 @@ export function Dashboard({
         // Toast lands together with the refreshed matrix, not before it.
         startMutation(() => {
           router.refresh();
-          showToast(`Sync complete · ${condenseSync(summary)}`);
+          if (summary.warnings?.length > 0) {
+            setAlert({
+              title: "Sync completed with warnings",
+              body: `${condenseSync(summary)}\n\n${formatSyncWarnings(summary.warnings)}`,
+              tone: "warn",
+            });
+          } else {
+            showToast(`Sync complete · ${condenseSync(summary)}`);
+          }
         });
       } catch (error) {
-        setAlert({ title: "Sync failed", body: error.message, tone: "error" });
+        setAlert(alertFromError("Sync failed", error));
       } finally {
         setSyncing(false);
       }
@@ -196,10 +224,18 @@ export function Dashboard({
         // Toast lands together with the refreshed matrix (same two-transition pattern as handleSync).
         startMutation(() => {
           router.refresh();
-          showToast(`Stages synced · ${condenseStageSync(summary)}`);
+          if (summary.warnings?.length > 0) {
+            setAlert({
+              title: "Stages synced with warnings",
+              body: `${condenseStageSync(summary)}\n\n${formatSyncWarnings(summary.warnings)}`,
+              tone: "warn",
+            });
+          } else {
+            showToast(`Stages synced · ${condenseStageSync(summary)}`);
+          }
         });
       } catch (error) {
-        setAlert({ title: "Stage sync failed", body: error.message, tone: "error" });
+        setAlert(alertFromError("Stage sync failed", error));
       } finally {
         setSyncing(false);
       }
@@ -211,7 +247,7 @@ export function Dashboard({
       try {
         await apiFetch(`${base}/filters`, { method: "POST", body: buildFilterPayload(form) });
       } catch (error) {
-        setAlert({ title: "Could not add filter", body: error.message, tone: "error" });
+        setAlert(alertFromError("Could not add filter", error));
         return;
       }
       setShowAddFilter(false);
@@ -224,7 +260,7 @@ export function Dashboard({
           showToast(`Filter added · ${condenseSync(summary)}`);
         });
       } catch (error) {
-        setAlert({ title: "Filter added — sync failed", body: error.message, tone: "error" });
+        setAlert(alertFromError("Filter added — sync failed", error));
         startMutation(() => router.refresh());
       } finally {
         setSyncing(false);
@@ -242,7 +278,7 @@ export function Dashboard({
       try {
         await apiFetch(`${base}/filters/${target.id}`, { method: "PATCH", body: patch });
       } catch (error) {
-        setAlert({ title: "Could not update filter", body: error.message, tone: "error" });
+        setAlert(alertFromError("Could not update filter", error));
         return;
       }
       setEditingFilter(null);
@@ -264,7 +300,7 @@ export function Dashboard({
           showToast(`Filter updated · ${condenseSync(summary)}`);
         });
       } catch (error) {
-        setAlert({ title: "Filter updated — sync failed", body: error.message, tone: "error" });
+        setAlert(alertFromError("Filter updated — sync failed", error));
         startMutation(() => router.refresh());
       } finally {
         setSyncing(false);
@@ -301,7 +337,7 @@ export function Dashboard({
           showToast(riskComment ? "Risk comment saved" : "Risk comment removed");
         });
       } catch (error) {
-        setAlert({ title: "Could not save risk comment", body: error.message, tone: "error" });
+        setAlert(alertFromError("Could not save risk comment", error));
       }
     });
 

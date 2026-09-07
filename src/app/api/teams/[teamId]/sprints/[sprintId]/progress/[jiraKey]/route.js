@@ -16,7 +16,7 @@
  */
 import { prisma } from "@/lib/db";
 import { requireTeamRole, NotFoundError, TEAM_WRITER_ROLES } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
 import { progressWriteSchema } from "@/lib/schemas/progress";
 import { stageCountFor, owningWorkflowType } from "@/lib/workflows.mjs";
 
@@ -34,7 +34,7 @@ function applyStageWrite(stageCompletion, index, completed) {
   return next;
 }
 
-export async function PUT(request, { params }) {
+export const PUT = withRoute("teams.sprints.progress", async (request, { params }) => {
   try {
     const { teamId, sprintId, jiraKey } = await params;
     const { user } = await requireTeamRole(teamId, TEAM_WRITER_ROLES);
@@ -94,4 +94,4 @@ export async function PUT(request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

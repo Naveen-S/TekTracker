@@ -15,7 +15,7 @@
  */
 import { prisma } from "@/lib/db";
 import { requireTeamRole, NotFoundError, TEAM_MANAGER_ROLES } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
 import { filterPatchSchema } from "@/lib/schemas/filter";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +32,7 @@ async function requireOwnedFilter(filterId, teamId, sprintId) {
   return filter;
 }
 
-export async function PATCH(request, { params }) {
+export const PATCH = withRoute("teams.sprints.filters", async (request, { params }) => {
   try {
     const { teamId, sprintId, filterId } = await params;
     await requireTeamRole(teamId, TEAM_MANAGER_ROLES);
@@ -51,9 +51,9 @@ export async function PATCH(request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});
 
-export async function DELETE(_request, { params }) {
+export const DELETE = withRoute("teams.sprints.filters", async (_request, { params }) => {
   try {
     const { teamId, sprintId, filterId } = await params;
     await requireTeamRole(teamId, TEAM_MANAGER_ROLES);
@@ -63,4 +63,4 @@ export async function DELETE(_request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

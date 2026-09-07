@@ -9,12 +9,12 @@
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { requireAdmin, NotFoundError } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
 import { sprintPatchSchema } from "@/lib/schemas/sprint";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_request, { params }) {
+export const GET = withRoute("sprints", async (_request, { params }) => {
   try {
     const { sprintId } = await params;
     await requireUser();
@@ -26,9 +26,9 @@ export async function GET(_request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});
 
-export async function PATCH(request, { params }) {
+export const PATCH = withRoute("sprints", async (request, { params }) => {
   try {
     const { sprintId } = await params;
     await requireAdmin();
@@ -49,4 +49,4 @@ export async function PATCH(request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

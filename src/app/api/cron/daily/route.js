@@ -10,7 +10,7 @@
  */
 import { createHash, timingSafeEqual } from "node:crypto";
 import { UnauthorizedError } from "@/lib/auth";
-import { handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, handleRouteError } from "@/lib/api/route-helpers";
 import { runDailyJob } from "@/lib/cron/daily";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +37,7 @@ function requireCronSecret(request) {
   }
 }
 
-export async function POST(request) {
+export const POST = withRoute("cron.daily", async (request) => {
   try {
     requireCronSecret(request);
     const summary = await runDailyJob({ capturedOn: new Date() });
@@ -45,4 +45,4 @@ export async function POST(request) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

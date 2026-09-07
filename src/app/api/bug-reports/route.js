@@ -9,12 +9,12 @@
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { requireAdmin } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
 import { bugReportCreateSchema } from "@/lib/schemas/bug-report";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export const GET = withRoute("bug-reports", async () => {
   try {
     await requireUser();
     const reports = await prisma.bugReport.findMany({
@@ -34,9 +34,9 @@ export async function GET() {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});
 
-export async function POST(request) {
+export const POST = withRoute("bug-reports", async (request) => {
   try {
     await requireAdmin();
     const data = await parseJsonBody(request, bugReportCreateSchema);
@@ -45,4 +45,4 @@ export async function POST(request) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

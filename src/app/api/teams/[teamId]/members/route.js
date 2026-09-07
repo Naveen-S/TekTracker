@@ -6,14 +6,14 @@
 import { prisma } from "@/lib/db";
 import { requireTeamRole, NotFoundError, TEAM_ALL_ROLES } from "@/lib/rbac";
 import { Role } from "@/generated/prisma/client";
-import { parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
 import { membershipCreateSchema } from "@/lib/schemas/team";
 
 export const dynamic = "force-dynamic";
 
 const memberUserSelect = { id: true, email: true, displayName: true, avatarUrl: true };
 
-export async function GET(_request, { params }) {
+export const GET = withRoute("teams.members", async (_request, { params }) => {
   try {
     const { teamId } = await params;
     await requireTeamRole(teamId, TEAM_ALL_ROLES);
@@ -26,9 +26,9 @@ export async function GET(_request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});
 
-export async function POST(request, { params }) {
+export const POST = withRoute("teams.members", async (request, { params }) => {
   try {
     const { teamId } = await params;
     await requireTeamRole(teamId, [Role.ADMIN]);
@@ -47,4 +47,4 @@ export async function POST(request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

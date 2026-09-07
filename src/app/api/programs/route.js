@@ -6,12 +6,12 @@
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { requireAdmin, hasProgramAccess, ForbiddenError } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
 import { programCreateSchema } from "@/lib/schemas/program";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export const GET = withRoute("programs", async () => {
   try {
     const user = await requireUser();
     if (!(await hasProgramAccess(user))) {
@@ -25,9 +25,9 @@ export async function GET() {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});
 
-export async function POST(request) {
+export const POST = withRoute("programs", async (request) => {
   try {
     await requireAdmin();
     const data = await parseJsonBody(request, programCreateSchema);
@@ -36,4 +36,4 @@ export async function POST(request) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

@@ -5,11 +5,11 @@
  */
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/rbac";
-import { handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, handleRouteError } from "@/lib/api/route-helpers";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export const GET = withRoute("users", async () => {
   try {
     await requireAdmin();
     const users = await prisma.user.findMany({
@@ -20,4 +20,4 @@ export async function GET() {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

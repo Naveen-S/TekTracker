@@ -5,12 +5,12 @@
  */
 import { prisma } from "@/lib/db";
 import { requireTeamRole, TEAM_MANAGER_ROLES } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
 import { filterReorderSchema } from "@/lib/schemas/filter";
 
 export const dynamic = "force-dynamic";
 
-export async function PUT(request, { params }) {
+export const PUT = withRoute("teams.sprints.filters.order", async (request, { params }) => {
   try {
     const { teamId, sprintId } = await params;
     await requireTeamRole(teamId, TEAM_MANAGER_ROLES);
@@ -38,4 +38,4 @@ export async function PUT(request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

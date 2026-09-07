@@ -171,7 +171,65 @@ Without it, the app still works but trend/burndown charts stop accruing new data
 
 ---
 
-## 8. Open items to confirm with DevOps
+## 8. Debugging in production
+
+Every failure the app answers now carries a **stable code** and a **request id**, and that id
+appears in three places at once: the response body (`requestId`), the `x-request-id` response
+header, and every server log line for that request. Start from the response, not the logs.
+
+**Start here — one curl answers most questions** (global admin session required):
+
+```bash
+curl -s -H "Cookie: sprinttracker_session=<your cookie>" \
+  https://storyboard.stage.aecloud.io/api/diagnostics | jq
+```
+
+It reports, without ever echoing a secret value: which env vars are **present** (names + booleans),
+whether Postgres is reachable **and how many migrations are applied here**, whether this container
+can reach Atlassian at all (unauthenticated probe — separates a network problem from a bad token),
+whether the `CRON_SYNC_USER_EMAIL` service token is still alive, the session-cookie/TLS context, the
+last snapshot date, teams whose sync has gone stale, and a 24-hour error summary by code.
+
+**Login failures now name themselves.** The response's `code` (and `details.stage`) says which of
+the five it is:
+
+| code | What it means | Fix |
+|---|---|---|
+| `CONFIG_MISSING` | A required secret is missing/malformed; `details.variable` names it | Set it in the image's `.env` and redeploy |
+| `JIRA_UNREACHABLE` | This container cannot reach Atlassian; `details.causeCode` is the syscall (`ENOTFOUND`, `ECONNREFUSED`, a TLS error) | Egress/proxy/DNS, not the user's token |
+| `JIRA_TIMEOUT` | The connection hung past the timeout | Usually a firewall black-holing the connection |
+| `JIRA_AUTH` | Jira genuinely rejected the credentials | The user's email/API token |
+| `DB_UNAVAILABLE` | Postgres unreachable, often an `sslmode` mismatch (§4) | Check `DATABASE_URL` against the cluster's TLS config |
+| `DB_MIGRATION_MISSING` | A table/column is absent — this environment is behind the app | Run the §5 `yarn db:deploy` step |
+
+**Login succeeds (200) but the user bounces straight back to `/login`.** That is the session cookie
+being discarded, not an auth failure: `secure: true` cookies are dropped by the browser on a
+plain-HTTP response. The signature is a **200 from `/api/auth/login` followed by a 401 from
+`/api/auth/me`**. The login response carries a `warning` field when the server detects it, and
+`/api/diagnostics` → `session.mismatch` reports it. Fix TLS termination / `x-forwarded-proto`.
+
+**Reading the logs.** They are JSON lines on stdout (`LOG_LEVEL`, `LOG_FORMAT` in `.env.example`).
+Useful greps:
+
+```bash
+kubectl logs <pod> | grep '"requestId":"r7k2q9xf"'   # everything about one request
+kubectl logs <pod> | grep '"msg":"app.boot"'          # which secrets this container actually got
+kubectl logs <pod> | grep '"msg":"app.boot_db"'       # DB reachability at startup
+kubectl logs <pod> | grep '"msg":"cron.done"'         # did last night's job run, and what failed
+kubectl logs <pod> | grep '"msg":"sync.warning"'      # tracks Jira silently emptied
+```
+
+**Without log access at all:** `/admin` → **Recent errors** lists the last 50 server-side failures
+(HTTP 5xx only) with their code, route, user, message and request id; each row expands to its
+details and stack. Rows are pruned after 14 days by the daily cron.
+
+**When a user reports something:** ask for the reference shown under the error — `JIRA_API · r7k2q9xf`.
+The dashboard's error dialog also has a **Copy diagnostics** button that copies the whole envelope.
+
+**Temporarily need stack traces for a non-admin?** Set `DEBUG_ERRORS=1` and restart. Unset it
+afterwards — `code`, `requestId` and `details` never need it.
+
+## 9. Open items to confirm with DevOps
 
 - [ ] Subdomain `storyboard.stage.aecloud.io` reachable (zone `stage.aecloud.io` + host→LB route)? (else fall back to `opex-stage.aecloud.io/storyboard` + basePath)
 - [x] Cluster / Namespace / Env — **AEC_GM / storyboard / stage** (per RELB-28979)

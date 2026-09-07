@@ -5,12 +5,12 @@
  */
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
 import { jiraComponentCreateSchema } from "@/lib/schemas/jira-component";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export const GET = withRoute("jira-components", async () => {
   try {
     await requireAdmin();
     const components = await prisma.jiraComponent.findMany({
@@ -26,9 +26,9 @@ export async function GET() {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});
 
-export async function POST(request) {
+export const POST = withRoute("jira-components", async (request) => {
   try {
     await requireAdmin();
     const data = await parseJsonBody(request, jiraComponentCreateSchema);
@@ -37,4 +37,4 @@ export async function POST(request) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

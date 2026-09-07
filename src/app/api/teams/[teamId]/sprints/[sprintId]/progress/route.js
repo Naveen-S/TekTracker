@@ -6,11 +6,11 @@
  */
 import { prisma } from "@/lib/db";
 import { requireTeamRole, NotFoundError, TEAM_ALL_ROLES } from "@/lib/rbac";
-import { handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, handleRouteError } from "@/lib/api/route-helpers";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_request, { params }) {
+export const GET = withRoute("teams.sprints.progress", async (_request, { params }) => {
   try {
     const { teamId, sprintId } = await params;
     await requireTeamRole(teamId, TEAM_ALL_ROLES);
@@ -26,4 +26,4 @@ export async function GET(_request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

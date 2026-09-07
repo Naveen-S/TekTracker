@@ -10,7 +10,7 @@
  */
 import { prisma } from "@/lib/db";
 import { requireTeamRole, NotFoundError, TEAM_WRITER_ROLES } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
 import { shareCreateSchema } from "@/lib/schemas/share";
 import { generateShareToken } from "@/lib/share-token";
 import { buildShareSnapshot } from "@/lib/dashboard-data";
@@ -25,7 +25,7 @@ async function requireSprint(sprintId) {
   return sprint;
 }
 
-export async function POST(request, { params }) {
+export const POST = withRoute("teams.sprints.shares", async (request, { params }) => {
   try {
     const { teamId, sprintId } = await params;
     const { user } = await requireTeamRole(teamId, TEAM_WRITER_ROLES);
@@ -92,9 +92,9 @@ export async function POST(request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});
 
-export async function GET(_request, { params }) {
+export const GET = withRoute("teams.sprints.shares", async (_request, { params }) => {
   try {
     const { teamId, sprintId } = await params;
     const { user } = await requireTeamRole(teamId, TEAM_WRITER_ROLES);
@@ -143,4 +143,4 @@ export async function GET(_request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

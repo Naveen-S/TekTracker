@@ -9,12 +9,12 @@
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { ForbiddenError } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
 import { mePatchSchema } from "@/lib/schemas/user";
 
 export const dynamic = "force-dynamic";
 
-export async function PATCH(request) {
+export const PATCH = withRoute("me", async (request) => {
   try {
     const user = await requireUser();
     const patch = await parseJsonBody(request, mePatchSchema);
@@ -45,4 +45,4 @@ export async function PATCH(request) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

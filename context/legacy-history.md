@@ -2206,3 +2206,64 @@ context/features/editable-filters.md.
   — spec + canonical doc + tracker only. **Done.** **Next:** Naveen's commit (the tree holds two
   finished features: editable filters and the 2026-08-29 export type-weight pass) and his
   real-browser visual acceptance. See context/features/editable-filters.md.
+
+### 2026-09-04 — Production observability & error contract
+
+- **Why.** Naveen, from production: *"In prod we don't have Neon. In login failed for some XYZ reason
+  which is hard to debug."* An audit found the app had **four `console.*` calls in the entire `src/`
+  tree** and every route answering failures with a bare `{ error: "message" }` — no code, no
+  correlation id, no context. Worse, `api/auth/login` funnelled **five structurally different
+  deployment failures** into two strings: a malformed `TOKEN_ENCRYPTION_KEY`, a short
+  `SESSION_PASSWORD`, an unreachable database, **migrations not deployed** (a live risk, since
+  `DEPLOY.md` §5 makes `yarn db:deploy` a separate Jenkins step), and blocked egress to
+  `tekion.atlassian.net` — all reported as `"Login failed"`. A sixth failure had no error at all:
+  `secure: true` cookies over plain HTTP make login answer **200** and then bounce the user back to
+  `/login` forever.
+- **Ratified (three AskUserQuestion calls).** Admin-gated `debug` (+ `DEBUG_ERRORS=1` escape hatch) ·
+  wrap **all 60 handlers** across the 41 route files · ship all four extras (render capture, admin
+  diagnostics, sync warnings, persisted `ErrorLog`). A fourth call — the **pre-auth exposure rule**
+  for login (name a missing env var, never its value or a stack) — was taken by Claude and stated in
+  the plan.
+- **Built.** `lib/errors.js` (one `AppError` taxonomy, re-exported from every old module so no
+  `instanceof` changed) · `lib/log.js` (AsyncLocalStorage request context, JSON lines, recursive
+  redaction, `cause`-chain serialization) · `withRoute` + an additive envelope
+  `{ error, code, requestId, details, debug? }` with `x-request-id` on **every** response · a Prisma
+  map grown from 2 codes to 11 plus TLS/connection/validation classification (`P2021` →
+  `DB_MIGRATION_MISSING` naming `yarn db:deploy`) · Jira timeouts + `classifyFetchFailure` +
+  Jira's own `errorMessages` and the offending JQL in `details` · per-track sync error annotation ·
+  **sync warnings** closing §14.14 · cron logging its own summary · `instrumentation.js`
+  (`register` boot line with env-presence booleans, `onRequestError`) · `error.jsx`/`global-error.jsx`
+  · `ErrorLog` + Admin → Recent errors · admin-only `GET /api/diagnostics`. Client: the login card
+  and alert dialog now show `CODE · requestId`, with **Copy diagnostics**.
+- **Invariants moved, declared:** **49 → 50 ƒ Dynamic** (`/api/diagnostics`) and **12 → 13
+  migrations** (`add_error_log`). §12 metric core untouched; `error` keeps its exact meaning.
+- **Verified.** `yarn lint` clean · **pure fixtures 107/107** · **login taxonomy 15/15** against a
+  real `next start` server, one broken setting per case (each of the five failures now answers with
+  its own code, every one carrying a requestId) · **API smoke 52/52** on Neon (admin sees `debug`,
+  MEMBER does not; `DEBUG_ERRORS=1` flips it; a bad-JQL sync returns Jira's own message + the JQL +
+  the track name; an emptied track returns `TRACK_EMPTIED` 2→0; a 500 writes an `ErrorLog` row and a
+  **404 writes none**; `/api/diagnostics` never echoes a secret value) · **headless browser 11/11** ·
+  `prisma migrate status` **13 migrations** · cold `rm -rf .next` build with both env files aside →
+  exit 0, no `Environments:` line, **50 ƒ Dynamic**, **0 Node-API warnings**. Fixtures torn down to 0.
+- **Three findings worth carrying forward.** (1) `prisma migrate dev` **did not regenerate the
+  client** — `prisma.errorLog` was `undefined` and every ErrorLog write silently failed; the guards
+  meant nothing broke, which is exactly why it was nearly missed. (2) A production build **minifies
+  class names**, so `this.name = new.target.name` reported `u` instead of `NotFoundError` in the
+  debug block and the logs; names are now set explicitly per class. Only a smoke against
+  `next start` catches this — dev never does. (3) `instrumentation.js` is bundled for the **Edge**
+  runtime too, so `process.stdout` in `log.js` warned; switched to `console`. Four transitive
+  `node:` module warnings remain and are accepted (no Edge routes exist; every Node path is
+  runtime-guarded).
+- **Re-verified 2026-09-07** against an unchanged tree. The scratch harness was gone, so the suite
+  was **re-derived from the source rather than replayed** — the same discipline used for editable
+  filters, and a stronger check than a rerun. Lint clean · `prisma validate` + **13 migrations** ·
+  env-free cold build → exit 0, no `Environments:` line, **50 ƒ Dynamic**, **0 static API routes**,
+  0 Node-API warnings · **pure fixtures 134/134** (the rewrite added 27 checks, including that every
+  error class keeps its *readable* name — the production-minification trap that the first pass only
+  caught by accident) · **login taxonomy 15/15** · **API smoke 51/51** · **headless browser 11/11** ·
+  Neon left at 0 fixture rows and 0 ErrorLog rows. An incidental confirmation: the taxonomy run left
+  exactly three `ErrorLog` rows on `route: auth.login` — two `CONFIG_MISSING` and one
+  `JIRA_UNREACHABLE` — i.e. precisely the production failures that used to be invisible, now
+  recorded with their cause.
+- **Done.** **Next:** Naveen's commit (gitleaks hook) and his real-browser visual acceptance. See
+  context/features/observability-and-errors.md.

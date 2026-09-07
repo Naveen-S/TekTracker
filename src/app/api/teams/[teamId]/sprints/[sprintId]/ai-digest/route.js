@@ -9,7 +9,7 @@
  * misconfiguration (unknown provider, missing key) falls through → 500 loud.
  */
 import { requireTeamRole, TEAM_ALL_ROLES, NotFoundError } from "@/lib/rbac";
-import { handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, handleRouteError } from "@/lib/api/route-helpers";
 import { getDigestData } from "@/lib/dashboard-data";
 import {
   buildTrendSeries,
@@ -24,7 +24,7 @@ import { AiNotConfiguredError, AiProviderError } from "@/lib/ai/errors";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(_request, { params }) {
+export const POST = withRoute("teams.sprints.ai-digest", async (_request, { params }) => {
   try {
     const { teamId, sprintId } = await params;
     await requireTeamRole(teamId, TEAM_ALL_ROLES);
@@ -61,12 +61,9 @@ export async function POST(_request, { params }) {
     const { provider, model } = getAiConfig();
     return Response.json({ digest, generatedAt: asOf.toISOString(), provider, model });
   } catch (error) {
-    if (error instanceof AiNotConfiguredError) {
-      return Response.json({ error: error.message }, { status: 503 });
-    }
-    if (error instanceof AiProviderError) {
-      return Response.json({ error: error.message }, { status: 502 });
-    }
+    // AiNotConfiguredError (503) and AiProviderError (502) now carry their own status + code
+    // (lib/ai/errors.js extends AppError), so the shared helper maps them — and unlike the ladder
+    // that used to live here, it also returns the code, requestId and provider status.
     return handleRouteError(error);
   }
-}
+});

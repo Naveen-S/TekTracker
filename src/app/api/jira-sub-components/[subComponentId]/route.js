@@ -6,7 +6,7 @@
  */
 import { prisma } from "@/lib/db";
 import { requireAdmin, NotFoundError } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
 import { jiraSubComponentPatchSchema } from "@/lib/schemas/jira-component";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ async function requireSubComponent(subComponentId) {
   return subComponent;
 }
 
-export async function PATCH(request, { params }) {
+export const PATCH = withRoute("jira-sub-components", async (request, { params }) => {
   try {
     await requireAdmin();
     const { subComponentId } = await params;
@@ -33,9 +33,9 @@ export async function PATCH(request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});
 
-export async function DELETE(_request, { params }) {
+export const DELETE = withRoute("jira-sub-components", async (_request, { params }) => {
   try {
     await requireAdmin();
     const { subComponentId } = await params;
@@ -45,4 +45,4 @@ export async function DELETE(_request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

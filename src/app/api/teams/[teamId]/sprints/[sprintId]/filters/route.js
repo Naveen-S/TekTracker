@@ -8,7 +8,7 @@
  */
 import { prisma } from "@/lib/db";
 import { requireTeamRole, NotFoundError, TEAM_ALL_ROLES, TEAM_MANAGER_ROLES } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
 import { filterCreateSchema } from "@/lib/schemas/filter";
 import { insertFilterAtPriority } from "@/lib/filters/priority-insert";
 import { WorkflowType } from "@/generated/prisma/client";
@@ -22,7 +22,7 @@ async function requireSprint(sprintId) {
   }
 }
 
-export async function GET(_request, { params }) {
+export const GET = withRoute("teams.sprints.filters", async (_request, { params }) => {
   try {
     const { teamId, sprintId } = await params;
     await requireTeamRole(teamId, TEAM_ALL_ROLES);
@@ -36,7 +36,7 @@ export async function GET(_request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});
 
 /** Resolve `{ fromTemplateId }` + overrides into concrete filter fields (template must be the team's). */
 async function resolveFilterFields(data, teamId) {
@@ -58,7 +58,7 @@ async function resolveFilterFields(data, teamId) {
   };
 }
 
-export async function POST(request, { params }) {
+export const POST = withRoute("teams.sprints.filters", async (request, { params }) => {
   try {
     const { teamId, sprintId } = await params;
     await requireTeamRole(teamId, TEAM_MANAGER_ROLES);
@@ -80,4 +80,4 @@ export async function POST(request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

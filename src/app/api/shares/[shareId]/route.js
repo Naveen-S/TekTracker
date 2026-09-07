@@ -7,11 +7,11 @@
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { ForbiddenError, NotFoundError } from "@/lib/rbac";
-import { handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, handleRouteError } from "@/lib/api/route-helpers";
 
 export const dynamic = "force-dynamic";
 
-export async function DELETE(_request, { params }) {
+export const DELETE = withRoute("shares", async (_request, { params }) => {
   try {
     const { shareId } = await params;
     const user = await requireUser();
@@ -32,4 +32,4 @@ export async function DELETE(_request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

@@ -39,6 +39,9 @@ const SIZES = {
 const TONES = {
   success: { icon: CheckCircle2, tile: "bg-success-soft text-success-strong" },
   error: { icon: AlertTriangle, tile: "bg-danger-soft text-danger-strong" },
+  // A sync that succeeded but returned something suspicious (a track Jira just emptied, §14.14) is
+  // neither — reporting it in the error tone would cry wolf about a run that actually worked.
+  warn: { icon: AlertTriangle, tile: "bg-warn-soft text-warn-strong" },
 };
 
 const FOCUSABLE =

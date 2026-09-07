@@ -6,12 +6,12 @@
  */
 import { prisma } from "@/lib/db";
 import { requireAdmin, NotFoundError } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
 import { jiraSubComponentCreateSchema } from "@/lib/schemas/jira-component";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request, { params }) {
+export const POST = withRoute("jira-components.sub-components", async (request, { params }) => {
   try {
     await requireAdmin();
     const { componentId } = await params;
@@ -25,4 +25,4 @@ export async function POST(request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

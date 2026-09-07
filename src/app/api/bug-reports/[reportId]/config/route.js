@@ -13,7 +13,7 @@
  */
 import { prisma } from "@/lib/db";
 import { requireAdmin, NotFoundError } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
 import { bugReportConfigSchema } from "@/lib/schemas/bug-report";
 import { validateConfig } from "@/lib/bug-report/matrix.mjs";
 
@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 
 const norm = (value) => value.trim().toLowerCase();
 
-export async function PUT(request, { params }) {
+export const PUT = withRoute("bug-reports.config", async (request, { params }) => {
   try {
     await requireAdmin();
     const { reportId } = await params;
@@ -147,4 +147,4 @@ export async function PUT(request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

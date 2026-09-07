@@ -6,12 +6,12 @@
  */
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
 import { programPatchSchema } from "@/lib/schemas/program";
 
 export const dynamic = "force-dynamic";
 
-export async function PATCH(request, { params }) {
+export const PATCH = withRoute("programs", async (request, { params }) => {
   try {
     const { programId } = await params;
     await requireAdmin();
@@ -21,9 +21,9 @@ export async function PATCH(request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});
 
-export async function DELETE(_request, { params }) {
+export const DELETE = withRoute("programs", async (_request, { params }) => {
   try {
     const { programId } = await params;
     await requireAdmin();
@@ -32,4 +32,4 @@ export async function DELETE(_request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});

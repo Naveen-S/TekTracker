@@ -6,12 +6,12 @@
 import { prisma } from "@/lib/db";
 import { requireTeamRole } from "@/lib/rbac";
 import { Role } from "@/generated/prisma/client";
-import { parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
 import { membershipPatchSchema } from "@/lib/schemas/team";
 
 export const dynamic = "force-dynamic";
 
-export async function PATCH(request, { params }) {
+export const PATCH = withRoute("teams.members", async (request, { params }) => {
   try {
     const { teamId, userId } = await params;
     await requireTeamRole(teamId, [Role.ADMIN]);
@@ -25,9 +25,9 @@ export async function PATCH(request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});
 
-export async function DELETE(_request, { params }) {
+export const DELETE = withRoute("teams.members", async (_request, { params }) => {
   try {
     const { teamId, userId } = await params;
     await requireTeamRole(teamId, [Role.ADMIN]);
@@ -36,4 +36,4 @@ export async function DELETE(_request, { params }) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
+});
