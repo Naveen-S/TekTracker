@@ -22,8 +22,67 @@ import { randomBytes } from "node:crypto";
 
 const LEVELS = { debug: 10, info: 20, warn: 30, error: 40 };
 
-/** Keys whose STRING values are replaced with `[redacted]` at any depth. */
-const SECRET_KEY = /token|secret|password|authorization|cookie|api[-_]?key|credential/i;
+/**
+ * Keys whose STRING values are replaced with `[redacted]` at any depth.
+ *
+ * `email` is here as **default-deny for PII**: a Jira email is a personal identifier, and this
+ * logger writes to stdout for a shared collector. Any future field literally called `email` is
+ * therefore redacted without anyone having to remember. The two login call sites that legitimately
+ * need to say *who* pass {@link maskEmail} output under a key that deliberately does NOT match this
+ * pattern (`actor`) — the value is already masked, so re-redacting it would only destroy triage.
+ */
+const SECRET_KEY = /token|secret|password|authorization|cookie|api[-_]?key|credential|email/i;
+
+/**
+ * Secret shapes that appear inside FREE TEXT, where key-based redaction cannot reach.
+ *
+ * {@link SECRET_KEY} only inspects object keys, so it is blind to a secret embedded in a *value* —
+ * most importantly `error.message` and `error.stack`, which are produced by Node, `pg` and `undici`
+ * and are entirely outside this codebase's control. A `pg` connection failure that quotes its DSN
+ * would otherwise reach stdout, `ErrorLog.details` and the `debug` response block verbatim.
+ *
+ * Ordered most-specific first. Each pattern keeps the surrounding shape (so the message still reads
+ * as a connection string / header) and replaces only the secret span.
+ */
+const SECRET_IN_TEXT = [
+  // scheme://user:password@host — the pg/undici case the review flagged.
+  [/\b([a-z][a-z0-9+.\-]*:\/\/[^\s:/@]+:)[^\s@]+@/gi, "$1[redacted]@"],
+  // Authorization header values: `Bearer eyJ…`, `Basic dXNlcjpwYXNz`.
+  [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, "$1 [redacted]"],
+  // key=value / key: value / "key":"value" for secret-ish keys, in prose or a serialized blob.
+  [
+    /\b(token|secret|password|passwd|pwd|authorization|cookie|api[-_]?key|apikey|credential|connection[-_]?string)\b(["']?\s*[:=]\s*["']?)([^\s,;&"']{3,})/gi,
+    "$1$2[redacted]",
+  ],
+];
+
+/**
+ * Strip secret spans from a free-text string. Applied to every string this module emits — object
+ * values via {@link redact}, and `message`/`stack` via {@link serializeError}.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function scrubSecrets(text) {
+  if (typeof text !== "string" || text.length === 0) return text;
+  let out = text;
+  for (const [pattern, replacement] of SECRET_IN_TEXT) out = out.replace(pattern, replacement);
+  return out;
+}
+
+/**
+ * `naveen@tekion.com` → `n***@tekion.com`. Keeps what triage actually needs — is this an internal
+ * address, and roughly who — without writing the full identifier to a shared log collector.
+ *
+ * @param {unknown} email
+ * @returns {string | null}
+ */
+export function maskEmail(email) {
+  if (typeof email !== "string" || !email.includes("@")) return email ? "[invalid-email]" : null;
+  const [local, ...rest] = email.split("@");
+  const domain = rest.join("@");
+  return `${local.slice(0, 1)}***@${domain}`;
+}
 
 const MAX_STRING = 1000;
 const MAX_DEPTH = 6;
@@ -128,7 +187,11 @@ export function redact(value, depth = 0, seen = new WeakSet()) {
 
   const type = typeof value;
   if (type === "string") {
-    return value.length > MAX_STRING ? `${value.slice(0, MAX_STRING)}…[${value.length} chars]` : value;
+    // Scrub BEFORE truncating: cutting first could leave half a secret sitting in the log.
+    const scrubbed = scrubSecrets(value);
+    return scrubbed.length > MAX_STRING
+      ? `${scrubbed.slice(0, MAX_STRING)}…[${scrubbed.length} chars]`
+      : scrubbed;
   }
   if (type === "number" || type === "boolean") return value;
   if (type === "bigint") return value.toString();
@@ -173,18 +236,22 @@ export function redact(value, depth = 0, seen = new WeakSet()) {
  */
 export function serializeError(error, depth = 0) {
   if (!(error instanceof Error)) {
-    return { name: "NonError", message: String(error) };
+    // A thrown string/object is just as capable of carrying a secret as a real Error.
+    return { name: "NonError", message: scrubSecrets(String(error)) };
   }
   const out = {
     name: error.name,
-    message: error.message,
+    // `message` and `stack` below come from Node, `pg`, `undici` and other code this repo does not
+    // own, so they are free text that can embed a DSN or an Authorization header. Key-based
+    // redaction cannot see inside a value — hence the scrub.
+    message: scrubSecrets(error.message),
     ...(error.code ? { code: error.code } : {}),
     ...(error.status ? { status: error.status } : {}),
     ...(error.details ? { details: redact(error.details, 1) } : {}),
     ...(error.digest ? { digest: error.digest } : {}),
   };
   if (error.stack) {
-    out.stack = error.stack.split("\n").slice(0, MAX_STACK_FRAMES).join("\n");
+    out.stack = scrubSecrets(error.stack.split("\n").slice(0, MAX_STACK_FRAMES).join("\n"));
   }
   if (error.cause !== undefined && error.cause !== null && depth < MAX_CAUSE_DEPTH) {
     out.cause = serializeError(error.cause, depth + 1);

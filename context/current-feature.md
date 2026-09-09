@@ -16,9 +16,9 @@ not begin at a log aggregator. Post-v1, not a master-plan step.
 
 ## Status
 
-**Done 2026-09-04 · two review fixes 2026-09-07 · one build-warning fix 2026-09-09 · verified four
-times.** Code committed as `a79db75` on branch `error-handling`; the two post-review fixes, the
-instrumentation split, and their doc updates are **uncommitted**. Pending Naveen's commit (gitleaks
+**Done 2026-09-04 · four review fixes (2026-09-07 ×2, 2026-09-09 ×2) · one build-warning fix
+2026-09-09 · verified four times.** Code committed as `a79db75` on branch `error-handling`; all four
+review fixes, the instrumentation split, and their doc updates are **uncommitted**. Pending Naveen's commit (gitleaks
 hook) + real-browser visual acceptance. Full spec + As-built:
 @context/features/observability-and-errors.md.
 
@@ -35,7 +35,9 @@ routes, **0 Node-API warnings and 0 warning blocks of any kind — genuinely, fo
 **boot instrumentation 3/3** against a real `next start` (`app.boot` + both probes still fire, so
 the Edge/Node split did not silence what it refactored) · **API error-contract smoke 11/11** ·
 **pre-auth debug gate 11/11** under `DEBUG_ERRORS=1` (anonymous callers get no `debug`, no stack, no
-filesystem path — incl. a real `JIRA_AUTH` failure) · **ErrorLog writer state machine 27/27** pure.
+filesystem path — incl. a real `JIRA_AUTH` failure) · **ErrorLog writer state machine 27/27** pure ·
+**redaction 27/27** pure + **4/4 live** (secrets scrubbed out of upstream `error.message`/`.cause`
+free text; Jira emails no longer logged in plaintext).
 
 **Final suite 2026-09-07 (re-derived, run after both fixes):** lint clean · **13 migrations** ·
 env-free cold build → exit 0, **50 ƒ Dynamic**, 0 static API routes, 0 Node-API warnings · **pure

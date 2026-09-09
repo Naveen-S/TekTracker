@@ -1,9 +1,9 @@
 # Production observability & error contract
 
-**Status: Done 2026-09-04 · two review fixes 2026-09-07 · one build-warning fix 2026-09-09 ·
-verified four times.** Code committed as `a79db75` on `error-handling`; the two post-review fixes,
-the instrumentation split, and their doc updates are **uncommitted**. Pending Naveen's commit
-(gitleaks hook) + real-browser visual acceptance.
+**Status: Done 2026-09-04 · four review fixes (2026-09-07 ×2, 2026-09-09 ×2) · one build-warning
+fix 2026-09-09 · verified four times.** Code committed as `a79db75` on `error-handling`; all four
+review fixes, the instrumentation split, and their doc updates are **uncommitted**. Pending Naveen's
+commit (gitleaks hook) + real-browser visual acceptance.
 
 > ⚠️ **Correction (2026-09-09) — this spec contradicted itself, and the verification paragraphs
 > were the wrong half.** The three passes below each claim **"0 Node-API warnings"**, while
@@ -26,7 +26,9 @@ smoke 11/11** (envelope shape, `requestId` == `x-request-id` header, `/p/health`
 `DEBUG_ERRORS=1`, incl. a real `JIRA_AUTH` failure returning `code` + `details.stage` + `requestId`
 and **no `debug` block, no stack, no filesystem path** to an anonymous caller · **ErrorLog writer
 state machine 27/27** pure (latch vs cooldown, resumption at 60s, a transient failure never
-clearing a latch).
+clearing a latch) · **redaction 27/27** pure + **4/4 live** for the two `log.js` review findings
+(value-level secret scrubbing through `.cause` chains; `email` as PII default-deny with a masked
+`actor` preserving triage) — see as-built note 12.
 
 **Final verification 2026-09-07, whole suite re-derived from source and re-run after both review
 fixes:** `yarn lint` clean · `prisma validate` valid + **13 migrations, up to date** · env-free cold
@@ -245,6 +247,41 @@ resumes by itself. Either way it falls back to `console.error` and never recurse
 
    **Standing rule:** never import a Node-only module into `instrumentation.js` — not even
    dynamically, not even inside a `NEXT_RUNTIME` branch. Add it to `instrumentation-node.js`.
+12. **Redaction was key-based only, so it could not see a secret inside a value** (2026-09-09,
+   third and fourth review findings — `orbit-central[bot]`, `log.js`). Both were valid and both are
+   the same root cause, so they were fixed together.
+
+   **(a) `serializeError` copied `error.message` and `error.stack` verbatim from every `.cause`.**
+   Those strings come from Node, `pg` and `undici` — code this repo does not own — so a driver error
+   quoting its connection string put `postgres://user:PASSWORD@host` straight into stdout,
+   `ErrorLog.details` and the `debug` response block. `redact()` never had a chance: it matches on
+   **key** names, and the key here is `message`.
+
+   **(b) `email` was absent from `SECRET_KEY`**, so `auth.login_rejected` and `auth.login_ok` wrote
+   the user's Jira address to stdout in plaintext — PII for a shared log collector.
+
+   **Fix.** A new `scrubSecrets()` applies value-level patterns (URL userinfo, `Bearer`/`Basic`
+   header values, `key=value` for secret-ish keys) and is wired into **every** string this module
+   emits: `redact()`'s string branch (before truncation — cutting first could strand half a secret),
+   and `serializeError`'s `message`, `stack` and `NonError` branches. `email` joined `SECRET_KEY` as
+   PII default-deny.
+
+   **Deviation from the review's suggested fix, deliberately.** The reviewer proposed wrapping the
+   message in a single-key object and calling `redact()` on it — that would not have worked, because
+   the wrapper's key would be `message`, which does not match `SECRET_KEY`. Scrubbing by value was
+   required. Two further choices go beyond the letter of the findings: the scrub is applied to *all*
+   strings rather than only `message`, which also closes the same leak through an innocuously-named
+   key (`details.dsn`); and the login sites log `actor: maskEmail(email)` → `n***@tekion.com` rather
+   than dropping the field, because `email` is now a redacted key and a failed-login line with
+   `[redacted]` attached to it would have destroyed exactly the triage this feature exists to
+   provide. The masked key is named `actor` precisely so it does *not* match `SECRET_KEY` — the
+   value is already safe, and re-redacting it would be self-defeating.
+
+   **Verified 27/27** pure (the DSN survives as `postgres://storyboard:[redacted]@db.internal…` —
+   password gone, host/user/shape kept — plus depth-3 cause chains, `Bearer`/`Basic`, thrown
+   strings, `details.dsn`, nested `email`, Jira's `emailAddress`, and regressions incl. env-presence
+   **booleans** still passing through unredacted) and **4/4 live**: a real rejected login emits
+   `actor":"n***@tekion.com"` with the raw address absent from the whole log.
 
 ## Verification (2026-09-04)
 

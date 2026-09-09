@@ -6,7 +6,7 @@
 > **[BUILT]**, **[PARTIAL]**, **[PLANNED]**, or **[GAP]** so the as-built state is never confused
 > with the target state.
 >
-> Last reviewed: 2026-09-04 · Owner: Naveen · Audience: engineers + Claude Code.
+> Last reviewed: 2026-09-09 · Owner: Naveen · Audience: engineers + Claude Code.
 >
 > **Rename note (2026-07-31):** the product was renamed to **StoryBoard** (was "Sprint Tracker",
 > earlier codename "Tek Tracker" / "TekTracker"). The rename is display/branding only — no schema,
@@ -1402,7 +1402,15 @@ file store. Token is **plaintext on disk** in `.sessions/`. Acceptable for a loc
    exposes the failing stage, the code and a remediation message naming a missing variable, but
    never a value, never a stack. Secrets are additionally scrubbed at the logging boundary by a
    recursive redactor (`lib/log.js`), which also gates what `ErrorLog.details` persists — so a Jira
-   token cannot reach the logs, the database, or a response.
+   token cannot reach the logs, the database, or a response. **[Amended 2026-09-09, PR review]** the
+   redactor works on two axes, because key-based redaction alone could not see a secret sitting
+   inside a *value*: keys matching `/token|secret|password|authorization|cookie|api[-_]?key|
+   credential|email/i` are replaced wholesale, and every emitted string is additionally scrubbed for
+   secret *shapes* (URL userinfo, `Bearer`/`Basic` header values, `key=value` pairs) — which is what
+   stops an upstream `pg`/`undici` `error.message` or `.cause`, free text this repo does not own,
+   from carrying a connection-string password into stdout or `ErrorLog`. `email` is on the key list
+   as PII default-deny; the login routes log a masked `actor` (`n***@tekion.com`) so triage keeps an
+   identifier. See context/features/observability-and-errors.md as-built note 12.
 
 ---
 

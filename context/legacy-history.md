@@ -2313,5 +2313,25 @@ context/features/editable-filters.md.
   writer state machine **27/27** pure. One over-claiming comment corrected while here:
   `errorLogWriterState()` said `/api/diagnostics` reports it — nothing calls it; wiring it up is
   logged as deferred rather than done unasked.
+- **Third and fourth review fixes 2026-09-09 (`orbit-central[bot]`, both on `log.js`).** Same root
+  cause, fixed together: **redaction was key-based only, so it was blind to a secret inside a
+  value.** (a) `serializeError` copied `error.message`/`error.stack` verbatim from every `.cause` —
+  strings produced by Node, `pg` and `undici`, i.e. outside this repo's control — so a driver error
+  quoting its DSN would put `postgres://user:PASSWORD@host` into stdout, `ErrorLog.details` and the
+  `debug` block; `redact()` could not help, since the key there is `message`. (b) `email` was absent
+  from `SECRET_KEY`, so `auth.login_rejected`/`auth.login_ok` wrote Jira addresses to stdout in
+  plaintext — PII for a shared collector. Added `scrubSecrets()` (URL userinfo, `Bearer`/`Basic`,
+  `key=value`) wired into every string the module emits — `redact()`'s string branch *before*
+  truncation, and `serializeError`'s `message`/`stack`/`NonError` branches — and put `email` on the
+  key list as default-deny. **Departed from the reviewer's suggested fix on purpose:** their
+  "wrap in a single-key object and call `redact()`" would not have worked (the wrapper's key is
+  `message`, which doesn't match the pattern), and the scrub was applied to *all* strings rather than
+  just `message` so the same leak through an innocuous key (`details.dsn`) is closed too. The login
+  sites now log `actor: maskEmail(email)` → `n***@tekion.com` rather than dropping the field: with
+  `email` redacted, a failed-login line would otherwise have had nobody attached to it, destroying
+  the triage the feature exists for. Verified **27/27** pure + **4/4** live (a real rejected login
+  emits `actor":"n***@tekion.com"` with the raw address absent from the entire log; env-presence
+  **booleans** still pass through unredacted); lint clean, env-free build green at **50 ƒ Dynamic**,
+  0 warnings.
 - **Done.** **Next:** Naveen's commit (gitleaks hook) and his real-browser visual acceptance. See
   context/features/observability-and-errors.md.

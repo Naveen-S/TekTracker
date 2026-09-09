@@ -29,7 +29,7 @@ import { withRoute, parseJsonBody } from "@/lib/api/route-helpers";
 import { loginInputSchema } from "@/lib/schemas/auth";
 import { encryptToken, assertTokenKey } from "@/lib/crypto";
 import { createUserSession, getSessionCookieInfo, assertSessionPassword } from "@/lib/auth";
-import { logger } from "@/lib/log";
+import { logger, maskEmail } from "@/lib/log";
 import { fetchMyself, fetchCloudId, getJiraBaseUrl, JiraAuthError } from "@/lib/jira/client";
 
 export const dynamic = "force-dynamic";
@@ -92,7 +92,10 @@ export const POST = withRoute("auth.login", async (request) => {
     identity = await fetchMyself({ baseUrl, email, token });
   } catch (error) {
     if (error instanceof JiraAuthError) {
-      logger.warn("auth.login_rejected", { email, code: error.code });
+      // `actor`, not `email`: the value is already masked, and `email` is a redacted key in
+      // lib/log.js (PII default-deny) — logging it under that name would print "[redacted]"
+      // and leave a failed-login line with nobody attached to it.
+      logger.warn("auth.login_rejected", { actor: maskEmail(email), code: error.code });
       throw new JiraAuthError("Invalid credentials. Check your Jira email and API token.");
     }
     throw error;
@@ -135,7 +138,7 @@ export const POST = withRoute("auth.login", async (request) => {
   await createUserSession(user.id);
 
   const warning = detectInsecureCookieContext(request);
-  logger.info("auth.login_ok", { userId: user.id, email: user.email, isAdmin: user.isAdmin });
+  logger.info("auth.login_ok", { userId: user.id, actor: maskEmail(user.email), isAdmin: user.isAdmin });
 
   return Response.json({
     email: user.email,
