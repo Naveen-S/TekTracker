@@ -2265,5 +2265,53 @@ context/features/editable-filters.md.
   exactly three `ErrorLog` rows on `route: auth.login` — two `CONFIG_MISSING` and one
   `JIRA_UNREACHABLE` — i.e. precisely the production failures that used to be invisible, now
   recorded with their cause.
+- **Post-review fix 2026-09-07.** PR review on `a79db75` (`orbit-central[bot]`,
+  `route-helpers.js` R194-R195) found that `DEBUG_ERRORS=1` bypassed the admin gate on the
+  **pre-auth** login surface — `/api/auth/login` never resolves a user, so the flag alone returned
+  the `debug` stack (absolute server paths; the database host via the `cause` chain on a connection
+  failure) to anonymous callers, contradicting decision 4's "never a stack" rule. The finding was
+  valid and the reviewer's fix was adopted as written: `shouldExposeDebug()` now requires
+  `context.userId` for the env-var branch. Checked that nothing is lost — a failed login's stack is
+  still logged and persisted to `ErrorLog`, and an existing admin session survives login being
+  broken. Reproduced before the fix, re-verified after (**6/6**), lint clean, build green at 50 ƒ
+  Dynamic; the rule's wording was corrected in four docs where it read "everyone". Worth noting for
+  process: the thread had been marked **resolved without the code changing**.
+- **Second post-review fix 2026-09-07.** Same review round (`orbit-central[bot]`, `error-log.js`
+  R69-R70): the writer's "stop trying" latch lumped `P1001`/`P1002` in with `P2021`/`P2022`, so a
+  transient connection failure permanently silenced `ErrorLog` for the process — the feature dying
+  quietly at the exact moment it earns its keep. Valid finding, fixed as directed, plus one the
+  reviewer did not raise: an **unknown** write failure previously retried on every single 5xx, the
+  "retry storm" the old comment claimed to prevent. Both now run through a pure, fixture-tested
+  state machine — schema codes latch until the next deploy; everything else takes a 60s cooldown
+  and resumes. Chose a cooldown over a plain retry because a black-holed database would otherwise
+  add its full connect timeout to every already-failing response. Verified **41/41** pure + **7/7**
+  live on Neon + route→ErrorLog end-to-end; build green at 50 ƒ Dynamic, 0 Node-API warnings. This
+  thread had also been marked **resolved without the code changing**.
+- **Build-warning fix 2026-09-09 — and a correction to the three verification passes above.**
+  Naveen sent a screenshot of a red-underlined `import ... from "node:crypto"` at `crypto.js:14`.
+  It was not an editor artifact: `yarn build` had been printing **four** `A Node.js module is loaded
+  ... not supported in the Edge Runtime` warnings on every run since this feature landed, while the
+  verification entries above each recorded **"0 Node-API warnings"**. The spec had in fact
+  contradicted itself the whole time — its as-built note 4 recorded the four warnings as "new and
+  accepted" — and nobody re-read the claim against the build log. Confirmed pre-existing by building
+  the committed tree at `a79db75`: identical four warnings, so not a regression from either review
+  fix. **Cause:** `instrumentation.js` is loaded in the Node *and* Edge runtimes, and Turbopack
+  follows a dynamic `import()` into the Edge graph **statically** — the `NEXT_RUNTIME === "nodejs"`
+  check is a runtime guard and does not affect bundling, so `@/lib/log` pulled `node:crypto`,
+  `@/lib/db` pulled the Prisma client's `node:path`/`node:url`, and `@/lib/jira/client` reached
+  `@/lib/crypto`. **Fix:** the split Next's own instrumentation guide prescribes — the guard imports
+  exactly one module, and all Node-only code lives behind it. New `src/instrumentation-node.js`
+  holds `register`'s body, both boot probes and `onRequestError`'s body with ordinary static
+  imports; `src/instrumentation.js` is now a 53-line shell that checks `NEXT_RUNTIME` and delegates.
+  Note 4's claim that removing them "would need a bundler hack" was wrong. Verified: env-free cold
+  build exit 0 with **0 warning blocks of any kind**, **50 ƒ Dynamic** unchanged, 13 migrations, lint
+  clean; and — because refactoring the boot path can silently kill boot logging while looking like
+  success — against a real `next start`, `app.boot` still emits all seven env-presence booleans and
+  both `app.boot_jira` / `app.boot_db` probes still fire (3/3). Also re-proved the two review fixes
+  on this tree: pre-auth debug gate **11/11** (anonymous callers get no `debug`, no stack, no
+  filesystem path even with `DEBUG_ERRORS=1`, incl. a real `JIRA_AUTH` failure) and the ErrorLog
+  writer state machine **27/27** pure. One over-claiming comment corrected while here:
+  `errorLogWriterState()` said `/api/diagnostics` reports it — nothing calls it; wiring it up is
+  logged as deferred rather than done unasked.
 - **Done.** **Next:** Naveen's commit (gitleaks hook) and his real-browser visual acceptance. See
   context/features/observability-and-errors.md.

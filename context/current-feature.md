@@ -16,9 +16,31 @@ not begin at a log aggregator. Post-v1, not a master-plan step.
 
 ## Status
 
-**Done 2026-09-04 — verified twice, uncommitted** (branch `feature/observability-and-errors`, off
-`main` @ `c8c2731`). Pending Naveen's commit (gitleaks hook) + real-browser visual acceptance. Full
-spec + As-built: @context/features/observability-and-errors.md.
+**Done 2026-09-04 · two review fixes 2026-09-07 · one build-warning fix 2026-09-09 · verified four
+times.** Code committed as `a79db75` on branch `error-handling`; the two post-review fixes, the
+instrumentation split, and their doc updates are **uncommitted**. Pending Naveen's commit (gitleaks
+hook) + real-browser visual acceptance. Full spec + As-built:
+@context/features/observability-and-errors.md.
+
+⚠️ **Correction — "0 Node-API warnings" below was false in all three earlier passes.** The build
+emitted **four** Edge-runtime warnings from `instrumentation.js` from this feature's landing until
+2026-09-09 (the spec's own as-built note 4 recorded them, contradicting its verification blocks).
+Fixed by moving all Node-only instrumentation behind `src/instrumentation-node.js`; true as of the
+2026-09-09 run. See as-built note 11.
+
+**Suite 2026-09-09 (fourth pass, after the instrumentation split):** lint clean · `prisma validate`
+valid + **13 migrations, up to date** · env-free cold build (`.env` **and** `.env.production` moved
+aside, absence asserted mid-build) → exit 0, no `Environments:` line, **50 ƒ Dynamic**, 0 static API
+routes, **0 Node-API warnings and 0 warning blocks of any kind — genuinely, for the first time** ·
+**boot instrumentation 3/3** against a real `next start` (`app.boot` + both probes still fire, so
+the Edge/Node split did not silence what it refactored) · **API error-contract smoke 11/11** ·
+**pre-auth debug gate 11/11** under `DEBUG_ERRORS=1` (anonymous callers get no `debug`, no stack, no
+filesystem path — incl. a real `JIRA_AUTH` failure) · **ErrorLog writer state machine 27/27** pure.
+
+**Final suite 2026-09-07 (re-derived, run after both fixes):** lint clean · **13 migrations** ·
+env-free cold build → exit 0, **50 ƒ Dynamic**, 0 static API routes, 0 Node-API warnings · **pure
+fixtures 164/164** · **login taxonomy 19/19** · **API smoke 55/55** · **headless browser 11/11** ·
+Neon left at 0 fixture rows and 0 ErrorLog rows.
 
 **Verified 2026-09-04:** `yarn lint` clean · **pure fixtures 107/107** · **login taxonomy 15/15**
 against a real `next start` server (one broken setting per case) · **API smoke 52/52** on Neon
@@ -34,6 +56,25 @@ static API routes**, 0 Node-API warnings · **pure fixtures 134/134** (27 checks
 lacked, incl. every class's *readable* name — the minification trap) · **login taxonomy 15/15** ·
 **API smoke 51/51** · **headless browser 11/11** · Neon left at **0 fixture rows, 0 ErrorLog rows**.
 
+**Post-review fix 2026-09-07 (commit pending, on `error-handling` after `a79db75`).** PR review
+(`orbit-central[bot]`) correctly found that `DEBUG_ERRORS=1` bypassed the admin gate on the
+**pre-auth** login surface: that route never resolves a user, so the flag alone handed anonymous
+callers the `debug` stack — contradicting the feature's own "never a stack pre-auth" rule.
+`shouldExposeDebug()` now requires `context.userId` for the env-var branch. Reproduced before the
+fix and re-checked after (**6/6**: anonymous gets no debug, authenticated non-admin still does);
+lint clean, build green at **50 ƒ Dynamic**. Docs realigned (the rule was written as "everyone" in
+four places). ⚠️ The review thread was marked **resolved without the code changing** — the finding
+would otherwise have been lost.
+
+**Second post-review fix 2026-09-07.** The same review round flagged that the `ErrorLog` writer's
+"stop trying" latch treated `P1001`/`P1002` as permanent: a 30-second network partition silenced
+error recording for the container's whole lifetime. Also found while fixing it — an *unknown* write
+failure retried on every 5xx, the exact storm the old comment claimed to prevent. Both now go
+through a pure state machine (`applyWriteFailure` / `isWriterMuted`): schema codes (`P2021`/`P2022`)
+latch until the next deploy, everything else takes a 60s cooldown and resumes. Verified **41/41**
+pure + **7/7** live against Neon (a real rejected insert mutes rather than latches, and the same
+process resumes writing), plus route→ErrorLog end-to-end; lint clean, build green at 50 ƒ Dynamic.
+
 The load-bearing claim, reproduced end to end: each of the five login failures now answers with its
 **own** code — `CONFIG_MISSING` (naming the variable) · `JIRA_UNREACHABLE` (naming `ENOTFOUND`) ·
 `JIRA_AUTH` · `DB_UNAVAILABLE` · `DB_MIGRATION_MISSING` — every one carrying a `requestId` that also
@@ -43,7 +84,7 @@ appears on the `x-request-id` header, in the log line, and in Admin → Recent e
 `lib/log.js` (AsyncLocalStorage context, JSON lines, recursive redaction, `cause`-chain
 serialization) · `lib/error-log.js` · `lib/sync/warnings.mjs` · `withRoute` + the envelope in
 `route-helpers.js` · Jira timeouts/`classifyFetchFailure`/`errorMessages` capture ·
-`instrumentation.js` · `error.jsx`/`global-error.jsx` · `api/diagnostics` · `ErrorLog` (migration 13)
+`instrumentation.js` + `instrumentation-node.js` · `error.jsx`/`global-error.jsx` · `api/diagnostics` · `ErrorLog` (migration 13)
 + Admin → Recent errors · `CODE · requestId` on the login card and alert dialog with Copy diagnostics.
 
 ## Goals
@@ -59,7 +100,8 @@ serialization) · `lib/error-log.js` · `lib/sync/warnings.mjs` · `withRoute` +
 
 - **§12 metric core untouched** — additive everywhere.
 - **Two invariants moved and are declared:** **49 → 50 ƒ Dynamic** (`/api/diagnostics`) and **12 → 13
-  migrations** (`add_error_log`).
+  migrations** (`add_error_log`). The 2026-09-09 instrumentation split moved **neither** — it is a
+  bundler-boundary refactor with no route, schema, or behavior change (boot hooks re-proved firing).
 - **`status` is always OUR HTTP status.** An upstream's own status goes to `details.jiraStatus` /
   `details.providerStatus` — echoing Jira's 429 would tell the browser to retry our route.
 - **The ErrorLog writer must survive its own table being missing** (migrations are a separate deploy
@@ -114,9 +156,17 @@ layer that sits between them.)
 - **A production build MINIFIES class names.** Never derive a user-visible or logged name from
   `new.target.name` / `constructor.name`; set it explicitly. Dev never shows this — only a smoke
   against `next start` does.
-- **`instrumentation.js` is bundled for the Edge runtime too**, even with no Edge routes. Node-only
-  APIs referenced there (or in anything it imports) warn at build; use `console` over
-  `process.stdout`, and read `process.version` off `globalThis`.
+- **`instrumentation.js` is bundled for the Edge runtime too**, even with no Edge routes — and
+  **a `NEXT_RUNTIME` guard does not stop it.** Bundling is static: Turbopack follows a dynamic
+  `import()` into the Edge graph regardless of the branch guarding it. So **never import a Node-only
+  module from `instrumentation.js` — not at the top level, not dynamically, not inside a
+  `process.env.NEXT_RUNTIME === "nodejs"` check.** Put it in **`src/instrumentation-node.js`**, the
+  single module the guard imports; everything behind that one boundary is excluded from the Edge
+  bundle (the pattern Next's own instrumentation guide prescribes). Ignoring this is what printed
+  four `A Node.js module is loaded ...` warnings on every build for five days while three
+  verification passes recorded "0 Node-API warnings" (fixed 2026-09-09, as-built note 11).
+  Corollary: **an unchecked invariant rots.** "0 warnings" was copied forward three times without
+  anyone re-reading the build log — grep the log for the claim, don't restate it.
 - **Next 16 refuses a second `next dev` for the same directory.** To smoke against a server with
   modified env, build once and run `next start -p <port>` with env overrides (real env vars beat
   `.env`). This also exercises production mode, which is where minification bugs surface.

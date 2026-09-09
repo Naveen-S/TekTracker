@@ -604,7 +604,9 @@ model BugReportSnapshot {
 /// - `details` is the same redacted payload the API returned; `stack` is admin-only in the UI.
 /// - Pruned to 14 days by the daily cron. The writer degrades to console when this table is
 ///   missing (it exists only after `yarn db:deploy` runs), so an unapplied migration can never
-///   turn one failure into two.
+///   turn one failure into two. A missing table latches the writer off until the next deploy; any
+///   OTHER write failure (connection error, pool timeout) only pauses it briefly, so a transient
+///   blip cannot silently end error recording for the process lifetime.
 model ErrorLog {
   id        String   @id @default(cuid())
   requestId String                                    // correlates with the x-request-id header + every log line

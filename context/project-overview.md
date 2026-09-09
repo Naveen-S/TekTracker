@@ -842,7 +842,9 @@ model BugReportIssue {
 /// foreign keys on userId/teamId: this must be able to record an error ABOUT a deleted entity, and
 /// a cascade must never delete incident history (the FK-less read-time-join reasoning of
 /// Issue <-> IssueProgress). Pruned to 14 days by the daily cron; the writer degrades to console
-/// when the table is absent, so an unapplied migration never turns one failure into two.
+/// when the table is absent, so an unapplied migration never turns one failure into two — and a
+/// merely TRANSIENT write failure (connection error, pool timeout) pauses it for 60s rather than
+/// latching it off, so a network blip cannot silently end error recording.
 model ErrorLog {
   id        String   @id @default(cuid())
   requestId String                                  // correlates with x-request-id + every log line
@@ -1395,7 +1397,7 @@ file store. Token is **plaintext on disk** in `.sessions/`. Acceptable for a loc
    observability-and-errors.md). Every caller gets `{ error, code, requestId, details }` where
    `details` is curated, safe context (which track failed, what Jira itself said, which env var is
    missing **by name**). The `debug` block — error class, stack, `cause` chain, Prisma meta — is
-   **global-admin only**, or open to everyone while `DEBUG_ERRORS=1` is set for a bounded debugging
+   **global-admin only**, or open to any AUTHENTICATED caller while `DEBUG_ERRORS=1` is set for a bounded debugging
    session. `/api/auth/login` is the one PRE-AUTH surface and so cannot use the admin gate: it
    exposes the failing stage, the code and a remediation message naming a missing variable, but
    never a value, never a stack. Secrets are additionally scrubbed at the logging boundary by a
@@ -1631,7 +1633,7 @@ All previously open decisions are now resolved:
 - **Production observability & error contract (ratified 2026-09-03).** Prompted by a production login
   that answered five structurally different failures with two strings. Three AskUserQuestion calls:
   (1) **admin-gated debug** — everyone gets `{ error, code, requestId, details }`, global admins also
-  get a `debug` block (stack/cause/Prisma meta), and `DEBUG_ERRORS=1` opens it to everyone for a
+  get a `debug` block (stack/cause/Prisma meta), and `DEBUG_ERRORS=1` opens it to any authenticated caller for a
   bounded session; (2) **wrap every handler** — all 60 exports across the 41 route files get
   `withRoute`, for uniform correlation, timing and mapping, over a lower-touch shared-helper-only
   option; (3) **all four extras ship** — `onRequestError` + error boundaries, an admin diagnostics

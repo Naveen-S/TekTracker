@@ -190,9 +190,24 @@ function findCauseCode(error, depth = 0) {
 // Error → Response
 // ─────────────────────────────────────────────────────────────
 
-/** Admins always; everyone while DEBUG_ERRORS=1 is set for a debugging session. */
+/**
+ * Admins always. `DEBUG_ERRORS=1` additionally opens the block to any **authenticated** caller for
+ * a bounded debugging session.
+ *
+ * The authentication clause is load-bearing, not belt-and-braces: `/api/auth/login` is pre-auth and
+ * never resolves a user, so a bare `DEBUG_ERRORS` check hands the stack — absolute server paths,
+ * the `cause` chain, and on a connection failure the database host — to anyone who can reach the
+ * login page. That contradicts this feature's own pre-auth rule ("never a stack" there).
+ *
+ * Nothing is lost by the restriction: a failed login's stack is still logged AND persisted to
+ * `ErrorLog` for Admin → Recent errors, and an existing admin session keeps working while login is
+ * broken. For the config/network/database stages the response already names the cause outright, so
+ * the stack adds nothing there anyway.
+ */
 function shouldExposeDebug() {
-  return getLogContext().isAdmin === true || process.env.DEBUG_ERRORS === "1";
+  const context = getLogContext();
+  if (context.isAdmin === true) return true;
+  return context.userId !== undefined && process.env.DEBUG_ERRORS === "1";
 }
 
 /**

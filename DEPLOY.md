@@ -226,7 +226,10 @@ details and stack. Rows are pruned after 14 days by the daily cron.
 **When a user reports something:** ask for the reference shown under the error — `JIRA_API · r7k2q9xf`.
 The dashboard's error dialog also has a **Copy diagnostics** button that copies the whole envelope.
 
-**Temporarily need stack traces for a non-admin?** Set `DEBUG_ERRORS=1` and restart. Unset it
+**Temporarily need stack traces for an authenticated non-admin?** Set `DEBUG_ERRORS=1` and restart.
+It never applies to anonymous callers, so a broken login still answers without a stack — read that
+one from the container logs or Admin → Recent errors (an existing admin session keeps working while
+login is broken). Unset it
 afterwards — `code`, `requestId` and `details` never need it.
 
 ## 9. Open items to confirm with DevOps
