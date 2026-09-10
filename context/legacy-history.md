@@ -2333,5 +2333,45 @@ context/features/editable-filters.md.
   emits `actor":"n***@tekion.com"` with the raw address absent from the entire log; env-presence
   **booleans** still pass through unredacted); lint clean, env-free build green at **50 ƒ Dynamic**,
   0 warnings.
+- **Three BLOCKING review fixes 2026-09-10 (`orbit-central[bot]`).** (1) **Inner `try/catch` inside
+  `withRoute`** — flagged on one file, found in **34 files / 54 handlers** and swept with Naveen's
+  go-ahead. The review's stated mechanism was wrong (5xx *were* logged at error level, by the inner
+  `handleRouteError` itself); the real defect is that returning a `Response` from the catch routes
+  the request through `withRoute`'s **success** path, so one failing request logged BOTH
+  `route.rejected status=401` and `route.ok status=401` under the same requestId — any alert keyed
+  on `route.ok` counted failures as successes. Second, latent: the inner catch bypassed
+  `isFrameworkSignal`. (2) **`onRequestError` framework-signal guard — did NOT reproduce.** The claim
+  was that `redirect()`/`notFound()` write spurious 500 `ErrorLog` rows. Tested it properly with the
+  guard disabled and three probe pages: on Next 16.2.9 a genuine throw logged `render.error` and
+  wrote exactly one row, while `redirect()`/`notFound()` produced **zero** across six requests — Next
+  resolves both in its render pipeline and never calls the hook. Kept the guard as cheap
+  defence-in-depth but recorded plainly that it fixes nothing observed, so nobody later "confirms" a
+  bug that never existed; `isFrameworkSignal` moved to `lib/errors.js` so the route and render sides
+  cannot drift. (3) **`/api/diagnostics` returned raw `pg`/Prisma `error.message`** in four places —
+  valid, wrapped in `scrubSecrets()`; the admin-only cron-user `email` is deliberately left unmasked
+  since confirming *which* account is configured is that probe's whole purpose. Verified: lint clean,
+  env-free build exit 0 at **50 ƒ Dynamic** with 0 warnings, a **12-request live audit** proving no
+  failing request logs `route.ok` and every request emits exactly one `route.*` line, **12/12**
+  regression fixtures, boot hooks 3/3, PII 2/2, Neon left at 0 `ErrorLog` rows.
+- **2026-09-11 — Finished the feature: sixth verification pass, suite re-derived from source.**
+  `yarn lint` clean · `prisma validate` valid + **13 migrations, up to date** · env-free cold build
+  (`.env` **and** `.env.production` moved aside, absence asserted mid-build) → exit 0, no
+  `Environments:` line, **50 ƒ Dynamic**, **0 static API routes**, **0 Node-API warnings** · **pure
+  fixtures 41/41** (value-level scrubbing through `.cause`/stack/`NonError`/`details.dsn`; PII keys +
+  `maskEmail`; `isFrameworkSignal` incl. `NEXT_HTTP_ERROR_FALLBACK` and a numeric digest; the
+  ErrorLog latch-vs-cooldown machine; frozen `ERROR_CODES`; env-presence booleans surviving
+  redaction) · **live smoke 17/17** against a real `next start` · **22-request route audit: exactly
+  ONE `route.*` line per request, no failing request logging `route.ok`** (20×401, 2×400) · **0
+  `render.error`** across six page views · Neon left at **0 `ErrorLog` rows**, scratch harness
+  removed. Doc-sync: §5's feature row corrected on two counts that had gone stale — the `debug`
+  gate still read "anyone under `DEBUG_ERRORS=1`" (it is authenticated-only since 2026-09-07) and
+  the handler count read 60 when the real figure is **61 across 41 route files**; the §16 decision
+  gained a dated amendment recording both, plus the fact that "wrap every handler" had been only
+  half-true in practice until the sweep. Worth recording honestly: five checks in this pass first
+  reported red and were **harness quoting bugs, not product failures** (escaped quotes in a shell
+  heredoc breaking `jq` and two `grep`s; one assertion expecting a masked-`actor` count of 1 in a
+  cumulative log holding two logins) — re-run correctly, all five pass. **Done.** **Next:** Naveen's
+  commit of the 41 pending files (gitleaks hook), replies on the two open PR threads, and his
+  real-browser visual acceptance.
 - **Done.** **Next:** Naveen's commit (gitleaks hook) and his real-browser visual acceptance. See
   context/features/observability-and-errors.md.

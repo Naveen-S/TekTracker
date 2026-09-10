@@ -185,6 +185,25 @@ export class SessionWriteError extends AppError {
  * @param {unknown} value
  * @returns {Error}
  */
+/**
+ * Is this a Next.js control-flow signal rather than a failure?
+ *
+ * `redirect()` and `notFound()` work by THROWING an error whose `digest` starts with `NEXT_`. Next
+ * catches it and performs the navigation, so it must be re-thrown untouched — and it must never be
+ * logged or recorded as an incident: on this app every signed-out page view throws one
+ * (`redirect("/login")`), which would bury real failures under routine navigation.
+ *
+ * Lives here, in the taxonomy, rather than beside either caller: BOTH the route wrapper
+ * (`withRoute`) and the server-render hook (`onRequestError`) must apply exactly the same rule, and
+ * two copies of this knowledge would silently drift.
+ *
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+export function isFrameworkSignal(error) {
+  return typeof error?.digest === "string" && error.digest.startsWith("NEXT_");
+}
+
 export function toError(value) {
   if (value instanceof Error) return value;
   return new Error(typeof value === "string" ? value : JSON.stringify(value ?? "Unknown error"));

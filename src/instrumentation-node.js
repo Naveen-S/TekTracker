@@ -15,7 +15,7 @@
  */
 import { logger, runWithContext, newRequestId } from "@/lib/log";
 import { recordError } from "@/lib/error-log";
-import { ERROR_CODES } from "@/lib/errors";
+import { ERROR_CODES, isFrameworkSignal } from "@/lib/errors";
 
 /** Required at runtime; reported as presence booleans so a missing secret is obvious at a glance. */
 const REQUIRED_ENV = [
@@ -80,6 +80,13 @@ async function probeJira() {
  * @param {{ routerKind: string, routePath: string, routeType: string }} context
  */
 export async function onRequestError(err, request, context) {
+  // `redirect()` and `notFound()` in a server component reach this hook as thrown errors whose
+  // digest starts with `NEXT_`. They are control flow, not failures: without this guard every
+  // signed-out page view (`redirect("/login")` on /, /admin, /bugs, /leaderboard, /rollup) wrote an
+  // ErrorLog row at status 500, burying real incidents under routine navigation. `withRoute` has
+  // always applied this rule on the route side; this hook is the render side of the same contract.
+  if (isFrameworkSignal(err)) return;
+
   const requestId = newRequestId(
     typeof request?.headers?.["x-request-id"] === "string" ? request.headers["x-request-id"] : null,
   );

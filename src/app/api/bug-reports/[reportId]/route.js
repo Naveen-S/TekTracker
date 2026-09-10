@@ -8,60 +8,48 @@
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { requireAdmin, NotFoundError } from "@/lib/rbac";
-import { withRoute, parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody } from "@/lib/api/route-helpers";
 import { bugReportPatchSchema } from "@/lib/schemas/bug-report";
 
 export const dynamic = "force-dynamic";
 
 export const GET = withRoute("bug-reports", async (request, { params }) => {
-  try {
-    await requireUser();
-    const { reportId } = await params;
-    const report = await prisma.bugReport.findUnique({
-      where: { id: reportId },
-      include: {
-        scopes: { orderBy: { sortOrder: "asc" }, include: { slaTargets: true } },
-        bands: { orderBy: { sortOrder: "asc" } },
-        categories: { orderBy: { sortOrder: "asc" } },
-      },
-    });
-    if (!report) throw new NotFoundError("Bug report not found");
-    return Response.json(report);
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  await requireUser();
+  const { reportId } = await params;
+  const report = await prisma.bugReport.findUnique({
+    where: { id: reportId },
+    include: {
+      scopes: { orderBy: { sortOrder: "asc" }, include: { slaTargets: true } },
+      bands: { orderBy: { sortOrder: "asc" } },
+      categories: { orderBy: { sortOrder: "asc" } },
+    },
+  });
+  if (!report) throw new NotFoundError("Bug report not found");
+  return Response.json(report);
 });
 
 export const PATCH = withRoute("bug-reports", async (request, { params }) => {
-  try {
-    await requireAdmin();
-    const { reportId } = await params;
-    const patch = await parseJsonBody(request, bugReportPatchSchema);
+  await requireAdmin();
+  const { reportId } = await params;
+  const patch = await parseJsonBody(request, bugReportPatchSchema);
 
-    // A fallback category must belong to THIS report — otherwise rows would silently vanish into
-    // a category that never renders here (decision 9).
-    if (patch.fallbackCategoryId) {
-      const category = await prisma.bugReportCategory.findFirst({
-        where: { id: patch.fallbackCategoryId, reportId },
-        select: { id: true },
-      });
-      if (!category) throw new NotFoundError("Fallback category not found in this report");
-    }
-
-    const report = await prisma.bugReport.update({ where: { id: reportId }, data: patch });
-    return Response.json(report);
-  } catch (error) {
-    return handleRouteError(error);
+  // A fallback category must belong to THIS report — otherwise rows would silently vanish into
+  // a category that never renders here (decision 9).
+  if (patch.fallbackCategoryId) {
+    const category = await prisma.bugReportCategory.findFirst({
+      where: { id: patch.fallbackCategoryId, reportId },
+      select: { id: true },
+    });
+    if (!category) throw new NotFoundError("Fallback category not found in this report");
   }
+
+  const report = await prisma.bugReport.update({ where: { id: reportId }, data: patch });
+  return Response.json(report);
 });
 
 export const DELETE = withRoute("bug-reports", async (request, { params }) => {
-  try {
-    await requireAdmin();
-    const { reportId } = await params;
-    await prisma.bugReport.delete({ where: { id: reportId } });
-    return Response.json({ ok: true });
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  await requireAdmin();
+  const { reportId } = await params;
+  await prisma.bugReport.delete({ where: { id: reportId } });
+  return Response.json({ ok: true });
 });

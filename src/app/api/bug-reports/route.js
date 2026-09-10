@@ -9,40 +9,32 @@
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { requireAdmin } from "@/lib/rbac";
-import { withRoute, parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody } from "@/lib/api/route-helpers";
 import { bugReportCreateSchema } from "@/lib/schemas/bug-report";
 
 export const dynamic = "force-dynamic";
 
 export const GET = withRoute("bug-reports", async () => {
-  try {
-    await requireUser();
-    const reports = await prisma.bugReport.findMany({
-      orderBy: [{ isActive: "desc" }, { name: "asc" }],
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        description: true,
-        ownerName: true,
-        isActive: true,
-        lastRefreshedAt: true,
-        lastRefreshError: true,
-      },
-    });
-    return Response.json(reports);
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  await requireUser();
+  const reports = await prisma.bugReport.findMany({
+    orderBy: [{ isActive: "desc" }, { name: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      description: true,
+      ownerName: true,
+      isActive: true,
+      lastRefreshedAt: true,
+      lastRefreshError: true,
+    },
+  });
+  return Response.json(reports);
 });
 
 export const POST = withRoute("bug-reports", async (request) => {
-  try {
-    await requireAdmin();
-    const data = await parseJsonBody(request, bugReportCreateSchema);
-    const report = await prisma.bugReport.create({ data });
-    return Response.json(report);
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  await requireAdmin();
+  const data = await parseJsonBody(request, bugReportCreateSchema);
+  const report = await prisma.bugReport.create({ data });
+  return Response.json(report);
 });

@@ -9,7 +9,7 @@
  * misconfiguration (unknown provider, missing key) falls through → 500 loud.
  */
 import { requireTeamRole, TEAM_ALL_ROLES, NotFoundError } from "@/lib/rbac";
-import { withRoute, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute } from "@/lib/api/route-helpers";
 import { getDigestData } from "@/lib/dashboard-data";
 import {
   buildTrendSeries,
@@ -25,45 +25,38 @@ import { AiNotConfiguredError, AiProviderError } from "@/lib/ai/errors";
 export const dynamic = "force-dynamic";
 
 export const POST = withRoute("teams.sprints.ai-digest", async (_request, { params }) => {
-  try {
-    const { teamId, sprintId } = await params;
-    await requireTeamRole(teamId, TEAM_ALL_ROLES);
+  const { teamId, sprintId } = await params;
+  await requireTeamRole(teamId, TEAM_ALL_ROLES);
 
-    const data = await getDigestData(teamId, sprintId);
-    if (!data) throw new NotFoundError("Sprint not found");
-    const { team, sprint, filters, progressByKey, snapshots } = data;
+  const data = await getDigestData(teamId, sprintId);
+  if (!data) throw new NotFoundError("Sprint not found");
+  const { team, sprint, filters, progressByKey, snapshots } = data;
 
-    const asOf = new Date();
-    const metrics = computeSprintMetrics(filters, progressByKey, sprint);
-    if (metrics.totalIssues === 0) {
-      return Response.json(
-        { error: "Nothing to summarize yet — add filters and sync Jira first" },
-        { status: 400 },
-      );
-    }
-    const series = buildTrendSeries(snapshots, sprint, asOf);
-    // Same velocity the MetricGrid card shows: snapshot-based when ≥ 2 snapshots, naive fallback.
-    const velocity =
-      snapshotVelocity(series.points, sprint, asOf) ??
-      getWeeklyVelocity(sprint, metrics.velocityCompletedPoints, metrics.velocityPoints);
-
-    const input = buildDigestInput({ team, sprint, metrics, series, velocity, asOf });
-    const { system, prompt } = buildDigestPrompt(input);
-    // Bumped from the generateJson default (2048) — risk-comments-rollup-digest.md live smoke
-    // found "thinking" models (e.g. gemini-3.5-flash) spend part of maxOutputTokens on invisible
-    // reasoning before the visible answer; 2048 truncated mid-JSON (finishReason: MAX_TOKENS) on
-    // a real sprint fixture even for a single team. 4096 completes reliably.
-    const digest = sanitizeDigest(
-      await generateJson({ system, prompt, schema: digestContract, maxOutputTokens: 4096 }),
-      input,
+  const asOf = new Date();
+  const metrics = computeSprintMetrics(filters, progressByKey, sprint);
+  if (metrics.totalIssues === 0) {
+    return Response.json(
+      { error: "Nothing to summarize yet — add filters and sync Jira first" },
+      { status: 400 },
     );
-
-    const { provider, model } = getAiConfig();
-    return Response.json({ digest, generatedAt: asOf.toISOString(), provider, model });
-  } catch (error) {
-    // AiNotConfiguredError (503) and AiProviderError (502) now carry their own status + code
-    // (lib/ai/errors.js extends AppError), so the shared helper maps them — and unlike the ladder
-    // that used to live here, it also returns the code, requestId and provider status.
-    return handleRouteError(error);
   }
+  const series = buildTrendSeries(snapshots, sprint, asOf);
+  // Same velocity the MetricGrid card shows: snapshot-based when ≥ 2 snapshots, naive fallback.
+  const velocity =
+    snapshotVelocity(series.points, sprint, asOf) ??
+    getWeeklyVelocity(sprint, metrics.velocityCompletedPoints, metrics.velocityPoints);
+
+  const input = buildDigestInput({ team, sprint, metrics, series, velocity, asOf });
+  const { system, prompt } = buildDigestPrompt(input);
+  // Bumped from the generateJson default (2048) — risk-comments-rollup-digest.md live smoke
+  // found "thinking" models (e.g. gemini-3.5-flash) spend part of maxOutputTokens on invisible
+  // reasoning before the visible answer; 2048 truncated mid-JSON (finishReason: MAX_TOKENS) on
+  // a real sprint fixture even for a single team. 4096 completes reliably.
+  const digest = sanitizeDigest(
+    await generateJson({ system, prompt, schema: digestContract, maxOutputTokens: 4096 }),
+    input,
+  );
+
+  const { provider, model } = getAiConfig();
+  return Response.json({ digest, generatedAt: asOf.toISOString(), provider, model });
 });

@@ -16,11 +16,21 @@ not begin at a log aggregator. Post-v1, not a master-plan step.
 
 ## Status
 
-**Done 2026-09-04 · four review fixes (2026-09-07 ×2, 2026-09-09 ×2) · one build-warning fix
-2026-09-09 · verified four times.** Code committed as `a79db75` on branch `error-handling`; all four
-review fixes, the instrumentation split, and their doc updates are **uncommitted**. Pending Naveen's commit (gitleaks
-hook) + real-browser visual acceptance. Full spec + As-built:
+**Done 2026-09-04 · seven review fixes (2026-09-07 ×2, 2026-09-09 ×2, 2026-09-10 ×3) · one
+build-warning fix · verified six times.** Committed on `error-handling`: `a79db75` (feature) →
+`78e42b1` (instrumentation split + first two review fixes) → `b2fd4f2` (the two redaction fixes).
+**Uncommitted (41 files):** the three blocking fixes — the **34-file / 54-handler inner-`try/catch`
+sweep**, `/api/diagnostics` scrubbing, and the `onRequestError` framework-signal guard — plus docs.
+Pending Naveen's commit (gitleaks hook) + real-browser visual acceptance. Full spec + As-built:
 @context/features/observability-and-errors.md.
+
+**Suite 2026-09-11 (sixth pass, re-derived from source):** lint clean · `prisma validate` valid +
+**13 migrations, up to date** · env-free cold build → exit 0, no `Environments:` line, **50 ƒ
+Dynamic**, 0 static API routes, **0 warnings** · **pure fixtures 41/41** · **live smoke 17/17** ·
+**22-request route audit: exactly one `route.*` line per request, no failing request logging
+`route.ok`** · **0 `render.error`** across six page views · Neon left at **0 `ErrorLog` rows**.
+Five checks first showed red and were **harness quoting bugs, not product failures** — re-run
+correctly, all pass.
 
 ⚠️ **Correction — "0 Node-API warnings" below was false in all three earlier passes.** The build
 emitted **four** Edge-runtime warnings from `instrumentation.js` from this feature's landing until
@@ -145,6 +155,15 @@ layer that sits between them.)
 - **Throw a typed error from `lib/errors.js`** (or the Jira/AI subclasses) rather than hand-rolling
   `Response.json({ error }, { status })` — a hand-rolled response silently drops `code`, `requestId`
   and `details`, which is exactly what five routes were doing before this feature.
+- **Never put a `try/catch` inside a `withRoute` handler just to call `handleRouteError`.** Returning
+  a `Response` from the catch sends the request through `withRoute`'s **success** path, so one
+  failing request logs BOTH `route.rejected`/`route.error` **and** `route.ok` with the failing
+  status — anything keyed on `route.ok` then counts failures as successes — and it bypasses
+  `isFrameworkSignal`. Just throw; `withRoute` maps, logs and records. 34 files / 54 handlers were
+  swept of this on 2026-09-10; `grep -rn "return handleRouteError" src/app/api` must stay empty.
+- **`isFrameworkSignal` lives in `lib/errors.js`** and is imported by BOTH `withRoute` and
+  `onRequestError`. `redirect()`/`notFound()` throw errors whose digest starts with `NEXT_`; they are
+  control flow, never incidents. Keep one definition — two would drift.
 - **`logger` + `setLogContext`** (`lib/log.js`) are the only logging. Never `console.*` in `src/`
   except inside `error-log.js`'s own failure path (which must not recurse).
 - **Secrets are scrubbed by `redact()`**, which gates logs AND `ErrorLog.details`. A key matching

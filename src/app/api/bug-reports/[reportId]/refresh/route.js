@@ -11,25 +11,18 @@
  * → 404 (handleRouteError) · anything else → 500 loud.
  */
 import { requireUser } from "@/lib/auth";
-import { withRoute, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute } from "@/lib/api/route-helpers";
 import { refreshBugReport, resolveRefreshAuth } from "@/lib/bug-report/refresh";
 import { JiraAuthError, JiraApiError, JiraCredentialMissingError } from "@/lib/jira/client";
 
 export const dynamic = "force-dynamic";
 
 export const POST = withRoute("bug-reports.refresh", async (request, { params }) => {
-  try {
-    const user = await requireUser();
-    const { reportId } = await params;
+  const user = await requireUser();
+  const { reportId } = await params;
 
-    const { auth, email } = await resolveRefreshAuth(user.id);
-    const summary = await refreshBugReport(reportId, { auth, refreshedByEmail: email });
+  const { auth, email } = await resolveRefreshAuth(user.id);
+  const summary = await refreshBugReport(reportId, { auth, refreshedByEmail: email });
 
-    return Response.json(summary);
-  } catch (error) {
-    // The Jira errors carry their own status + code now (JIRA_AUTH/JIRA_CREDENTIAL_MISSING → 401,
-    // JIRA_API → 502), and the shared helper adds what this ladder dropped: Jira's own
-    // errorMessages, the failing scope's JQL, and the requestId.
-    return handleRouteError(error);
-  }
+  return Response.json(summary);
 });

@@ -21,6 +21,7 @@
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/rbac";
 import { withRoute } from "@/lib/api/route-helpers";
+import { scrubSecrets } from "@/lib/log";
 import { getSessionCookieInfo } from "@/lib/auth";
 import { getJiraAuthForUser, fetchMyself, probeJiraReachable } from "@/lib/jira/client";
 
@@ -64,12 +65,19 @@ async function checkDatabase() {
         latestAt: rows[0]?.finished_at ?? null,
       };
     } catch (error) {
-      migrations = { error: `Could not read the migration ledger: ${error.message}` };
+      migrations = { error: `Could not read the migration ledger: ${scrubSecrets(error.message)}` };
     }
 
     return { ok: true, ms, migrations };
   } catch (error) {
-    return { ok: false, ms: Date.now() - startedAt, error: error.message, code: error.code ?? null };
+    return {
+      ok: false,
+      ms: Date.now() - startedAt,
+      // `pg`/Prisma messages are free text and can quote a DSN — this route promises
+      // "names + booleans, NEVER values", and admin-only is mitigation, not the contract.
+      error: scrubSecrets(error.message),
+      code: error.code ?? null,
+    };
   }
 }
 
@@ -85,7 +93,13 @@ async function checkCronUser() {
     return { configured: true, email, jira: "ok" };
   } catch (error) {
     // The single most valuable line here: a dead service token is invisible in normal operation.
-    return { configured: true, email, jira: "failed", code: error.code ?? null, error: error.message };
+    return {
+      configured: true,
+      email,
+      jira: "failed",
+      code: error.code ?? null,
+      error: scrubSecrets(error.message),
+    };
   }
 }
 
@@ -165,7 +179,7 @@ async function checkRecentErrors() {
   } catch (error) {
     // The ErrorLog table only exists after migration 13 is deployed here — which is exactly the
     // kind of thing this route is for, so report it rather than failing the whole response.
-    return { error: `Could not read ErrorLog: ${error.message}`, code: error.code ?? null };
+    return { error: `Could not read ErrorLog: ${scrubSecrets(error.message)}`, code: error.code ?? null };
   }
 }
 

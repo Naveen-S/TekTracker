@@ -5,7 +5,7 @@
  */
 import { prisma } from "@/lib/db";
 import { requireTeamRole, NotFoundError, TEAM_MANAGER_ROLES } from "@/lib/rbac";
-import { withRoute, parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody } from "@/lib/api/route-helpers";
 import { filterTemplatePatchSchema } from "@/lib/schemas/filter";
 
 export const dynamic = "force-dynamic";
@@ -19,26 +19,18 @@ async function requireOwnedTemplate(templateId, teamId) {
 }
 
 export const PATCH = withRoute("teams.filter-templates", async (request, { params }) => {
-  try {
-    const { teamId, templateId } = await params;
-    await requireTeamRole(teamId, TEAM_MANAGER_ROLES);
-    await requireOwnedTemplate(templateId, teamId);
-    const data = await parseJsonBody(request, filterTemplatePatchSchema);
-    const template = await prisma.filterTemplate.update({ where: { id: templateId }, data });
-    return Response.json(template);
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  const { teamId, templateId } = await params;
+  await requireTeamRole(teamId, TEAM_MANAGER_ROLES);
+  await requireOwnedTemplate(templateId, teamId);
+  const data = await parseJsonBody(request, filterTemplatePatchSchema);
+  const template = await prisma.filterTemplate.update({ where: { id: templateId }, data });
+  return Response.json(template);
 });
 
 export const DELETE = withRoute("teams.filter-templates", async (_request, { params }) => {
-  try {
-    const { teamId, templateId } = await params;
-    await requireTeamRole(teamId, TEAM_MANAGER_ROLES);
-    await requireOwnedTemplate(templateId, teamId);
-    await prisma.filterTemplate.delete({ where: { id: templateId } });
-    return Response.json({ ok: true });
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  const { teamId, templateId } = await params;
+  await requireTeamRole(teamId, TEAM_MANAGER_ROLES);
+  await requireOwnedTemplate(templateId, teamId);
+  await prisma.filterTemplate.delete({ where: { id: templateId } });
+  return Response.json({ ok: true });
 });

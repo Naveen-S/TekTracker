@@ -13,8 +13,9 @@
  *   requestId  correlates the response with every log line and the `x-request-id` header.
  *   details    safe structured context — which track failed, what Jira actually said, which
  *              env var is missing. Shown to everyone.
- *   debug      error name/stack/cause/Prisma meta. GLOBAL ADMINS ONLY, or anyone when
- *              DEBUG_ERRORS=1 is set for a debugging session.
+ *   debug      error name/stack/cause/Prisma meta. GLOBAL ADMINS ONLY, or any AUTHENTICATED
+ *              caller when DEBUG_ERRORS=1 is set for a debugging session — never anonymous
+ *              callers, so the pre-auth login surface can't leak a stack.
  *
  * The `{ success, data, error }` envelope stays the Server-Action shape (coding-standards) — not
  * used by Route Handlers.
@@ -30,6 +31,7 @@ import {
   ValidationError,
   ConflictError,
   toError,
+  isFrameworkSignal,
 } from "@/lib/errors";
 import { logger, newRequestId, runWithContext, getLogContext, serializeError } from "@/lib/log";
 import { recordError } from "@/lib/error-log";
@@ -280,10 +282,6 @@ function stripUndefined(object) {
 // ─────────────────────────────────────────────────────────────
 
 /** Next's own control-flow throws (redirect/notFound/dynamic usage) must pass straight through. */
-function isFrameworkSignal(error) {
-  return typeof error?.digest === "string" && error.digest.startsWith("NEXT_");
-}
-
 function attachRequestId(response, requestId) {
   try {
     response.headers.set("x-request-id", requestId);

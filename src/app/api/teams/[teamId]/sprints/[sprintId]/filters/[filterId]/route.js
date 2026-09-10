@@ -15,7 +15,7 @@
  */
 import { prisma } from "@/lib/db";
 import { requireTeamRole, NotFoundError, TEAM_MANAGER_ROLES } from "@/lib/rbac";
-import { withRoute, parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, ValidationError } from "@/lib/api/route-helpers";
 import { filterPatchSchema } from "@/lib/schemas/filter";
 
 export const dynamic = "force-dynamic";
@@ -33,34 +33,26 @@ async function requireOwnedFilter(filterId, teamId, sprintId) {
 }
 
 export const PATCH = withRoute("teams.sprints.filters", async (request, { params }) => {
-  try {
-    const { teamId, sprintId, filterId } = await params;
-    await requireTeamRole(teamId, TEAM_MANAGER_ROLES);
-    const existing = await requireOwnedFilter(filterId, teamId, sprintId);
-    if (existing.workflowType === NEEDS_ATTENTION) {
-      throw new ValidationError(
-        "The Needs attention track is generated from the team roster — edit the roster in Admin instead",
-      );
-    }
-    const data = await parseJsonBody(request, filterPatchSchema);
-    if (data.workflowType === NEEDS_ATTENTION) {
-      throw new ValidationError("A track cannot be changed into the generated Needs attention track");
-    }
-    const filter = await prisma.filter.update({ where: { id: filterId }, data });
-    return Response.json(filter);
-  } catch (error) {
-    return handleRouteError(error);
+  const { teamId, sprintId, filterId } = await params;
+  await requireTeamRole(teamId, TEAM_MANAGER_ROLES);
+  const existing = await requireOwnedFilter(filterId, teamId, sprintId);
+  if (existing.workflowType === NEEDS_ATTENTION) {
+    throw new ValidationError(
+      "The Needs attention track is generated from the team roster — edit the roster in Admin instead",
+    );
   }
+  const data = await parseJsonBody(request, filterPatchSchema);
+  if (data.workflowType === NEEDS_ATTENTION) {
+    throw new ValidationError("A track cannot be changed into the generated Needs attention track");
+  }
+  const filter = await prisma.filter.update({ where: { id: filterId }, data });
+  return Response.json(filter);
 });
 
 export const DELETE = withRoute("teams.sprints.filters", async (_request, { params }) => {
-  try {
-    const { teamId, sprintId, filterId } = await params;
-    await requireTeamRole(teamId, TEAM_MANAGER_ROLES);
-    await requireOwnedFilter(filterId, teamId, sprintId);
-    await prisma.filter.delete({ where: { id: filterId } });
-    return Response.json({ ok: true });
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  const { teamId, sprintId, filterId } = await params;
+  await requireTeamRole(teamId, TEAM_MANAGER_ROLES);
+  await requireOwnedFilter(filterId, teamId, sprintId);
+  await prisma.filter.delete({ where: { id: filterId } });
+  return Response.json({ ok: true });
 });

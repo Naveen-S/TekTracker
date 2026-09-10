@@ -6,34 +6,26 @@
 import { prisma } from "@/lib/db";
 import { requireTeamRole } from "@/lib/rbac";
 import { Role } from "@/generated/prisma/client";
-import { withRoute, parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody } from "@/lib/api/route-helpers";
 import { membershipPatchSchema } from "@/lib/schemas/team";
 
 export const dynamic = "force-dynamic";
 
 export const PATCH = withRoute("teams.members", async (request, { params }) => {
-  try {
-    const { teamId, userId } = await params;
-    await requireTeamRole(teamId, [Role.ADMIN]);
-    const { role } = await parseJsonBody(request, membershipPatchSchema);
-    const membership = await prisma.teamMembership.update({
-      where: { userId_teamId: { userId, teamId } },
-      data: { role },
-      include: { user: { select: { id: true, email: true, displayName: true, avatarUrl: true } } },
-    });
-    return Response.json(membership);
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  const { teamId, userId } = await params;
+  await requireTeamRole(teamId, [Role.ADMIN]);
+  const { role } = await parseJsonBody(request, membershipPatchSchema);
+  const membership = await prisma.teamMembership.update({
+    where: { userId_teamId: { userId, teamId } },
+    data: { role },
+    include: { user: { select: { id: true, email: true, displayName: true, avatarUrl: true } } },
+  });
+  return Response.json(membership);
 });
 
 export const DELETE = withRoute("teams.members", async (_request, { params }) => {
-  try {
-    const { teamId, userId } = await params;
-    await requireTeamRole(teamId, [Role.ADMIN]);
-    await prisma.teamMembership.delete({ where: { userId_teamId: { userId, teamId } } });
-    return Response.json({ ok: true });
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  const { teamId, userId } = await params;
+  await requireTeamRole(teamId, [Role.ADMIN]);
+  await prisma.teamMembership.delete({ where: { userId_teamId: { userId, teamId } } });
+  return Response.json({ ok: true });
 });

@@ -6,7 +6,7 @@
  */
 import { prisma } from "@/lib/db";
 import { requireAdmin, NotFoundError } from "@/lib/rbac";
-import { withRoute, parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody } from "@/lib/api/route-helpers";
 import { jiraSubComponentPatchSchema } from "@/lib/schemas/jira-component";
 
 export const dynamic = "force-dynamic";
@@ -20,29 +20,21 @@ async function requireSubComponent(subComponentId) {
 }
 
 export const PATCH = withRoute("jira-sub-components", async (request, { params }) => {
-  try {
-    await requireAdmin();
-    const { subComponentId } = await params;
-    await requireSubComponent(subComponentId);
-    const data = await parseJsonBody(request, jiraSubComponentPatchSchema);
-    const subComponent = await prisma.jiraSubComponent.update({
-      where: { id: subComponentId },
-      data,
-    });
-    return Response.json(subComponent);
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  await requireAdmin();
+  const { subComponentId } = await params;
+  await requireSubComponent(subComponentId);
+  const data = await parseJsonBody(request, jiraSubComponentPatchSchema);
+  const subComponent = await prisma.jiraSubComponent.update({
+    where: { id: subComponentId },
+    data,
+  });
+  return Response.json(subComponent);
 });
 
 export const DELETE = withRoute("jira-sub-components", async (_request, { params }) => {
-  try {
-    await requireAdmin();
-    const { subComponentId } = await params;
-    await requireSubComponent(subComponentId);
-    await prisma.jiraSubComponent.delete({ where: { id: subComponentId } });
-    return Response.json({ ok: true });
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  await requireAdmin();
+  const { subComponentId } = await params;
+  await requireSubComponent(subComponentId);
+  await prisma.jiraSubComponent.delete({ where: { id: subComponentId } });
+  return Response.json({ ok: true });
 });

@@ -1,9 +1,32 @@
 # Production observability & error contract
 
-**Status: Done 2026-09-04 · four review fixes (2026-09-07 ×2, 2026-09-09 ×2) · one build-warning
-fix 2026-09-09 · verified four times.** Code committed as `a79db75` on `error-handling`; all four
-review fixes, the instrumentation split, and their doc updates are **uncommitted**. Pending Naveen's
-commit (gitleaks hook) + real-browser visual acceptance.
+**Status: Done 2026-09-04 · seven review fixes (2026-09-07 ×2, 2026-09-09 ×2, 2026-09-10 ×3) ·
+one build-warning fix · verified six times.** Committed on `error-handling` as `a79db75` (the
+feature) → `78e42b1` (instrumentation split + first two review fixes) → `b2fd4f2` (the two
+redaction fixes). **Uncommitted:** the three blocking fixes of 2026-09-10 — the 34-file /
+54-handler inner-`try/catch` sweep, the `/api/diagnostics` scrubbing, and the `onRequestError`
+framework-signal guard — plus their docs (41 files). Pending Naveen's commit (gitleaks hook) +
+real-browser visual acceptance.
+
+**Verification 2026-09-11 (sixth pass — suite re-derived from source, not replayed).** `yarn lint`
+clean · `prisma validate` valid + **13 migrations, up to date** · env-free cold build (`.env` **and**
+`.env.production` moved aside, absence asserted mid-build) → exit 0, **no `Environments:` line**,
+**50 ƒ Dynamic**, **0 static API routes**, **0 Node-API warnings, 0 warning blocks** · **pure
+fixtures 41/41** (value-level scrubbing incl. `.cause` depth 3, stack, `NonError`, `details.dsn`;
+PII keys + `maskEmail`; `isFrameworkSignal` incl. `NEXT_HTTP_ERROR_FALLBACK` and a numeric digest;
+the ErrorLog latch/cooldown machine; and the standing invariants — frozen `ERROR_CODES`,
+env-presence **booleans** surviving redaction, readable class names) · **live smoke 17/17** against
+a real `next start` (boot line + both probes, envelope shape, `requestId` == `x-request-id`,
+`VALIDATION_FAILED`, `JIRA_AUTH` + `details.stage`, no `debug` for anonymous) · **22-request route
+audit: exactly ONE `route.*` line per request and no failing request logging `route.ok`** (statuses
+20×401, 2×400) · **0 `render.error`** across six page views, so no framework signal is recorded ·
+Neon left at **0 `ErrorLog` rows**, scratch harness removed from the repo.
+
+> One honest note on this pass: five checks first reported red and were **harness bugs, not product
+> failures** — escaped quotes inside a shell heredoc broke `jq` and two `grep` patterns, and one
+> assertion expected a masked-`actor` count of exactly 1 in a log that had accumulated two logins.
+> Re-run correctly, all five pass. Recorded because a verification section that only ever shows
+> green is the kind of thing this feature exists to distrust.
 
 > ⚠️ **Correction (2026-09-09) — this spec contradicted itself, and the verification paragraphs
 > were the wrong half.** The three passes below each claim **"0 Node-API warnings"**, while
@@ -282,6 +305,67 @@ resumes by itself. Either way it falls back to `console.error` and never recurse
    strings, `details.dsn`, nested `email`, Jira's `emailAddress`, and regressions incl. env-presence
    **booleans** still passing through unredacted) and **4/4 live**: a real rejected login emits
    `actor":"n***@tekion.com"` with the raw address absent from the whole log.
+13. **The inner `try/catch` sweep — one blocking finding turned out to be 34 files** (2026-09-10,
+   `orbit-central[bot]`, blocking, on `filters/[filterId]/route.js`). The reviewer flagged one file;
+   the identical `catch (error) { return handleRouteError(error); }` block sat inside `withRoute` in
+   **34 route files / 54 handlers** — nearly every mutating route in the app. Swept all of them with
+   Naveen's go-ahead, since `withRoute` already does precisely what those blocks did.
+
+   **The stated mechanism was wrong, the finding was right.** The review said a 5xx "is never logged
+   at `error` level and is missed in production triage". It *was* logged: the inner
+   `handleRouteError` call logs `route.error`/`route.rejected` itself. The real defect is a
+   **contradictory duplicate** — because the inner catch returns a `Response`, it reaches
+   `withRoute`'s *success* path, which then logs `route.ok` with the failing status. Measured
+   directly on a dev server, one failing request produced both lines under the same `requestId`:
+
+   ```
+   WARN  route.rejected  route=teams.sprints.filters  status=401  code=UNAUTHENTICATED
+   INFO  route.ok        route=teams.sprints.filters  status=401  ms=3
+   ```
+
+   Any metric or alert keyed on `route.ok` therefore counted a 500 as a success. The second, latent
+   defect the review did not mention: the inner catch bypassed `isFrameworkSignal`, so a
+   `redirect()`/`notFound()` thrown inside a handler would have been converted into a 500 response
+   plus an `ErrorLog` row instead of propagating.
+
+   **Verified**: lint clean · env-free cold build exit 0, **50 ƒ Dynamic**, 0 warnings · a 12-request
+   live audit asserting that **no failing request logs `route.ok` and every request emits exactly one
+   `route.*` line** · boot hooks and the PII/redaction guarantees re-checked unchanged. Two stale
+   `handleRouteError` imports the sweep's matcher missed were removed by hand; the only remaining
+   references in `src/app/api/**` are prose in doc comments.
+
+14. **`onRequestError` framework-signal guard — the finding did NOT reproduce; kept as
+   defence-in-depth** (2026-09-10, `orbit-central[bot]`, blocking, on `instrumentation-node.js`).
+   The claim: Next calls `onRequestError` for *all* server-component errors including `redirect()`
+   and `notFound()`, so every signed-out page view writes a spurious `INTERNAL`/500 `ErrorLog` row.
+   The reasoning is sound and the guard was genuinely absent (also absent in the original
+   `instrumentation.js` at `a79db75` — the Edge/Node split only relocated the code).
+
+   **Measured before believing it.** With the guard deliberately disabled, three probe pages were
+   added — one calling `redirect()`, one `notFound()`, one throwing a real `Error` — and exercised
+   alongside the five real signed-out pages. Result on **Next 16.2.9**: the genuine throw logged
+   `render.error` (digest `3934130307`) and wrote exactly **one** `ErrorLog` row; `redirect()` and
+   `notFound()` produced **zero** `render.error` lines and **zero** rows across six requests. Next
+   resolves both in its render pipeline (`isRedirectError` / `isHTTPAccessFallbackError` in
+   `app-render.js`) and does not report them to the hook. So there was no spurious-row problem to
+   fix.
+
+   The guard was kept anyway — it costs one comparison, documents the contract, and Next's current
+   filtering is an implementation detail that could change — but it is **precautionary, not a
+   correction of observed behaviour**, and this note exists so nobody later "confirms" a bug that was
+   never there. While adding it, `isFrameworkSignal` moved from a private function in
+   `route-helpers.js` to `lib/errors.js` and is now imported by both callers, so the route side and
+   the render side cannot drift apart (12/12 fixtures, incl. `NEXT_HTTP_ERROR_FALLBACK` and a
+   numeric digest).
+
+15. **`/api/diagnostics` leaked raw `error.message` in four places** (2026-09-10,
+   `orbit-central[bot]`, blocking). Valid and straightforward: `checkDatabase`, the migration-ledger
+   read, the cron-user probe and the `ErrorLog` read each returned `pg`/Prisma free text verbatim.
+   Admin-only is mitigation, not the contract — the route's own header promises "names + booleans,
+   NEVER values". All four now wrap in `scrubSecrets()` (note 12), which is exactly the reuse the
+   reviewer suggested. The `email` field on the cron-user probe is deliberately left unmasked: it is
+   an admin-only response whose entire purpose is confirming *which* account `CRON_SYNC_USER_EMAIL`
+   resolves to, and it is never logged.
 
 ## Verification (2026-09-04)
 

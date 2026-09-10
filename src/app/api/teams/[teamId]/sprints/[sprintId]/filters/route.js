@@ -8,7 +8,7 @@
  */
 import { prisma } from "@/lib/db";
 import { requireTeamRole, NotFoundError, TEAM_ALL_ROLES, TEAM_MANAGER_ROLES } from "@/lib/rbac";
-import { withRoute, parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody } from "@/lib/api/route-helpers";
 import { filterCreateSchema } from "@/lib/schemas/filter";
 import { insertFilterAtPriority } from "@/lib/filters/priority-insert";
 import { WorkflowType } from "@/generated/prisma/client";
@@ -23,19 +23,15 @@ async function requireSprint(sprintId) {
 }
 
 export const GET = withRoute("teams.sprints.filters", async (_request, { params }) => {
-  try {
-    const { teamId, sprintId } = await params;
-    await requireTeamRole(teamId, TEAM_ALL_ROLES);
-    await requireSprint(sprintId);
-    const filters = await prisma.filter.findMany({
-      where: { teamId, sprintId },
-      orderBy: { sortOrder: "asc" },
-      include: { issues: true },
-    });
-    return Response.json(filters);
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  const { teamId, sprintId } = await params;
+  await requireTeamRole(teamId, TEAM_ALL_ROLES);
+  await requireSprint(sprintId);
+  const filters = await prisma.filter.findMany({
+    where: { teamId, sprintId },
+    orderBy: { sortOrder: "asc" },
+    include: { issues: true },
+  });
+  return Response.json(filters);
 });
 
 /** Resolve `{ fromTemplateId }` + overrides into concrete filter fields (template must be the team's). */
@@ -59,25 +55,21 @@ async function resolveFilterFields(data, teamId) {
 }
 
 export const POST = withRoute("teams.sprints.filters", async (request, { params }) => {
-  try {
-    const { teamId, sprintId } = await params;
-    await requireTeamRole(teamId, TEAM_MANAGER_ROLES);
-    await requireSprint(sprintId);
-    const data = await parseJsonBody(request, filterCreateSchema);
-    const fields = await resolveFilterFields(data, teamId);
-    const workflowType = fields.workflowType ?? WorkflowType.FEATURE;
+  const { teamId, sprintId } = await params;
+  await requireTeamRole(teamId, TEAM_MANAGER_ROLES);
+  await requireSprint(sprintId);
+  const data = await parseJsonBody(request, filterCreateSchema);
+  const fields = await resolveFilterFields(data, teamId);
+  const workflowType = fields.workflowType ?? WorkflowType.FEATURE;
 
-    // Priority insertion (decision 7, ports the prototype's insertFilterInOrder; extracted into
-    // insertFilterAtPriority so this route and the sprint-start route share one implementation).
-    const filter = await prisma.$transaction((tx) =>
-      insertFilterAtPriority(
-        tx,
-        { ...fields, workflowType, teamId, sprintId },
-        { include: { issues: true } },
-      ),
-    );
-    return Response.json(filter);
-  } catch (error) {
-    return handleRouteError(error);
-  }
+  // Priority insertion (decision 7, ports the prototype's insertFilterInOrder; extracted into
+  // insertFilterAtPriority so this route and the sprint-start route share one implementation).
+  const filter = await prisma.$transaction((tx) =>
+    insertFilterAtPriority(
+      tx,
+      { ...fields, workflowType, teamId, sprintId },
+      { include: { issues: true } },
+    ),
+  );
+  return Response.json(filter);
 });

@@ -7,29 +7,25 @@
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { ForbiddenError, NotFoundError } from "@/lib/rbac";
-import { withRoute, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute } from "@/lib/api/route-helpers";
 
 export const dynamic = "force-dynamic";
 
 export const DELETE = withRoute("shares", async (_request, { params }) => {
-  try {
-    const { shareId } = await params;
-    const user = await requireUser();
+  const { shareId } = await params;
+  const user = await requireUser();
 
-    const share = await prisma.sharedView.findUnique({
-      where: { id: shareId },
-      select: { id: true, createdById: true },
-    });
-    if (!share) {
-      throw new NotFoundError("Share not found");
-    }
-    if (share.createdById !== user.id && !user.isAdmin) {
-      throw new ForbiddenError("Only the creator or an admin can revoke a share");
-    }
-
-    await prisma.sharedView.delete({ where: { id: share.id } });
-    return Response.json({ ok: true });
-  } catch (error) {
-    return handleRouteError(error);
+  const share = await prisma.sharedView.findUnique({
+    where: { id: shareId },
+    select: { id: true, createdById: true },
+  });
+  if (!share) {
+    throw new NotFoundError("Share not found");
   }
+  if (share.createdById !== user.id && !user.isAdmin) {
+    throw new ForbiddenError("Only the creator or an admin can revoke a share");
+  }
+
+  await prisma.sharedView.delete({ where: { id: share.id } });
+  return Response.json({ ok: true });
 });
