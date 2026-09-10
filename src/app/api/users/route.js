@@ -5,19 +5,15 @@
  */
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/rbac";
-import { handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute } from "@/lib/api/route-helpers";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  try {
-    await requireAdmin();
-    const users = await prisma.user.findMany({
-      select: { id: true, email: true, displayName: true, avatarUrl: true, isAdmin: true },
-      orderBy: { displayName: "asc" },
-    });
-    return Response.json(users);
-  } catch (error) {
-    return handleRouteError(error);
-  }
-}
+export const GET = withRoute("users", async () => {
+  await requireAdmin();
+  const users = await prisma.user.findMany({
+    select: { id: true, email: true, displayName: true, avatarUrl: true, isAdmin: true },
+    orderBy: { displayName: "asc" },
+  });
+  return Response.json(users);
+});

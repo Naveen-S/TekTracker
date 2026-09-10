@@ -10,43 +10,39 @@
  */
 import { prisma } from "@/lib/db";
 import { requireAdmin, NotFoundError } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, ValidationError } from "@/lib/api/route-helpers";
 import { sprintCapacityDuplicateSchema } from "@/lib/schemas/sprint-capacity";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request, { params }) {
-  try {
-    await requireAdmin();
-    const { sprintId } = await params; // destination
-    const { sourceSprintId } = await parseJsonBody(request, sprintCapacityDuplicateSchema);
+export const POST = withRoute("sprints.capacity.duplicate", async (request, { params }) => {
+  await requireAdmin();
+  const { sprintId } = await params; // destination
+  const { sourceSprintId } = await parseJsonBody(request, sprintCapacityDuplicateSchema);
 
-    if (sourceSprintId === sprintId) {
-      throw new ValidationError("sourceSprintId must differ from the target sprint");
-    }
-
-    const [target, source] = await Promise.all([
-      prisma.sprint.findUnique({ where: { id: sprintId }, select: { id: true } }),
-      prisma.sprint.findUnique({ where: { id: sourceSprintId }, select: { id: true } }),
-    ]);
-    if (!target) throw new NotFoundError("Target sprint not found");
-    if (!source) throw new NotFoundError("Source sprint not found");
-
-    const sourceRows = await prisma.sprintCapacity.findMany({ where: { sprintId: sourceSprintId } });
-
-    await prisma.$transaction(
-      sourceRows.map((row) =>
-        prisma.sprintCapacity.upsert({
-          where: { sprintId_teamId: { sprintId, teamId: row.teamId } },
-          update: { committedPoints: row.committedPoints },
-          create: { sprintId, teamId: row.teamId, committedPoints: row.committedPoints },
-        }),
-      ),
-    );
-
-    const updated = await prisma.sprintCapacity.findMany({ where: { sprintId } });
-    return Response.json(updated);
-  } catch (error) {
-    return handleRouteError(error);
+  if (sourceSprintId === sprintId) {
+    throw new ValidationError("sourceSprintId must differ from the target sprint");
   }
-}
+
+  const [target, source] = await Promise.all([
+    prisma.sprint.findUnique({ where: { id: sprintId }, select: { id: true } }),
+    prisma.sprint.findUnique({ where: { id: sourceSprintId }, select: { id: true } }),
+  ]);
+  if (!target) throw new NotFoundError("Target sprint not found");
+  if (!source) throw new NotFoundError("Source sprint not found");
+
+  const sourceRows = await prisma.sprintCapacity.findMany({ where: { sprintId: sourceSprintId } });
+
+  await prisma.$transaction(
+    sourceRows.map((row) =>
+      prisma.sprintCapacity.upsert({
+        where: { sprintId_teamId: { sprintId, teamId: row.teamId } },
+        update: { committedPoints: row.committedPoints },
+        create: { sprintId, teamId: row.teamId, committedPoints: row.committedPoints },
+      }),
+    ),
+  );
+
+  const updated = await prisma.sprintCapacity.findMany({ where: { sprintId } });
+  return Response.json(updated);
+});

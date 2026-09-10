@@ -6,7 +6,9 @@
  * Styling follows the legacy .filter-panel system (src/styles.css :626-842).
  */
 import { useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, GripVertical, Plus, Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, GripVertical, Pencil, Plus, Search, X } from "lucide-react";
+import { formatPoints } from "@/lib/metrics.mjs";
+import { buildJiraSearchUrl } from "@/lib/jira/url";
 import { cn } from "@/lib/utils";
 
 const iconButton =
@@ -19,13 +21,25 @@ export function FilterPanel({
   isCollapsed,
   onToggleCollapse,
   onAddFilter,
+  onEditFilter,
   onRemoveFilter,
   onReorderFilters,
   searchQuery,
   onSearchChange,
+  jiraBaseUrl,
+  showToast,
 }) {
   const dragFrom = useRef(null);
   const [dragOver, setDragOver] = useState(null);
+
+  const copyToClipboard = async (url) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast("Jira link copied to clipboard");
+    } catch {
+      showToast("Couldn't copy — clipboard unavailable");
+    }
+  };
 
   const statsFor = (filter) => {
     const rows = metricsIssues.filter((issue) => issue.filterId === filter.id);
@@ -117,6 +131,11 @@ export function FilterPanel({
           visibleFilters.map((filter, index) => {
             const { totalPts, pct } = statsFor(filter);
             const accent = filter.accentColor ?? "#00a892";
+            const jiraUrl = buildJiraSearchUrl({
+              jiraBaseUrl,
+              jql: filter.jql,
+              jiraFilterId: filter.jiraFilterId,
+            });
             return (
               <article
                 key={filter.id}
@@ -165,6 +184,34 @@ export function FilterPanel({
                   <strong className="flex-1 truncate font-display text-[13px] font-bold">
                     {filter.name}
                   </strong>
+                  {jiraUrl && (
+                    <button
+                      type="button"
+                      className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        copyToClipboard(jiraUrl);
+                      }}
+                      aria-label={`Copy Jira link for ${filter.name}`}
+                      title="Copy Jira link"
+                    >
+                      <Copy className="size-3.5" />
+                    </button>
+                  )}
+                  {onEditFilter && (
+                    <button
+                      type="button"
+                      className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onEditFilter(filter);
+                      }}
+                      aria-label={`Edit ${filter.name}`}
+                      title="Edit filter"
+                    >
+                      <Pencil className="size-3.5" />
+                    </button>
+                  )}
                   {onRemoveFilter && (
                     <button
                       type="button"
@@ -193,7 +240,7 @@ export function FilterPanel({
                     {filter.issues.length} issues
                   </span>
                   <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold text-secondary-foreground">
-                    {totalPts} pts
+                    {formatPoints(totalPts)} pts
                   </span>
                   <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold text-secondary-foreground">
                     {pct}%

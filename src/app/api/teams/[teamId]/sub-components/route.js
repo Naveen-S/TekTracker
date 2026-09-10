@@ -9,69 +9,65 @@
  */
 import { prisma } from "@/lib/db";
 import { requireTeamRole, NotFoundError } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError, ConflictError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, ConflictError } from "@/lib/api/route-helpers";
 import { subComponentClaimSchema } from "@/lib/schemas/jira-component";
 import { Role } from "@/generated/prisma/client";
 
 export const dynamic = "force-dynamic";
 
-export async function PATCH(request, { params }) {
-  try {
-    const { teamId } = await params;
-    await requireTeamRole(teamId, [Role.ADMIN]);
-    const { subComponentIds } = await parseJsonBody(request, subComponentClaimSchema);
+export const PATCH = withRoute("teams.sub-components", async (request, { params }) => {
+  const { teamId } = await params;
+  await requireTeamRole(teamId, [Role.ADMIN]);
+  const { subComponentIds } = await parseJsonBody(request, subComponentClaimSchema);
 
-    const requested = await prisma.jiraSubComponent.findMany({
-      where: { id: { in: subComponentIds } },
-      include: { component: true },
-    });
-    const foundIds = new Set(requested.map((s) => s.id));
-    const missing = subComponentIds.filter((id) => !foundIds.has(id));
-    if (missing.length > 0) {
-      throw new NotFoundError(`Sub-component(s) not found: ${missing.join(", ")}`);
-    }
-
-    const conflicts = requested.filter((s) => s.teamId && s.teamId !== teamId);
-    if (conflicts.length > 0) {
-      throw new ConflictError(
-        "Some sub-components are already claimed by a different team",
-        conflicts.map((s) => ({
-          id: s.id,
-          name: s.name,
-          claimedByTeamId: s.teamId,
-        })),
-      );
-    }
-
-    const projectKeys = [...new Set(requested.map((s) => s.component.projectKey))];
-
-    const team = await prisma.$transaction(async (tx) => {
-      await tx.jiraSubComponent.updateMany({
-        where: { teamId, id: { notIn: subComponentIds } },
-        data: { teamId: null },
-      });
-      if (subComponentIds.length > 0) {
-        await tx.jiraSubComponent.updateMany({
-          where: { id: { in: subComponentIds } },
-          data: { teamId },
-        });
-      }
-      const current = await tx.team.findUniqueOrThrow({
-        where: { id: teamId },
-        select: { jiraProjectKeys: true },
-      });
-      const mergedProjectKeys = [...new Set([...current.jiraProjectKeys, ...projectKeys])];
-      return tx.team.update({
-        where: { id: teamId },
-        data: { jiraProjectKeys: mergedProjectKeys },
-        include: {
-          subComponents: { include: { component: true }, orderBy: { name: "asc" } },
-        },
-      });
-    });
-
-    return Response.json(team);
-  } catch (error) {
-    return handleRouteError(error);
+  const requested = await prisma.jiraSubComponent.findMany({
+    where: { id: { in: subComponentIds } },
+    include: { component: true },
+  });
+  const foundIds = new Set(requested.map((s) => s.id));
+  const missing = subComponentIds.filter((id) => !foundIds.has(id));
+  if (missing.length > 0) {
+    throw new NotFoundError(`Sub-component(s) not found: ${missing.join(", ")}`);
   }
-}
+
+  const conflicts = requested.filter((s) => s.teamId && s.teamId !== teamId);
+  if (conflicts.length > 0) {
+    throw new ConflictError(
+      "Some sub-components are already claimed by a different team",
+      conflicts.map((s) => ({
+        id: s.id,
+        name: s.name,
+        claimedByTeamId: s.teamId,
+      })),
+    );
+  }
+
+  const projectKeys = [...new Set(requested.map((s) => s.component.projectKey))];
+
+  const team = await prisma.$transaction(async (tx) => {
+    await tx.jiraSubComponent.updateMany({
+      where: { teamId, id: { notIn: subComponentIds } },
+      data: { teamId: null },
+    });
+    if (subComponentIds.length > 0) {
+      await tx.jiraSubComponent.updateMany({
+        where: { id: { in: subComponentIds } },
+        data: { teamId },
+      });
+    }
+    const current = await tx.team.findUniqueOrThrow({
+      where: { id: teamId },
+      select: { jiraProjectKeys: true },
+    });
+    const mergedProjectKeys = [...new Set([...current.jiraProjectKeys, ...projectKeys])];
+    return tx.team.update({
+      where: { id: teamId },
+      data: { jiraProjectKeys: mergedProjectKeys },
+      include: {
+        subComponents: { include: { component: true }, orderBy: { name: "asc" } },
+      },
+    });
+  });
+
+  return Response.json(team);
+});

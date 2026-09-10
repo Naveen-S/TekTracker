@@ -585,3 +585,45 @@ model BugReportSnapshot {
   @@unique([reportId, capturedOn, rowKey, scopeKey, bandKey])
   @@index([reportId, capturedOn])
 }
+
+// ─────────────────────────────────────────────────────────────
+// Observability (observability-and-errors.md)
+// ─────────────────────────────────────────────────────────────
+
+/// A persisted server-side failure — the admin-readable tail of what the logger writes to stdout.
+/// Exists because production runs on internal Tekion infra where reaching the container's logs is
+/// a ticket, not a command: /admin renders the last rows so "what broke at 4pm?" is answerable
+/// from the app itself.
+///
+/// Deliberate shape:
+/// - ONLY status >= 500 is persisted (route-helpers). Validation/auth/404 noise stays in the logs,
+///   so this table's volume is incidents, not traffic.
+/// - NO foreign keys on userId/teamId — this must be able to record an error ABOUT a deleted or
+///   never-existing entity, and a cascade must never delete incident history (the same FK-less
+///   read-time-join reasoning as Issue <-> IssueProgress and BugReportIssue.subComponent).
+/// - `details` is the same redacted payload the API returned; `stack` is admin-only in the UI.
+/// - Pruned to 14 days by the daily cron. The writer degrades to console when this table is
+///   missing (it exists only after `yarn db:deploy` runs), so an unapplied migration can never
+///   turn one failure into two. A missing table latches the writer off until the next deploy; any
+///   OTHER write failure (connection error, pool timeout) only pauses it briefly, so a transient
+///   blip cannot silently end error recording for the process lifetime.
+model ErrorLog {
+  id        String   @id @default(cuid())
+  requestId String                                    // correlates with the x-request-id header + every log line
+  code      String                                    // stable ERROR_CODES value (lib/errors.js)
+  status    Int
+  source    String                                    // "route" | "render" | "cron"
+  route     String?                                   // logical route name, e.g. teams.sprints.sync
+  path      String?
+  method    String?
+  userId    String?                                   // no FK, see note above
+  teamId    String?                                   // no FK, see note above
+  message   String
+  details   Json?
+  stack     String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([code])
+  @@index([requestId])
+}

@@ -6,7 +6,6 @@
  * (decision 6 — staleness per team instead); the only client leaf is the top bar.
  */
 import { redirect } from "next/navigation";
-import { Layers } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { getRollupData } from "@/lib/dashboard-data";
 import {
@@ -24,10 +23,12 @@ import {
 import { MetricGrid } from "@/components/dashboard/metric-grid";
 import { TrendPanel } from "@/components/dashboard/trend-panel";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { ProgramChip } from "@/components/ui/program-chip";
 import { RollupTopBar } from "@/components/rollup/rollup-top-bar";
 import { TeamSummaryTable } from "@/components/rollup/team-summary-table";
 import { RollupRiskSection } from "@/components/rollup/rollup-risk-section";
 import { RollupDigestButton } from "@/components/rollup/rollup-digest-button";
+import { RollupExport } from "@/components/rollup/rollup-export";
 import { RollupStoryPoints } from "@/components/rollup/rollup-story-points";
 import { compositionBreakdown } from "@/components/dashboard/story-points-highlight";
 import { AppShell } from "@/components/ui/app-shell";
@@ -53,11 +54,14 @@ export default async function RollupPage({ searchParams }) {
     selectedSprint,
     perTeam,
     combinedSnapshots,
+    teamSnapshots,
     combinedCapacity,
     combined,
   } = data;
   // Request-time "as of" for the server-rendered staleness labels — deterministic, no client clock.
   const asOf = new Date();
+  // One name for the current scope — the hero title and the export report share it.
+  const scopeLabel = selectedProgram ? selectedProgram.name : "Multi-team roll-up";
   // Combined burndown over the per-day summed snapshots (trend-burndown.md decisions 6–7).
   const trend = selectedSprint ? buildTrendSeries(combinedSnapshots, selectedSprint, asOf) : null;
   const velocityOverride = trend ? snapshotVelocity(trend.points, selectedSprint, asOf) : null;
@@ -113,15 +117,13 @@ export default async function RollupPage({ searchParams }) {
             <HeroShell className="flex flex-wrap items-center justify-between gap-4 px-5 py-6 md:px-8 md:py-7">
               <div>
                 {selectedProgram && (
-                  <span className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-on-ink-accent ring-1 ring-white/15">
-                    <Layers className="size-3" aria-hidden="true" /> Program
-                  </span>
+                  <ProgramChip name={selectedProgram.name} className="mb-2" />
                 )}
                 <HeroEyebrow>
                   {selectedSprint.name} · {formatSprintWindow(selectedSprint)}
                 </HeroEyebrow>
                 <HeroTitle>
-                  {selectedProgram ? selectedProgram.name : "Multi-team roll-up"} — {perTeam.length}{" "}
+                  {scopeLabel} — {perTeam.length}{" "}
                   {perTeam.length === 1 ? "team" : "teams"}
                 </HeroTitle>
                 <HeroCopy className="mt-2">
@@ -139,6 +141,14 @@ export default async function RollupPage({ searchParams }) {
                     jiraBaseUrl={data.jiraBaseUrl}
                   />
                 )}
+                <RollupExport
+                  perTeam={perTeam}
+                  sprint={selectedSprint}
+                  scopeLabel={scopeLabel}
+                  teamSnapshots={teamSnapshots}
+                  jiraBaseUrl={data.jiraBaseUrl}
+                  asOf={asOf}
+                />
               </div>
             </HeroShell>
 

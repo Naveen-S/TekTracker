@@ -16,7 +16,7 @@
  */
 import { prisma } from "@/lib/db";
 import { requireTeamRole, NotFoundError, TEAM_WRITER_ROLES } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError, ValidationError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody, ValidationError } from "@/lib/api/route-helpers";
 import { progressWriteSchema } from "@/lib/schemas/progress";
 import { stageCountFor, owningWorkflowType } from "@/lib/workflows.mjs";
 
@@ -34,64 +34,60 @@ function applyStageWrite(stageCompletion, index, completed) {
   return next;
 }
 
-export async function PUT(request, { params }) {
-  try {
-    const { teamId, sprintId, jiraKey } = await params;
-    const { user } = await requireTeamRole(teamId, TEAM_WRITER_ROLES);
-    const data = await parseJsonBody(request, progressWriteSchema);
+export const PUT = withRoute("teams.sprints.progress", async (request, { params }) => {
+  const { teamId, sprintId, jiraKey } = await params;
+  const { user } = await requireTeamRole(teamId, TEAM_WRITER_ROLES);
+  const data = await parseJsonBody(request, progressWriteSchema);
 
-    const progress = await prisma.$transaction(async (tx) => {
-      const where = { teamId_sprintId_jiraKey: { teamId, sprintId, jiraKey } };
-      const existing = await tx.issueProgress.findUnique({ where });
+  const progress = await prisma.$transaction(async (tx) => {
+    const where = { teamId_sprintId_jiraKey: { teamId, sprintId, jiraKey } };
+    const existing = await tx.issueProgress.findUnique({ where });
 
-      let workflowType = existing?.workflowType;
-      let stageCompletion = existing ? [...existing.stageCompletion] : null;
-      if (!existing) {
-        const cached = await tx.issue.findMany({
-          where: { jiraKey, filter: { teamId, sprintId } },
-          select: { filter: { select: { workflowType: true } } },
-        });
-        if (cached.length === 0) {
-          throw new NotFoundError(
-            `No issue ${jiraKey} is cached for this team and sprint — sync or import it first`,
-          );
-        }
-        workflowType = owningWorkflowType(cached.map((issue) => issue.filter.workflowType));
-        stageCompletion = new Array(stageCountFor(workflowType)).fill(false);
-      }
-
-      if (data.stage) {
-        if (data.stage.index >= stageCompletion.length) {
-          throw new ValidationError(
-            `stage.index must be below ${stageCompletion.length} for ${workflowType}`,
-          );
-        }
-        stageCompletion = applyStageWrite(stageCompletion, data.stage.index, data.stage.completed);
-      }
-
-      const blocked = data.blocked ?? existing?.blocked ?? false;
-      const blockedReason = blocked
-        ? data.blockedReason !== undefined
-          ? data.blockedReason
-          : (existing?.blockedReason ?? null)
-        : null;
-
-      const riskComment =
-        data.riskComment !== undefined
-          ? data.riskComment || null // empty/whitespace ("" after zod .trim()) clears it
-          : (existing?.riskComment ?? null);
-
-      const fields = { stageCompletion, blocked, blockedReason, riskComment, updatedById: user.id };
-      if (existing) {
-        return tx.issueProgress.update({ where, data: fields });
-      }
-      return tx.issueProgress.create({
-        data: { teamId, sprintId, jiraKey, workflowType, seededFromStatus: null, ...fields },
+    let workflowType = existing?.workflowType;
+    let stageCompletion = existing ? [...existing.stageCompletion] : null;
+    if (!existing) {
+      const cached = await tx.issue.findMany({
+        where: { jiraKey, filter: { teamId, sprintId } },
+        select: { filter: { select: { workflowType: true } } },
       });
-    });
+      if (cached.length === 0) {
+        throw new NotFoundError(
+          `No issue ${jiraKey} is cached for this team and sprint — sync or import it first`,
+        );
+      }
+      workflowType = owningWorkflowType(cached.map((issue) => issue.filter.workflowType));
+      stageCompletion = new Array(stageCountFor(workflowType)).fill(false);
+    }
 
-    return Response.json(progress);
-  } catch (error) {
-    return handleRouteError(error);
-  }
-}
+    if (data.stage) {
+      if (data.stage.index >= stageCompletion.length) {
+        throw new ValidationError(
+          `stage.index must be below ${stageCompletion.length} for ${workflowType}`,
+        );
+      }
+      stageCompletion = applyStageWrite(stageCompletion, data.stage.index, data.stage.completed);
+    }
+
+    const blocked = data.blocked ?? existing?.blocked ?? false;
+    const blockedReason = blocked
+      ? data.blockedReason !== undefined
+        ? data.blockedReason
+        : (existing?.blockedReason ?? null)
+      : null;
+
+    const riskComment =
+      data.riskComment !== undefined
+        ? data.riskComment || null // empty/whitespace ("" after zod .trim()) clears it
+        : (existing?.riskComment ?? null);
+
+    const fields = { stageCompletion, blocked, blockedReason, riskComment, updatedById: user.id };
+    if (existing) {
+      return tx.issueProgress.update({ where, data: fields });
+    }
+    return tx.issueProgress.create({
+      data: { teamId, sprintId, jiraKey, workflowType, seededFromStatus: null, ...fields },
+    });
+  });
+
+  return Response.json(progress);
+});

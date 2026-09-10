@@ -6,7 +6,7 @@
  */
 import { prisma } from "@/lib/db";
 import { requireAdmin, NotFoundError } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody } from "@/lib/api/route-helpers";
 import { jiraSubComponentPatchSchema } from "@/lib/schemas/jira-component";
 
 export const dynamic = "force-dynamic";
@@ -19,30 +19,22 @@ async function requireSubComponent(subComponentId) {
   return subComponent;
 }
 
-export async function PATCH(request, { params }) {
-  try {
-    await requireAdmin();
-    const { subComponentId } = await params;
-    await requireSubComponent(subComponentId);
-    const data = await parseJsonBody(request, jiraSubComponentPatchSchema);
-    const subComponent = await prisma.jiraSubComponent.update({
-      where: { id: subComponentId },
-      data,
-    });
-    return Response.json(subComponent);
-  } catch (error) {
-    return handleRouteError(error);
-  }
-}
+export const PATCH = withRoute("jira-sub-components", async (request, { params }) => {
+  await requireAdmin();
+  const { subComponentId } = await params;
+  await requireSubComponent(subComponentId);
+  const data = await parseJsonBody(request, jiraSubComponentPatchSchema);
+  const subComponent = await prisma.jiraSubComponent.update({
+    where: { id: subComponentId },
+    data,
+  });
+  return Response.json(subComponent);
+});
 
-export async function DELETE(_request, { params }) {
-  try {
-    await requireAdmin();
-    const { subComponentId } = await params;
-    await requireSubComponent(subComponentId);
-    await prisma.jiraSubComponent.delete({ where: { id: subComponentId } });
-    return Response.json({ ok: true });
-  } catch (error) {
-    return handleRouteError(error);
-  }
-}
+export const DELETE = withRoute("jira-sub-components", async (_request, { params }) => {
+  await requireAdmin();
+  const { subComponentId } = await params;
+  await requireSubComponent(subComponentId);
+  await prisma.jiraSubComponent.delete({ where: { id: subComponentId } });
+  return Response.json({ ok: true });
+});

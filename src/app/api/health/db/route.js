@@ -8,10 +8,11 @@
  * build/prerender — so `yarn build` stays green without a reachable DATABASE_URL.
  */
 import { prisma } from "@/lib/db";
+import { withRoute } from "@/lib/api/route-helpers";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export const GET = withRoute("health.db", async () => {
   try {
     const [{ ok }] = await prisma.$queryRaw`SELECT 1 as ok`;
     const users = await prisma.user.count();
@@ -22,4 +23,4 @@ export async function GET() {
       { status: 503 },
     );
   }
-}
+});

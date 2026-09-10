@@ -485,6 +485,16 @@ export function snapshotValues(metrics) {
 const round1 = (value) => Math.round(value * 10) / 10;
 
 /**
+ * Format a story-point figure for display. Story points are SUMMED all over the app (per track,
+ * per team, per sprint, then rolled up again), and IEEE-754 addition leaks artifacts like
+ * `41.39000000000001`. This is the shared display boundary that kills that noise WITHOUT touching
+ * the metric core: round to at most 2 decimals and drop trailing zeros, so `41.39000000000001 → "41.39"`,
+ * `2 → "2"`, `0.5 → "0.5"`. Display-only — never feed the result back into a calculation.
+ * @param {number} value @returns {string}
+ */
+export const formatPoints = (value) => String(Math.round((Number(value) || 0) * 100) / 100);
+
+/**
  * Combine per-team `SprintSnapshot` rows into one per-day series for the roll-up burndown
  * (trend-burndown.md decisions 6–7). Days with partial team coverage are summed AS-IS and
  * tagged with `teamCount` — dropping incomplete days would blank the whole chart the moment one

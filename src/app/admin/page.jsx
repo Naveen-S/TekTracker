@@ -61,6 +61,20 @@ export default async function AdminPage() {
     prisma.sprintCapacity.findMany({ orderBy: { sprintId: "asc" } }),
   ]);
 
+  // Recent server-side failures (observability-and-errors.md). Read here rather than through a new
+  // API route: the page is already global-admin-gated, and router.refresh() re-reads it. Guarded
+  // because the ErrorLog table only exists once migration 13 has been deployed to this environment
+  // — and a missing table must not 500 the whole admin page.
+  let recentErrors = [];
+  try {
+    recentErrors = await prisma.errorLog.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+  } catch {
+    recentErrors = [];
+  }
+
   // Bug-report config (gm-bug-report.md (h)). The vocabularies come from the cached issues, so the
   // status/priority pickers offer what the data actually contains instead of free text.
   const bugData = await getBugReportData(undefined, new Date());
@@ -81,6 +95,7 @@ export default async function AdminPage() {
         bugConfig={bugData?.report ?? null}
         bugStatusVocabulary={bugData?.statusVocabulary ?? []}
         bugPriorityVocabulary={bugData?.priorityVocabulary ?? []}
+        recentErrors={recentErrors}
       />
     </AppShell>
   );

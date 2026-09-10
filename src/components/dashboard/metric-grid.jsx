@@ -2,7 +2,7 @@
 
 import { Activity, AlertTriangle, Gauge, Layers, Target } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { getWeeklyVelocity } from "@/lib/metrics.mjs";
+import { formatPoints, getWeeklyVelocity } from "@/lib/metrics.mjs";
 import { cn } from "@/lib/utils";
 
 /* Legacy metric-card tone system (src/styles.css :557-581): 3px top stripe + tinted icon tile. */
@@ -123,13 +123,13 @@ export function MetricGrid({ metrics, sprint, asOf, velocityOverride }) {
         label="Issues in scope"
         icon={Layers}
         value={metrics.totalIssues}
-        detail={`${metrics.points} total story points · all work`}
+        detail={`${formatPoints(metrics.points)} total story points · all work`}
       />
       <Metric
         label="Completion"
         icon={Target}
         value={`${metrics.deliveryAvgProgress}%`}
-        detail={`${Math.round(metrics.deliveryCompletedPoints)}/${metrics.deliveryPoints} delivery story points`}
+        detail={`${Math.round(metrics.deliveryCompletedPoints)}/${Math.round(metrics.deliveryPoints)} delivery story points`}
         tone="brand"
       />
       <Metric

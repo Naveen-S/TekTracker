@@ -17,7 +17,7 @@
  */
 import { requireUser } from "@/lib/auth";
 import { ForbiddenError, NotFoundError } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody } from "@/lib/api/route-helpers";
 import { digestContract, rollupDigestBodySchema } from "@/lib/schemas/ai";
 import { getRollupData } from "@/lib/dashboard-data";
 import { buildTrendSeries, getWeeklyVelocity, snapshotVelocity } from "@/lib/metrics.mjs";
@@ -27,63 +27,53 @@ import { AiNotConfiguredError, AiProviderError } from "@/lib/ai/errors";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request) {
-  try {
-    const user = await requireUser();
-    const { sprintId, programId } = await parseJsonBody(request, rollupDigestBodySchema);
+export const POST = withRoute("rollup.ai-digest", async (request) => {
+  const user = await requireUser();
+  const { sprintId, programId } = await parseJsonBody(request, rollupDigestBodySchema);
 
-    // programId re-scopes to a program's teams; getRollupData enforces hasProgramAccess (a
-    // non-leadership caller's programId is ignored → their own-teams digest, never a leak).
-    const data = await getRollupData(user, { sprintId, programId });
-    if (data.teams.length === 0) {
-      throw new ForbiddenError("You are not a member of any team");
-    }
-    if (!data.selectedSprint || data.selectedSprint.id !== sprintId) {
-      throw new NotFoundError("Sprint not found");
-    }
-    if (!data.combined || data.combined.totalIssues === 0) {
-      return Response.json(
-        { error: "Nothing to summarize yet — no team in your portfolio has synced issues" },
-        { status: 400 },
-      );
-    }
-
-    const asOf = new Date();
-    const { selectedSprint, perTeam, combined, combinedSnapshots } = data;
-    const series = buildTrendSeries(combinedSnapshots, selectedSprint, asOf);
-    // Same velocity the MetricGrid card shows on /rollup: snapshot-based when ≥ 2 snapshots,
-    // naive fallback over the additive combined inputs otherwise (metrics.mjs aggregateRollup).
-    const velocity =
-      snapshotVelocity(series.points, selectedSprint, asOf) ??
-      getWeeklyVelocity(selectedSprint, combined.velocityCompletedPoints, combined.velocityPoints);
-
-    const input = buildRollupDigestInput({
-      sprint: selectedSprint,
-      perTeam,
-      combined,
-      series,
-      velocity,
-      asOf,
-    });
-    const { system, prompt } = buildRollupDigestPrompt(input);
-    // Higher budget than the team digest's default (2048): the portfolio prompt asks the model to
-    // compare every team by name, which runs longer, and "thinking" models (e.g. gemini-3.5-flash)
-    // spend part of maxOutputTokens on invisible reasoning before the visible answer — verified
-    // live that 2048 truncates mid-JSON (finishReason: MAX_TOKENS) on a 2-team fixture; 4096 completes.
-    const digest = sanitizeDigest(
-      await generateJson({ system, prompt, schema: digestContract, maxOutputTokens: 4096 }),
-      input,
-    );
-
-    const { provider, model } = getAiConfig();
-    return Response.json({ digest, generatedAt: asOf.toISOString(), provider, model });
-  } catch (error) {
-    if (error instanceof AiNotConfiguredError) {
-      return Response.json({ error: error.message }, { status: 503 });
-    }
-    if (error instanceof AiProviderError) {
-      return Response.json({ error: error.message }, { status: 502 });
-    }
-    return handleRouteError(error);
+  // programId re-scopes to a program's teams; getRollupData enforces hasProgramAccess (a
+  // non-leadership caller's programId is ignored → their own-teams digest, never a leak).
+  const data = await getRollupData(user, { sprintId, programId });
+  if (data.teams.length === 0) {
+    throw new ForbiddenError("You are not a member of any team");
   }
-}
+  if (!data.selectedSprint || data.selectedSprint.id !== sprintId) {
+    throw new NotFoundError("Sprint not found");
+  }
+  if (!data.combined || data.combined.totalIssues === 0) {
+    return Response.json(
+      { error: "Nothing to summarize yet — no team in your portfolio has synced issues" },
+      { status: 400 },
+    );
+  }
+
+  const asOf = new Date();
+  const { selectedSprint, perTeam, combined, combinedSnapshots } = data;
+  const series = buildTrendSeries(combinedSnapshots, selectedSprint, asOf);
+  // Same velocity the MetricGrid card shows on /rollup: snapshot-based when ≥ 2 snapshots,
+  // naive fallback over the additive combined inputs otherwise (metrics.mjs aggregateRollup).
+  const velocity =
+    snapshotVelocity(series.points, selectedSprint, asOf) ??
+    getWeeklyVelocity(selectedSprint, combined.velocityCompletedPoints, combined.velocityPoints);
+
+  const input = buildRollupDigestInput({
+    sprint: selectedSprint,
+    perTeam,
+    combined,
+    series,
+    velocity,
+    asOf,
+  });
+  const { system, prompt } = buildRollupDigestPrompt(input);
+  // Higher budget than the team digest's default (2048): the portfolio prompt asks the model to
+  // compare every team by name, which runs longer, and "thinking" models (e.g. gemini-3.5-flash)
+  // spend part of maxOutputTokens on invisible reasoning before the visible answer — verified
+  // live that 2048 truncates mid-JSON (finishReason: MAX_TOKENS) on a 2-team fixture; 4096 completes.
+  const digest = sanitizeDigest(
+    await generateJson({ system, prompt, schema: digestContract, maxOutputTokens: 4096 }),
+    input,
+  );
+
+  const { provider, model } = getAiConfig();
+  return Response.json({ digest, generatedAt: asOf.toISOString(), provider, model });
+});

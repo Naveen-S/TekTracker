@@ -8,7 +8,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarRange, Layers, Target, Users, X } from "lucide-react";
+import { AlertTriangle, CalendarRange, Layers, Target, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,7 @@ import { apiFetch } from "@/lib/api-client";
 import { BugReportConfig } from "@/components/admin/bug-report-config";
 import { JiraComponentsConfig } from "@/components/admin/jira-components-config";
 import { ProgramsConfig } from "@/components/admin/programs-config";
+import { RecentErrors } from "@/components/admin/recent-errors";
 import { SprintCapacityConfig } from "@/components/admin/sprint-capacity-config";
 import { TeamConfigDialog } from "@/components/admin/team-config-dialog";
 import { SprintConfigDialog } from "@/components/dashboard/sprint-config-dialog";
@@ -109,12 +110,12 @@ function TeamCard({ team, run, busy, onEdit }) {
             {team.key}
           </span>
           {team.program ? (
-            <Badge tone="brand" className="gap-1">
+            <Badge tone="brand">
               <Layers className="size-3" aria-hidden="true" />
               {team.program.name}
             </Badge>
           ) : (
-            <Badge tone="neutral" className="font-normal text-muted-foreground">
+            <Badge tone="neutral" className="font-normal">
               No program
             </Badge>
           )}
@@ -252,6 +253,7 @@ export function AdminPanel({
   bugConfig = null,
   bugStatusVocabulary = [],
   bugPriorityVocabulary = [],
+  recentErrors = [],
 }) {
   const router = useRouter();
   // busy spans the API call AND the router.refresh() re-render, so forms stay disabled until
@@ -564,6 +566,16 @@ export function AdminPanel({
           run={run}
           busy={busy}
         />
+      </SectionCard>
+
+      <SectionCard
+        title="Recent errors"
+        subtitle="Server-side failures (HTTP 5xx) recorded over the last 14 days. The reference shown to a user in an error dialog is the requestId here."
+        icon={AlertTriangle}
+        tone="warn"
+        count={recentErrors.length}
+      >
+        <RecentErrors errors={recentErrors} />
       </SectionCard>
 
       <BugReportConfig

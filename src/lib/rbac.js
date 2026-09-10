@@ -13,23 +13,13 @@
  */
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { ForbiddenError, NotFoundError } from "@/lib/errors";
+import { setLogContext } from "@/lib/log";
 import { Role } from "@/generated/prisma/client";
 
-/** Thrown when the caller is authenticated but lacks the required role. Maps to HTTP 403. */
-export class ForbiddenError extends Error {
-  constructor(message = "You do not have permission to perform this action") {
-    super(message);
-    this.name = "ForbiddenError";
-  }
-}
-
-/** Thrown when a scoped resource does not exist (or belongs to another scope). Maps to HTTP 404. */
-export class NotFoundError extends Error {
-  constructor(message = "Not found") {
-    super(message);
-    this.name = "NotFoundError";
-  }
-}
+// Both are defined in lib/errors.js (one taxonomy); re-exported so every existing
+// `import { NotFoundError } from "@/lib/rbac"` and `instanceof` check keeps working.
+export { ForbiddenError, NotFoundError };
 
 /** Roles that manage a team's tracks (filter templates, filters, reorder). */
 export const TEAM_MANAGER_ROLES = [Role.ADMIN, Role.ED, Role.TPM, Role.EM, Role.LEAD];
@@ -89,6 +79,8 @@ export async function requireTeamRole(teamId, allowedRoles) {
   const membership = await prisma.teamMembership.findUnique({
     where: { userId_teamId: { userId: user.id, teamId } },
   });
+
+  setLogContext({ teamId, role: membership?.role ?? (user.isAdmin ? "ADMIN(global)" : null) });
 
   if (user.isAdmin) {
     return { user, membership };

@@ -2044,3 +2044,334 @@
   pending Naveen's SCOPED commit (must exclude the unrelated working-tree edits to `DEPLOY.md` +
   `context/features/office-deployment.md`, which belong to the office-deployment work, not this
   feature). Visual acceptance still Naveen's step. See context/features/program-rollup.md.
+
+- **2026-08-27 — Board polish: points display boundary, filter-card Jira quick-link, shared program
+  chip (`program-wise-roll-up`, level with `main` @ `08228a1`).** Three adjacent threads picked up
+  after the program-rollup merge. (1) **`formatPoints`** added to `src/lib/metrics.mjs` — a
+  display-only boundary (round to ≤2dp, drop trailing zeros) applied at every points readout
+  (`issue-row`, `metric-grid`, `filter-panel`, `needs-attention-panel`, `risk-callouts-panel`,
+  `rollup-risk-section`), with `Math.round` on the three whole-number readouts (`metric-grid`
+  Completion denominator, `team-summary-table`, `export-dialog`); **purely additive — a 10-line
+  insertion, no existing metric function or field touched**, and §12 explicitly annotated so it is
+  never mistaken for a metric change. (2) New **`src/lib/jira/url.js` `buildJiraSearchUrl`** (filter
+  id wins over JQL, mirroring `bug-lists.jsx`) behind a per-track **copy-Jira-link button** on the
+  board's filter cards, with `jiraBaseUrl`/`showToast` threaded from `dashboard.jsx`. (3) New shared
+  **`ui/program-chip.jsx`** replacing the two divergent inline program pills in `hero.jsx` and
+  `rollup/page.jsx` (the roll-up's uppercase "Program" variant is gone), plus admin polish —
+  `focus-visible` ring + `title` on delete-program, `role`/`aria-live` on the status message,
+  `bg-info-soft` icon tile, badge cleanup. **No schema change (stays 12 migrations), no new route
+  (stays 49 ƒ Dynamic).** Verified: `yarn lint` clean; `prisma validate` + `migrate status`
+  up-to-date; **cold DB/env-free build** run at a stricter bar than prior rounds — **both `.env` and
+  `.env.production` moved aside** and confirmed absent mid-build (the app reads no `STORYBOARD_*`
+  var, so that file was never load-bearing), exit 0; **pure fixtures 24/24**; **SSR smoke 21/21**
+  against `next start` + a minted iron-session cookie vs Neon (read-only — nothing to tear down):
+  both hero chips render and the chip is correctly absent on the unscoped roll-up, 4 copy buttons =
+  exactly CALM's 4 delivery filters (the 5th, `NEEDS_ATTENTION`, is partitioned out), and **zero**
+  float artifacts in any rendered page. Two as-built findings worth carrying: **(a)** a full scan of
+  live data (572 issues) found **0** artifacts at every aggregation level today — the source values
+  `0.13`/`0.38` are present but small sums still print clean, so this is warranted *hardening*, not a
+  fix for a visible defect (`41 + 2×0.13` → `"41.260000000000005"` proves the mechanism); **(b)**
+  **Next 16 returns HTTP 200 for `redirect()` under `next start`, not only under Turbopack dev** —
+  the carry-forward note under-scoped this, and it cost three false smoke failures before assertions
+  moved to content. **Done**, uncommitted — pending Naveen's commit. Visual acceptance still Naveen's
+  step. See context/features/board-polish-points-and-links.md.
+
+- **2026-08-27 — Roll-up export (leadership PDF/PNG for `/rollup`).** The last major surface with no
+  export path (`ed-rollup.md` had put it out of scope at step 8) gained one, as the third consumer of
+  the shared export kit. One dialog, two variants — **Executive** (portfolio KPIs, composition band,
+  per-scrum-team effort scorecard, burndown + delivery readouts) and **Full detail** (adds every
+  team's tracks and issue rows, Jira-linked) — with three choices made at *generation* time at
+  Naveen's request: the **effort metric** (delivered / planned / both, driving bar geometry as well
+  as numerals), whether to **emphasise risk** (*"for completed sprint there is no point in
+  highlighting the risk"* — defaults off once the sprint is `CLOSED` or past its release date, which
+  also swaps the At-risk KPI tile for "Teams complete" and re-sorts the scorecard by delivered points),
+  and **which teams**. New: `src/lib/export/page-packer.mjs` (the height-budgeted packer + `chunkRows`
+  lifted out of `lib/bug-report/pdf-layout.mjs` now that a second consumer exists — the same
+  extraction `export-visual-consistency.md` performed on the print kit, guarded by a byte-parity
+  fixture), `src/lib/rollup/pdf-layout.mjs`, `rollup-export.jsx`, `rollup-export-pages.jsx`, and
+  `WORK_TYPE_PRINT` in `print-theme.mjs`. **No schema change, no new route** (49 ƒ Dynamic / 12
+  migrations, both unchanged); §12 untouched. One additive data change: `getRollupData` also returns
+  raw `teamSnapshots`, so a team-trimmed report gets a truthful burndown rather than one that still
+  counts a deselected team. Three findings worth carrying: **(a)** the planned page structure was
+  wrong and only rendering proved it — scorecard + burndown together measured **838px against a 738px
+  body** and the scorecard silently clipped **three team rows**, so the scorecard now owns page 1 and
+  the burndown gets its own sheet; **(b)** aggregate points must use `Math.round`, not `formatPoints`
+  — the first render read `1027.19 / 1117.54` where every other surface in the app rounds (per-issue
+  points keep `formatPoints`); **(c)** a page-column `scrollHeight` overflow check is **not** a usable
+  metric (it rounds up — the shipped `/bugs` export shows the same phantom +3 — and drifted 3/6/12
+  between runs), whereas `sheet.scrollHeight > clientHeight` plus a clipping sweep is exact and was
+  proven non-vacuous by forcing a 382px overflow. Verified: lint · 12 migrations · cold env-free
+  build (49 ƒ Dynamic) · heavy libs absent from `/rollup`'s initial payload · packer parity
+  byte-identical · pure fixtures 65/65 · SSR smoke 19/19 · headless browser render 42/42 stable over
+  4 runs · real PDF capture 9/9 · 29 and 88 clickable Jira link annotations. **Done**, uncommitted —
+  pending Naveen's commit; real-browser visual acceptance is his step (headless collapses inter-word
+  spacing). See context/features/rollup-export.md.
+
+- **2026-08-28 — Roll-up export: Velocity report variant.** A third variant beside Executive and Full
+  detail, driven by a live leadership ask (Slack: *"I want details of 6 SP per dev per PDLC sprint …
+  where is that 6SP/Dev going and what we are achieving in that"*, framed as 12 SP/dev = 6 toward GM
+  deliveries + 6 into tech debt). So the report is **not** a single velocity number: it is story
+  points **per developer split across Roadmap / Tech Debt / External / Internal** per scrum team, plus
+  the portfolio rate — the existing composition breakdown divided by team size. Offered **only for a
+  completed sprint** via `isSprintComplete` (CLOSED, or phase `released`/`ended`), extracted from
+  `defaultRiskEmphasis` so the two can never drift; the toggle is disabled with an explanatory title
+  otherwise. Team sizes are per-team dialog inputs prefilled from the admin `Team.developerCount`,
+  never written back (absent ⇒ admin value, explicit blank ⇒ that team reports totals only). Drops
+  health, completion, teams-complete and risk; Sprint health becomes the literal "Completed" and story
+  points show delivered only. **No new RBAC gate** — a rate over admin config, with no named
+  individuals and no cross-org ranking, over teams already on `/rollup`; gating it would have excluded
+  TPM. New: `isSprintComplete`, `parseTeamSize`, `velocityRows`, `velocityTotals`,
+  `orderTeamsByVelocity`, `apportionRounded` in `lib/rollup/pdf-layout.mjs`; `VelocitySummaryPage` +
+  `VelocityScorecardPage` in `rollup-export-pages.jsx`. One additive data change: `developerCount`
+  selected on **both** roll-up team paths. **No schema change, no new route** (49 ƒ Dynamic / 12
+  migrations). Two correctness properties earned their own fixtures: the overall rate **divides sized
+  teams only on both sides** — with one team unsized the live figure is 29.2 SP/dev (904÷31), not 33.1
+  (1027÷31), a 13% overstatement of the number leadership quotes — and columns are **apportioned by
+  largest remainder** so they reconcile with their row total, after the first render printed
+  `310+413+133+172 = 1028` beside a TOTAL of `1027` and `39.4` beside `39.5`. Verified: pure fixtures
+  88/88 · existing fixtures 65/65 + packer parity byte-identical · SSR smoke 14/14 · velocity browser
+  32/32 · shipped-variant regression 23/23 · velocity PDF 5/5 · cold env-free build 49 ƒ Dynamic ·
+  **cross-check against `/leaderboard`: all 6 teams agree exactly**. **Done**, uncommitted — pending
+  Naveen's commit. See context/features/rollup-export.md.
+
+### 2026-08-28 — Editable sprint filters (tracks)
+
+**Done.** A board track can finally be **corrected** instead of deleted and recreated. A pencil on
+each Connected-JQL card opens the same dialog that creates a track, prefilled — name, source
+(Filter ID ↔ JQL), workflow type, and (new) a visible accent-colour swatch row. Almost entirely UI:
+`PATCH …/filters/[filterId]` shipped at step 4 (`domain-apis.md`) and had **no caller** until now.
+Three ratified calls (AskUserQuestion): the pencil lives on the **sidebar card** rather than the
+matrix track header; **all four fields** `filterPatchSchema` already accepted are editable; and the
+board **re-syncs only when the source or workflow type changed**, so a rename or recolour is a lone
+PATCH instead of a full Jira round-trip. Implemented as `filter-dialog.jsx` (the `git mv`'d
+`add-filter-dialog.jsx`, generalized to `FilterDialog`), pure `lib/filters/edit.mjs`
+(`buildFilterPayload` / `buildFilterPatch`), the panel pencil, and `editingFilter` +
+`handleEditFilter` on the house two-transition pattern. The now-reachable route gained the guard it
+never needed while unreachable: it refuses the generated `NEEDS_ATTENTION` track **in both
+directions** (editing it, and converting a real track into it), matched on the string literal per
+the `ensure-filter.js` hazard note. **No schema change, no new route** (49 ƒ Dynamic / 12
+migrations); `sortOrder` deliberately not re-derived on a workflow change; the stage re-shape still
+happens in sync (`reshapeStageCompletion`), the dialog only warns before a shrink. The plan's
+payload rule was **wrong and the fixtures caught it** — always nulling the unused source column
+would have wiped the sync-resolved `jql` off every JIRA_FILTER track on a plain rename, blanking the
+card's query line until the next sync; the two columns are asymmetric now. Verified: `yarn lint`
+clean · pure fixtures 23/23 (bodies re-parsed through the real create/patch zod schemas) · API smoke
+23/23 on dev + Neon with minted iron-session cookies (NA guards → 400, MEMBER *and* VIEWER → 403,
+cross-team id → 404, anonymous → 401, fixtures torn down to 0) · headless browser 28/28 · **one
+PATCH and no `POST …/sync` on the wire for a rename** · cold env-free build 49 ƒ Dynamic. Noted, not
+fixed: the success toast can be swallowed on a slow dev refresh — it is deferred behind the second
+`startMutation` while its own 3s dismiss timer runs from call time, a pre-existing trait of the
+shared pattern. **Done**, uncommitted — pending Naveen's commit. See
+context/features/editable-filters.md.
+
+- **2026-08-29 — Export type-weight and spacing pass (all three exports).** Naveen's review of the
+  velocity report: *"Font weight of GM, Where the effort went, Velocity by scrum team is very low.
+  They should be bolder and thicker. Padding is less between composition bar and it's legends."*
+  Diagnosed before changing anything — **not** the known WebKit variable-font weight-loss issue: the
+  fonts are static per-weight, Inter 900 loads, and the computed DOM weights were already 900/800, so
+  the thinness was real pre-capture. Sentence-case Inter at 11px simply loses against the
+  wide-tracked uppercase labels and 24px numerals beside it. Fixed in the **shared** `print-kit.jsx`
+  so all three exports improve together: `ReportPanel`'s title → **`font-black`** (+ `-0.01em`), the
+  report title 24px/`-0.035em` → **25px/`-0.015em`** (already weight 900, so size and tracking were
+  the only levers), and the composition-legend gap **6→12px** in `rollup-export-pages.jsx`. **A first
+  attempt also grew block heights (header 82→86px, h4→12px) and broke the `/bugs` summary sheet — two
+  panels started clipping.** Reverted to the original heights and kept only the weight change, so the
+  final pass has **zero layout delta**. `INLINE_SCORECARD_ROWS` **12→11**: the wider gap costs page 1
+  exactly one row, found by *measuring* capacity rather than assuming it — nothing would have caught
+  it, since no portfolio has 12 teams today. Also found, **pre-existing and not fixed**: the `/bugs`
+  executive summary clips one panel by 12px on `main` too (confirmed by reverting `print-kit.jsx` and
+  re-running). Verified: lint · fixtures 65/65 + 88/88 · packer parity byte-identical · 12 migrations
+  up to date · cold env-free build exit 0 / 49 ƒ Dynamic · health 200 · **E2E 13/13** incl.
+  computed-style checks and no-overflow across all three roll-up variants, program scope, the sprint
+  portrait export and the `/bugs` landscape export. **Done.** **Next:** Naveen's commit (selective —
+  the tree also holds his in-progress editable-filters work). See context/features/rollup-export.md.
+
+- **2026-09-02 — Editable sprint filters: completion ritual (re-verified from scratch).** Closing out
+  the 2026-08-28 entry above. The first pass's scratch harnesses were gone, so the whole suite was
+  **re-derived from the source rather than replayed** — a stronger check than a rerun, since a
+  harness that reproduces the same verdicts after being rewritten is not just replaying its own
+  assumptions. `yarn lint` clean · **pure fixtures 25/25** (`buildFilterPayload`/`buildFilterPatch`,
+  every body re-parsed through the real `filterCreateSchema`/`filterPatchSchema`) · **API smoke 29/29**
+  on dev + Neon with minted iron-session cookies · **headless browser 10/10** · `prisma validate`
+  valid + `prisma migrate status` **12 migrations, up to date** · cold `rm -rf .next` build with
+  `.env` **and** `.env.production` moved aside → exit 0, **no `Environments:` line at all**, **49 ƒ
+  Dynamic** · Neon left at **42 filters, 0 fixture rows, 0 renamed tracks**. The load-bearing claim
+  reproduced independently: a rename puts **exactly one `PATCH …/filters/[filterId]` and no `POST
+  …/sync`** on the wire (decision 3). Two checks the rewrite added over the first pass: **global
+  admin is not a carve-out** on the `NEEDS_ATTENTION` guard (the guard sits after RBAC and before
+  `parseJsonBody`, so an admin PATCH of that track is also a 400 — deliberate, since the track is
+  generated data), and **`sortOrder` survives a workflow change**, not merely a rename. Doc-sync also
+  corrected the §11 UI/UX build log, where the two new rows had been appended **out of chronological
+  order** (2026-08-29 before 2026-08-28); `Last reviewed` bumped to 2026-09-02. No code changed today
+  — spec + canonical doc + tracker only. **Done.** **Next:** Naveen's commit (the tree holds two
+  finished features: editable filters and the 2026-08-29 export type-weight pass) and his
+  real-browser visual acceptance. See context/features/editable-filters.md.
+
+### 2026-09-04 — Production observability & error contract
+
+- **Why.** Naveen, from production: *"In prod we don't have Neon. In login failed for some XYZ reason
+  which is hard to debug."* An audit found the app had **four `console.*` calls in the entire `src/`
+  tree** and every route answering failures with a bare `{ error: "message" }` — no code, no
+  correlation id, no context. Worse, `api/auth/login` funnelled **five structurally different
+  deployment failures** into two strings: a malformed `TOKEN_ENCRYPTION_KEY`, a short
+  `SESSION_PASSWORD`, an unreachable database, **migrations not deployed** (a live risk, since
+  `DEPLOY.md` §5 makes `yarn db:deploy` a separate Jenkins step), and blocked egress to
+  `tekion.atlassian.net` — all reported as `"Login failed"`. A sixth failure had no error at all:
+  `secure: true` cookies over plain HTTP make login answer **200** and then bounce the user back to
+  `/login` forever.
+- **Ratified (three AskUserQuestion calls).** Admin-gated `debug` (+ `DEBUG_ERRORS=1` escape hatch) ·
+  wrap **all 60 handlers** across the 41 route files · ship all four extras (render capture, admin
+  diagnostics, sync warnings, persisted `ErrorLog`). A fourth call — the **pre-auth exposure rule**
+  for login (name a missing env var, never its value or a stack) — was taken by Claude and stated in
+  the plan.
+- **Built.** `lib/errors.js` (one `AppError` taxonomy, re-exported from every old module so no
+  `instanceof` changed) · `lib/log.js` (AsyncLocalStorage request context, JSON lines, recursive
+  redaction, `cause`-chain serialization) · `withRoute` + an additive envelope
+  `{ error, code, requestId, details, debug? }` with `x-request-id` on **every** response · a Prisma
+  map grown from 2 codes to 11 plus TLS/connection/validation classification (`P2021` →
+  `DB_MIGRATION_MISSING` naming `yarn db:deploy`) · Jira timeouts + `classifyFetchFailure` +
+  Jira's own `errorMessages` and the offending JQL in `details` · per-track sync error annotation ·
+  **sync warnings** closing §14.14 · cron logging its own summary · `instrumentation.js`
+  (`register` boot line with env-presence booleans, `onRequestError`) · `error.jsx`/`global-error.jsx`
+  · `ErrorLog` + Admin → Recent errors · admin-only `GET /api/diagnostics`. Client: the login card
+  and alert dialog now show `CODE · requestId`, with **Copy diagnostics**.
+- **Invariants moved, declared:** **49 → 50 ƒ Dynamic** (`/api/diagnostics`) and **12 → 13
+  migrations** (`add_error_log`). §12 metric core untouched; `error` keeps its exact meaning.
+- **Verified.** `yarn lint` clean · **pure fixtures 107/107** · **login taxonomy 15/15** against a
+  real `next start` server, one broken setting per case (each of the five failures now answers with
+  its own code, every one carrying a requestId) · **API smoke 52/52** on Neon (admin sees `debug`,
+  MEMBER does not; `DEBUG_ERRORS=1` flips it; a bad-JQL sync returns Jira's own message + the JQL +
+  the track name; an emptied track returns `TRACK_EMPTIED` 2→0; a 500 writes an `ErrorLog` row and a
+  **404 writes none**; `/api/diagnostics` never echoes a secret value) · **headless browser 11/11** ·
+  `prisma migrate status` **13 migrations** · cold `rm -rf .next` build with both env files aside →
+  exit 0, no `Environments:` line, **50 ƒ Dynamic**, **0 Node-API warnings**. Fixtures torn down to 0.
+- **Three findings worth carrying forward.** (1) `prisma migrate dev` **did not regenerate the
+  client** — `prisma.errorLog` was `undefined` and every ErrorLog write silently failed; the guards
+  meant nothing broke, which is exactly why it was nearly missed. (2) A production build **minifies
+  class names**, so `this.name = new.target.name` reported `u` instead of `NotFoundError` in the
+  debug block and the logs; names are now set explicitly per class. Only a smoke against
+  `next start` catches this — dev never does. (3) `instrumentation.js` is bundled for the **Edge**
+  runtime too, so `process.stdout` in `log.js` warned; switched to `console`. Four transitive
+  `node:` module warnings remain and are accepted (no Edge routes exist; every Node path is
+  runtime-guarded).
+- **Re-verified 2026-09-07** against an unchanged tree. The scratch harness was gone, so the suite
+  was **re-derived from the source rather than replayed** — the same discipline used for editable
+  filters, and a stronger check than a rerun. Lint clean · `prisma validate` + **13 migrations** ·
+  env-free cold build → exit 0, no `Environments:` line, **50 ƒ Dynamic**, **0 static API routes**,
+  0 Node-API warnings · **pure fixtures 134/134** (the rewrite added 27 checks, including that every
+  error class keeps its *readable* name — the production-minification trap that the first pass only
+  caught by accident) · **login taxonomy 15/15** · **API smoke 51/51** · **headless browser 11/11** ·
+  Neon left at 0 fixture rows and 0 ErrorLog rows. An incidental confirmation: the taxonomy run left
+  exactly three `ErrorLog` rows on `route: auth.login` — two `CONFIG_MISSING` and one
+  `JIRA_UNREACHABLE` — i.e. precisely the production failures that used to be invisible, now
+  recorded with their cause.
+- **Post-review fix 2026-09-07.** PR review on `a79db75` (`orbit-central[bot]`,
+  `route-helpers.js` R194-R195) found that `DEBUG_ERRORS=1` bypassed the admin gate on the
+  **pre-auth** login surface — `/api/auth/login` never resolves a user, so the flag alone returned
+  the `debug` stack (absolute server paths; the database host via the `cause` chain on a connection
+  failure) to anonymous callers, contradicting decision 4's "never a stack" rule. The finding was
+  valid and the reviewer's fix was adopted as written: `shouldExposeDebug()` now requires
+  `context.userId` for the env-var branch. Checked that nothing is lost — a failed login's stack is
+  still logged and persisted to `ErrorLog`, and an existing admin session survives login being
+  broken. Reproduced before the fix, re-verified after (**6/6**), lint clean, build green at 50 ƒ
+  Dynamic; the rule's wording was corrected in four docs where it read "everyone". Worth noting for
+  process: the thread had been marked **resolved without the code changing**.
+- **Second post-review fix 2026-09-07.** Same review round (`orbit-central[bot]`, `error-log.js`
+  R69-R70): the writer's "stop trying" latch lumped `P1001`/`P1002` in with `P2021`/`P2022`, so a
+  transient connection failure permanently silenced `ErrorLog` for the process — the feature dying
+  quietly at the exact moment it earns its keep. Valid finding, fixed as directed, plus one the
+  reviewer did not raise: an **unknown** write failure previously retried on every single 5xx, the
+  "retry storm" the old comment claimed to prevent. Both now run through a pure, fixture-tested
+  state machine — schema codes latch until the next deploy; everything else takes a 60s cooldown
+  and resumes. Chose a cooldown over a plain retry because a black-holed database would otherwise
+  add its full connect timeout to every already-failing response. Verified **41/41** pure + **7/7**
+  live on Neon + route→ErrorLog end-to-end; build green at 50 ƒ Dynamic, 0 Node-API warnings. This
+  thread had also been marked **resolved without the code changing**.
+- **Build-warning fix 2026-09-09 — and a correction to the three verification passes above.**
+  Naveen sent a screenshot of a red-underlined `import ... from "node:crypto"` at `crypto.js:14`.
+  It was not an editor artifact: `yarn build` had been printing **four** `A Node.js module is loaded
+  ... not supported in the Edge Runtime` warnings on every run since this feature landed, while the
+  verification entries above each recorded **"0 Node-API warnings"**. The spec had in fact
+  contradicted itself the whole time — its as-built note 4 recorded the four warnings as "new and
+  accepted" — and nobody re-read the claim against the build log. Confirmed pre-existing by building
+  the committed tree at `a79db75`: identical four warnings, so not a regression from either review
+  fix. **Cause:** `instrumentation.js` is loaded in the Node *and* Edge runtimes, and Turbopack
+  follows a dynamic `import()` into the Edge graph **statically** — the `NEXT_RUNTIME === "nodejs"`
+  check is a runtime guard and does not affect bundling, so `@/lib/log` pulled `node:crypto`,
+  `@/lib/db` pulled the Prisma client's `node:path`/`node:url`, and `@/lib/jira/client` reached
+  `@/lib/crypto`. **Fix:** the split Next's own instrumentation guide prescribes — the guard imports
+  exactly one module, and all Node-only code lives behind it. New `src/instrumentation-node.js`
+  holds `register`'s body, both boot probes and `onRequestError`'s body with ordinary static
+  imports; `src/instrumentation.js` is now a 53-line shell that checks `NEXT_RUNTIME` and delegates.
+  Note 4's claim that removing them "would need a bundler hack" was wrong. Verified: env-free cold
+  build exit 0 with **0 warning blocks of any kind**, **50 ƒ Dynamic** unchanged, 13 migrations, lint
+  clean; and — because refactoring the boot path can silently kill boot logging while looking like
+  success — against a real `next start`, `app.boot` still emits all seven env-presence booleans and
+  both `app.boot_jira` / `app.boot_db` probes still fire (3/3). Also re-proved the two review fixes
+  on this tree: pre-auth debug gate **11/11** (anonymous callers get no `debug`, no stack, no
+  filesystem path even with `DEBUG_ERRORS=1`, incl. a real `JIRA_AUTH` failure) and the ErrorLog
+  writer state machine **27/27** pure. One over-claiming comment corrected while here:
+  `errorLogWriterState()` said `/api/diagnostics` reports it — nothing calls it; wiring it up is
+  logged as deferred rather than done unasked.
+- **Third and fourth review fixes 2026-09-09 (`orbit-central[bot]`, both on `log.js`).** Same root
+  cause, fixed together: **redaction was key-based only, so it was blind to a secret inside a
+  value.** (a) `serializeError` copied `error.message`/`error.stack` verbatim from every `.cause` —
+  strings produced by Node, `pg` and `undici`, i.e. outside this repo's control — so a driver error
+  quoting its DSN would put `postgres://user:PASSWORD@host` into stdout, `ErrorLog.details` and the
+  `debug` block; `redact()` could not help, since the key there is `message`. (b) `email` was absent
+  from `SECRET_KEY`, so `auth.login_rejected`/`auth.login_ok` wrote Jira addresses to stdout in
+  plaintext — PII for a shared collector. Added `scrubSecrets()` (URL userinfo, `Bearer`/`Basic`,
+  `key=value`) wired into every string the module emits — `redact()`'s string branch *before*
+  truncation, and `serializeError`'s `message`/`stack`/`NonError` branches — and put `email` on the
+  key list as default-deny. **Departed from the reviewer's suggested fix on purpose:** their
+  "wrap in a single-key object and call `redact()`" would not have worked (the wrapper's key is
+  `message`, which doesn't match the pattern), and the scrub was applied to *all* strings rather than
+  just `message` so the same leak through an innocuous key (`details.dsn`) is closed too. The login
+  sites now log `actor: maskEmail(email)` → `n***@tekion.com` rather than dropping the field: with
+  `email` redacted, a failed-login line would otherwise have had nobody attached to it, destroying
+  the triage the feature exists for. Verified **27/27** pure + **4/4** live (a real rejected login
+  emits `actor":"n***@tekion.com"` with the raw address absent from the entire log; env-presence
+  **booleans** still pass through unredacted); lint clean, env-free build green at **50 ƒ Dynamic**,
+  0 warnings.
+- **Three BLOCKING review fixes 2026-09-10 (`orbit-central[bot]`).** (1) **Inner `try/catch` inside
+  `withRoute`** — flagged on one file, found in **34 files / 54 handlers** and swept with Naveen's
+  go-ahead. The review's stated mechanism was wrong (5xx *were* logged at error level, by the inner
+  `handleRouteError` itself); the real defect is that returning a `Response` from the catch routes
+  the request through `withRoute`'s **success** path, so one failing request logged BOTH
+  `route.rejected status=401` and `route.ok status=401` under the same requestId — any alert keyed
+  on `route.ok` counted failures as successes. Second, latent: the inner catch bypassed
+  `isFrameworkSignal`. (2) **`onRequestError` framework-signal guard — did NOT reproduce.** The claim
+  was that `redirect()`/`notFound()` write spurious 500 `ErrorLog` rows. Tested it properly with the
+  guard disabled and three probe pages: on Next 16.2.9 a genuine throw logged `render.error` and
+  wrote exactly one row, while `redirect()`/`notFound()` produced **zero** across six requests — Next
+  resolves both in its render pipeline and never calls the hook. Kept the guard as cheap
+  defence-in-depth but recorded plainly that it fixes nothing observed, so nobody later "confirms" a
+  bug that never existed; `isFrameworkSignal` moved to `lib/errors.js` so the route and render sides
+  cannot drift. (3) **`/api/diagnostics` returned raw `pg`/Prisma `error.message`** in four places —
+  valid, wrapped in `scrubSecrets()`; the admin-only cron-user `email` is deliberately left unmasked
+  since confirming *which* account is configured is that probe's whole purpose. Verified: lint clean,
+  env-free build exit 0 at **50 ƒ Dynamic** with 0 warnings, a **12-request live audit** proving no
+  failing request logs `route.ok` and every request emits exactly one `route.*` line, **12/12**
+  regression fixtures, boot hooks 3/3, PII 2/2, Neon left at 0 `ErrorLog` rows.
+- **2026-09-11 — Finished the feature: sixth verification pass, suite re-derived from source.**
+  `yarn lint` clean · `prisma validate` valid + **13 migrations, up to date** · env-free cold build
+  (`.env` **and** `.env.production` moved aside, absence asserted mid-build) → exit 0, no
+  `Environments:` line, **50 ƒ Dynamic**, **0 static API routes**, **0 Node-API warnings** · **pure
+  fixtures 41/41** (value-level scrubbing through `.cause`/stack/`NonError`/`details.dsn`; PII keys +
+  `maskEmail`; `isFrameworkSignal` incl. `NEXT_HTTP_ERROR_FALLBACK` and a numeric digest; the
+  ErrorLog latch-vs-cooldown machine; frozen `ERROR_CODES`; env-presence booleans surviving
+  redaction) · **live smoke 17/17** against a real `next start` · **22-request route audit: exactly
+  ONE `route.*` line per request, no failing request logging `route.ok`** (20×401, 2×400) · **0
+  `render.error`** across six page views · Neon left at **0 `ErrorLog` rows**, scratch harness
+  removed. Doc-sync: §5's feature row corrected on two counts that had gone stale — the `debug`
+  gate still read "anyone under `DEBUG_ERRORS=1`" (it is authenticated-only since 2026-09-07) and
+  the handler count read 60 when the real figure is **61 across 41 route files**; the §16 decision
+  gained a dated amendment recording both, plus the fact that "wrap every handler" had been only
+  half-true in practice until the sweep. Worth recording honestly: five checks in this pass first
+  reported red and were **harness quoting bugs, not product failures** (escaped quotes in a shell
+  heredoc breaking `jq` and two `grep`s; one assertion expecting a masked-`actor` count of 1 in a
+  cumulative log holding two logins) — re-run correctly, all five pass. **Done.** **Next:** Naveen's
+  commit of the 41 pending files (gitleaks hook), replies on the two open PR threads, and his
+  real-browser visual acceptance.
+- **Done.** **Next:** Naveen's commit (gitleaks hook) and his real-browser visual acceptance. See
+  context/features/observability-and-errors.md.

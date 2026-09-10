@@ -16,6 +16,12 @@
 import { getIronSession } from "iron-session";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
+import { ConfigError, SessionWriteError, UnauthorizedError } from "@/lib/errors";
+import { setLogContext } from "@/lib/log";
+
+// Defined in lib/errors.js (one taxonomy); re-exported so every existing
+// `import { UnauthorizedError } from "@/lib/auth"` and `instanceof` check keeps working.
+export { UnauthorizedError };
 
 /** @typedef {{ userId?: string }} SessionData */
 
@@ -27,8 +33,12 @@ const MIN_PASSWORD_LENGTH = 32; // iron-session requirement
 function buildSessionOptions() {
   const password = process.env.SESSION_PASSWORD?.trim();
   if (!password || password.length < MIN_PASSWORD_LENGTH) {
-    throw new Error(
-      `SESSION_PASSWORD is not set or shorter than ${MIN_PASSWORD_LENGTH} characters (generate one with \`openssl rand -base64 32\`)`,
+    throw new ConfigError(
+      `SESSION_PASSWORD is not set or shorter than ${MIN_PASSWORD_LENGTH} characters`,
+      {
+        variable: "SESSION_PASSWORD",
+        hint: "Generate one with `openssl rand -base64 32` and set it in this environment.",
+      },
     );
   }
   return {
@@ -44,16 +54,58 @@ function buildSessionOptions() {
   };
 }
 
+/**
+ * Validate that SESSION_PASSWORD is present and long enough, without touching cookies.
+ *
+ * Same reason as `assertTokenKey`: this secret is not otherwise used until the last step of login,
+ * so a container missing it used to fail only after Jira and the database had both succeeded.
+ * @throws {ConfigError} naming SESSION_PASSWORD.
+ */
+export function assertSessionPassword() {
+  buildSessionOptions();
+}
+
 /** Read/seal the session cookie. @returns {Promise<import("iron-session").IronSession<SessionData>>} */
 export async function getSession() {
   return getIronSession(await cookies(), buildSessionOptions());
 }
 
-/** Set the `{ userId }` payload and write the sealed cookie. @param {string} userId */
+/**
+ * Set the `{ userId }` payload and write the sealed cookie.
+ *
+ * A failure here is the LAST of login's five distinct failure modes (Jira was fine, the database
+ * was fine, and the cookie still didn't get written) — it gets its own error type so the login
+ * route can say exactly that instead of the old catch-all "Login failed".
+ * @param {string} userId
+ */
 export async function createUserSession(userId) {
-  const session = await getSession();
-  session.userId = userId;
-  await session.save();
+  try {
+    const session = await getSession();
+    session.userId = userId;
+    await session.save();
+  } catch (error) {
+    // A missing/short SESSION_PASSWORD is a deployment problem, not a session-write problem —
+    // let its ConfigError through so the caller reports the variable by name.
+    if (error instanceof ConfigError) throw error;
+    throw new SessionWriteError("Signed in, but the session cookie could not be written", {
+      cause: error,
+    });
+  }
+}
+
+/**
+ * The session cookie's effective options, for diagnostics. `secure: true` (set whenever
+ * NODE_ENV=production) means the browser DISCARDS the cookie on a plain-HTTP response — login
+ * answers 200 and the user bounces straight back to /login with no error anywhere. Exposed so the
+ * login route and /api/diagnostics can detect that mismatch instead of leaving it invisible.
+ * @returns {{ cookieName: string, secure: boolean, sameSite: string }}
+ */
+export function getSessionCookieInfo() {
+  return {
+    cookieName: SESSION_COOKIE_NAME,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+  };
 }
 
 /** Clear the session cookie (logout). */
@@ -71,15 +123,11 @@ export async function getCurrentUser() {
   if (!session.userId) {
     return null;
   }
-  return prisma.user.findUnique({ where: { id: session.userId } });
-}
-
-/** Thrown by {@link requireUser} when there is no authenticated user. Map to HTTP 401 at the route. */
-export class UnauthorizedError extends Error {
-  constructor(message = "Not authenticated") {
-    super(message);
-    this.name = "UnauthorizedError";
-  }
+  const user = await prisma.user.findUnique({ where: { id: session.userId } });
+  // Attribute every subsequent log line of this request (and gate the admin-only `debug` block in
+  // the error envelope). No-op outside a request context.
+  if (user) setLogContext({ userId: user.id, isAdmin: user.isAdmin });
+  return user;
 }
 
 /**

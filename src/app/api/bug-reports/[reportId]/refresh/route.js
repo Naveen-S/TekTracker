@@ -11,31 +11,18 @@
  * → 404 (handleRouteError) · anything else → 500 loud.
  */
 import { requireUser } from "@/lib/auth";
-import { handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute } from "@/lib/api/route-helpers";
 import { refreshBugReport, resolveRefreshAuth } from "@/lib/bug-report/refresh";
 import { JiraAuthError, JiraApiError, JiraCredentialMissingError } from "@/lib/jira/client";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request, { params }) {
-  try {
-    const user = await requireUser();
-    const { reportId } = await params;
+export const POST = withRoute("bug-reports.refresh", async (request, { params }) => {
+  const user = await requireUser();
+  const { reportId } = await params;
 
-    const { auth, email } = await resolveRefreshAuth(user.id);
-    const summary = await refreshBugReport(reportId, { auth, refreshedByEmail: email });
+  const { auth, email } = await resolveRefreshAuth(user.id);
+  const summary = await refreshBugReport(reportId, { auth, refreshedByEmail: email });
 
-    return Response.json(summary);
-  } catch (error) {
-    if (error instanceof JiraAuthError || error instanceof JiraCredentialMissingError) {
-      return Response.json(
-        { error: "Stored Jira credential is invalid or expired — log in again to reconnect" },
-        { status: 401 },
-      );
-    }
-    if (error instanceof JiraApiError) {
-      return Response.json({ error: error.message }, { status: 502 });
-    }
-    return handleRouteError(error);
-  }
-}
+  return Response.json(summary);
+});

@@ -2,6 +2,7 @@ import { Tags, CheckCircle2, ArrowRight, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { IssueKey } from "@/components/dashboard/risk-callouts-panel";
+import { formatPoints } from "@/lib/metrics.mjs";
 
 /**
  * "Needs attention" hygiene panel (needs-attention-roster.md) — the always-on track of a team's own
@@ -165,7 +166,7 @@ export function NeedsAttentionPanel({ track, jiraBaseUrl, canManage = false }) {
                 </span>
                 {issue.storyPoints > 0 && (
                   <span className="flex items-center justify-end pt-0.5 text-[11px] text-muted-foreground tabular-nums">
-                    {issue.storyPoints} pts
+                    {formatPoints(issue.storyPoints)} pts
                   </span>
                 )}
               </li>

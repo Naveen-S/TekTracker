@@ -5,36 +5,28 @@
  */
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody } from "@/lib/api/route-helpers";
 import { jiraComponentCreateSchema } from "@/lib/schemas/jira-component";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  try {
-    await requireAdmin();
-    const components = await prisma.jiraComponent.findMany({
-      orderBy: { name: "asc" },
-      include: {
-        subComponents: {
-          orderBy: { name: "asc" },
-          include: { team: { select: { id: true, name: true } } },
-        },
+export const GET = withRoute("jira-components", async () => {
+  await requireAdmin();
+  const components = await prisma.jiraComponent.findMany({
+    orderBy: { name: "asc" },
+    include: {
+      subComponents: {
+        orderBy: { name: "asc" },
+        include: { team: { select: { id: true, name: true } } },
       },
-    });
-    return Response.json(components);
-  } catch (error) {
-    return handleRouteError(error);
-  }
-}
+    },
+  });
+  return Response.json(components);
+});
 
-export async function POST(request) {
-  try {
-    await requireAdmin();
-    const data = await parseJsonBody(request, jiraComponentCreateSchema);
-    const component = await prisma.jiraComponent.create({ data });
-    return Response.json(component);
-  } catch (error) {
-    return handleRouteError(error);
-  }
-}
+export const POST = withRoute("jira-components", async (request) => {
+  await requireAdmin();
+  const data = await parseJsonBody(request, jiraComponentCreateSchema);
+  const component = await prisma.jiraComponent.create({ data });
+  return Response.json(component);
+});

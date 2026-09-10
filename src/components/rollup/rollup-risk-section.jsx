@@ -17,6 +17,7 @@ import {
   RiskCalloutsPanel,
   sortRiskyIssues,
 } from "@/components/dashboard/risk-callouts-panel";
+import { formatPoints } from "@/lib/metrics.mjs";
 
 export function RollupRiskSection({ issues, series, jiraBaseUrl }) {
   const [open, setOpen] = useState(false);
@@ -65,7 +66,7 @@ export function RollupRiskSection({ issues, series, jiraBaseUrl }) {
                   </span>
                   {issue.storyPoints > 0 && (
                     <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                      {issue.storyPoints} pts
+                      {formatPoints(issue.storyPoints)} pts
                     </span>
                   )}
                   {issue.riskComment && (

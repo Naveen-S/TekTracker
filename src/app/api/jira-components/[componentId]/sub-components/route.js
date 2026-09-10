@@ -6,23 +6,19 @@
  */
 import { prisma } from "@/lib/db";
 import { requireAdmin, NotFoundError } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody } from "@/lib/api/route-helpers";
 import { jiraSubComponentCreateSchema } from "@/lib/schemas/jira-component";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request, { params }) {
-  try {
-    await requireAdmin();
-    const { componentId } = await params;
-    const component = await prisma.jiraComponent.findUnique({ where: { id: componentId } });
-    if (!component) {
-      throw new NotFoundError("Jira component not found");
-    }
-    const data = await parseJsonBody(request, jiraSubComponentCreateSchema);
-    const subComponent = await prisma.jiraSubComponent.create({ data: { ...data, componentId } });
-    return Response.json(subComponent);
-  } catch (error) {
-    return handleRouteError(error);
+export const POST = withRoute("jira-components.sub-components", async (request, { params }) => {
+  await requireAdmin();
+  const { componentId } = await params;
+  const component = await prisma.jiraComponent.findUnique({ where: { id: componentId } });
+  if (!component) {
+    throw new NotFoundError("Jira component not found");
   }
-}
+  const data = await parseJsonBody(request, jiraSubComponentCreateSchema);
+  const subComponent = await prisma.jiraSubComponent.create({ data: { ...data, componentId } });
+  return Response.json(subComponent);
+});

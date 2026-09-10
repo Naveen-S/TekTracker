@@ -9,40 +9,36 @@
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { ForbiddenError } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody } from "@/lib/api/route-helpers";
 import { mePatchSchema } from "@/lib/schemas/user";
 
 export const dynamic = "force-dynamic";
 
-export async function PATCH(request) {
-  try {
-    const user = await requireUser();
-    const patch = await parseJsonBody(request, mePatchSchema);
+export const PATCH = withRoute("me", async (request) => {
+  const user = await requireUser();
+  const patch = await parseJsonBody(request, mePatchSchema);
 
-    // Only touch the halves the caller sent, so team/release can be set or cleared independently.
-    const data = {};
-    if (patch.defaultTeamId !== undefined) data.defaultTeamId = patch.defaultTeamId;
-    if (patch.defaultSprintId !== undefined) data.defaultSprintId = patch.defaultSprintId;
+  // Only touch the halves the caller sent, so team/release can be set or cleared independently.
+  const data = {};
+  if (patch.defaultTeamId !== undefined) data.defaultTeamId = patch.defaultTeamId;
+  if (patch.defaultSprintId !== undefined) data.defaultSprintId = patch.defaultSprintId;
 
-    // Pin only a team the caller can actually open (global admin sees every team) — otherwise the
-    // pin would silently miss the selection `find` and land them on teams[0] every visit anyway.
-    if (data.defaultTeamId && !user.isAdmin) {
-      const membership = await prisma.teamMembership.findUnique({
-        where: { userId_teamId: { userId: user.id, teamId: data.defaultTeamId } },
-        select: { teamId: true },
-      });
-      if (!membership) {
-        throw new ForbiddenError("You are not a member of that team");
-      }
-    }
-
-    const updated = await prisma.user.update({
-      where: { id: user.id },
-      data,
-      select: { defaultTeamId: true, defaultSprintId: true },
+  // Pin only a team the caller can actually open (global admin sees every team) — otherwise the
+  // pin would silently miss the selection `find` and land them on teams[0] every visit anyway.
+  if (data.defaultTeamId && !user.isAdmin) {
+    const membership = await prisma.teamMembership.findUnique({
+      where: { userId_teamId: { userId: user.id, teamId: data.defaultTeamId } },
+      select: { teamId: true },
     });
-    return Response.json(updated);
-  } catch (error) {
-    return handleRouteError(error);
+    if (!membership) {
+      throw new ForbiddenError("You are not a member of that team");
+    }
   }
-}
+
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data,
+    select: { defaultTeamId: true, defaultSprintId: true },
+  });
+  return Response.json(updated);
+});

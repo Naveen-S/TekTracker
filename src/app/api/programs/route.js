@@ -6,34 +6,26 @@
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { requireAdmin, hasProgramAccess, ForbiddenError } from "@/lib/rbac";
-import { parseJsonBody, handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute, parseJsonBody } from "@/lib/api/route-helpers";
 import { programCreateSchema } from "@/lib/schemas/program";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  try {
-    const user = await requireUser();
-    if (!(await hasProgramAccess(user))) {
-      throw new ForbiddenError();
-    }
-    const programs = await prisma.program.findMany({
-      orderBy: { name: "asc" },
-      include: { _count: { select: { teams: true } } },
-    });
-    return Response.json(programs);
-  } catch (error) {
-    return handleRouteError(error);
+export const GET = withRoute("programs", async () => {
+  const user = await requireUser();
+  if (!(await hasProgramAccess(user))) {
+    throw new ForbiddenError();
   }
-}
+  const programs = await prisma.program.findMany({
+    orderBy: { name: "asc" },
+    include: { _count: { select: { teams: true } } },
+  });
+  return Response.json(programs);
+});
 
-export async function POST(request) {
-  try {
-    await requireAdmin();
-    const data = await parseJsonBody(request, programCreateSchema);
-    const program = await prisma.program.create({ data });
-    return Response.json(program);
-  } catch (error) {
-    return handleRouteError(error);
-  }
-}
+export const POST = withRoute("programs", async (request) => {
+  await requireAdmin();
+  const data = await parseJsonBody(request, programCreateSchema);
+  const program = await prisma.program.create({ data });
+  return Response.json(program);
+});

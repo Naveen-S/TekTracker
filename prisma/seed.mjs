@@ -58,8 +58,10 @@ const STATUS_STAGE_SEED = {
     ["Closed", 9],
   ],
   // UAT is a real Tekion Jira status on Story/Tech Story issues (confirmed live 2026-07-27) —
-  // FEATURE and TECH_DEBT only, not the bug workflows.
-  TECH_DEBT: [...FOUR_STAGE_STATUS_MAP, ["UAT", 3]],
+  // FEATURE and TECH_DEBT only, not the bug workflows. Security Validation is terminal on
+  // Vulnerability issues, which only ever land in a tech-debt track (confirmed live 2026-08-28) —
+  // it reads as "security signed it off", i.e. Done, not a mid-lifecycle QA stage.
+  TECH_DEBT: [...FOUR_STAGE_STATUS_MAP, ["UAT", 3], ["Security Validation", 3]],
   // OEM Review / Close as Duplicate / Support Validation / Not Applicable are real terminal Tekion
   // Jira statuses (confirmed live 2026-07-27/28) — SUPPORT (External Bugs, Tap Ticket in ENG) and
   // INTERNAL_BUG (Bug in the team's own project), except Support Validation which only appears on

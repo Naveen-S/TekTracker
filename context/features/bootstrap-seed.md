@@ -52,6 +52,15 @@ issue type(s)/workflow(s) each status actually appears on:
   (Done); it was already the terminal stage for `TECH_DEBT`/`SUPPORT`/`INTERNAL_BUG` via
   `FOUR_STAGE_STATUS_MAP`, so those three needed no change.
 
+**Extended 2026-08-28** (ad hoc, same pattern as the 2026-07-27/28 rounds — reported by Naveen from
+the Delivery Matrix, grounded against the live Issue cache before being added):
+
+- **`Security Validation`** — appears only on `Vulnerability` issues, which only ever land in a
+  **tech-debt** track (8 live rows, all `TECH_DEBT`, 2026-08-28) → `TECH_DEBT` only, final stage
+  (Done). It is a security sign-off, i.e. terminal, not a mid-lifecycle QA state. `TECH_DEBT`'s
+  entry is therefore now a spread with **two** additions (`UAT`, `Security Validation`), not one.
+  Global row count **45 → 46**.
+
 Global `StatusStageMapping` row count: **35 → 39 → 42 → 45** across the three rounds. Re-verified
 after each round: `yarn db:seed` against Neon (delete-then-recreate of the `teamId = null` set,
 per-team overrides untouched), a direct DB read confirming the exact new rows, `yarn lint` clean,
@@ -130,6 +139,9 @@ sanity control proving an unmapped status like `Groomed` still does *not* seed t
   | In Progress | 1 |
   | Code Review / In Review | 2 |
   | In QA / Testing / Done / Closed / UAT | 3 |
+  | Security Validation | 3 |
+
+  > `Security Validation` added 2026-08-28 — terminal on `Vulnerability` issues (tech-debt tracks).
 
   `SUPPORT` (External Bugs) and `INTERNAL_BUG` — the base 4-stage map plus bug-terminal statuses;
   the two diverge on `Support Validation`, which only ever appears on `Tap Ticket` (ENG):

@@ -7,22 +7,34 @@
  *   AiProviderError      → 502 (the provider failed: HTTP error, timeout, refusal, bad JSON)
  * A *misconfigured* provider (unknown AI_PROVIDER value, missing key) throws a plain Error on
  * purpose → 500 loud (the crypto.js/CRON_SECRET precedent).
+ *
+ * Both extend `AppError` (lib/errors.js) so the shared route helper maps them by their own
+ * `status`/`code` — the per-route `instanceof` mapping in the two ai-digest routes is now redundant.
  */
+import { AppError, ERROR_CODES } from "@/lib/errors";
 
 /** Thrown when no AI provider is configured at all (`AI_PROVIDER` unset). Maps to HTTP 503. */
-export class AiNotConfiguredError extends Error {
+export class AiNotConfiguredError extends AppError {
   constructor(message = "AI provider is not configured") {
-    super(message);
+    super(message, { code: ERROR_CODES.AI_NOT_CONFIGURED, status: 503 });
     this.name = "AiNotConfiguredError";
   }
 }
 
-/** Thrown when the configured provider fails to produce a usable response. Maps to HTTP 502. */
-export class AiProviderError extends Error {
+/**
+ * Thrown when the configured provider fails to produce a usable response. Maps to HTTP 502.
+ *
+ * ⚠️ The provider's OWN status goes to `details.providerStatus`, never to `status` — `status` is
+ * the status WE answer with. Echoing a provider's 429 would tell the browser to retry our route.
+ */
+export class AiProviderError extends AppError {
   constructor(message = "The AI provider request failed", { status } = {}) {
-    super(message);
+    super(message, {
+      code: ERROR_CODES.AI_PROVIDER,
+      status: 502,
+      details: { stage: "ai-provider", ...(status ? { providerStatus: status } : {}) },
+    });
     this.name = "AiProviderError";
-    this.status = status ?? null;
   }
 }
 

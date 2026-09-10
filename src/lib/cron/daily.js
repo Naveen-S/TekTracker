@@ -19,6 +19,8 @@
  *   instead of erroring (decision 6).
  */
 import { prisma } from "@/lib/db";
+import { logger, runWithContext, getRequestId, newRequestId } from "@/lib/log";
+import { pruneErrorLog, recordError } from "@/lib/error-log";
 import { syncTeamSprint } from "@/lib/sync/engine";
 import { getJiraAuthForUser, fetchMyself } from "@/lib/jira/client";
 import { computeSprintMetrics, snapshotValues } from "@/lib/metrics.mjs";
@@ -85,7 +87,22 @@ async function runSprint(sprint, capturedOn, refreshUser) {
         workflowsReevaluated: result.workflowsReevaluated,
       });
     } catch (error) {
-      refreshByTeam.set(team.id, { error: error.message });
+      refreshByTeam.set(team.id, { error: error.message, code: error.code ?? null });
+      // Isolated per team (decision 4) — but no longer silent: the scheduler discards the response
+      // body, so an unlogged per-team failure was invisible until someone noticed stale numbers.
+      logger.error("cron.team_refresh_failed", {
+        teamKey: team.key,
+        sprint: sprint.name,
+        err: error,
+      });
+      await recordError({
+        error,
+        code: error.code ?? "INTERNAL",
+        status: error.status ?? 500,
+        source: "cron",
+        route: "cron.daily",
+        details: { teamKey: team.key, sprint: sprint.name },
+      });
     }
   }
 
@@ -125,30 +142,66 @@ async function runSprint(sprint, capturedOn, refreshUser) {
  * @returns {Promise<{ capturedOn: Date, refresh: object, sprints: Array<object> }>} run summary.
  */
 export async function runDailyJob({ capturedOn } = {}) {
-  const day = utcMidnight(capturedOn ?? new Date());
-  const refresh = await resolveRefreshUser();
+  // One id for the whole run, shared by every line it logs. The scheduler is a `curl` that
+  // DISCARDS this function's return value, so before this the entire nightly job — including a
+  // total failure to refresh anything — left no trace at all. The summary is now logged as well
+  // as returned.
+  const runId = getRequestId() ?? newRequestId();
 
-  const sprints = await prisma.sprint.findMany({
-    where: { state: SprintState.ACTIVE },
-    orderBy: { developmentStart: "asc" },
-    select: { id: true, name: true, developmentStart: true, developmentEnd: true },
+  return runWithContext({ requestId: runId, route: "cron.daily", source: "cron" }, async () => {
+    const startedAt = Date.now();
+    const day = utcMidnight(capturedOn ?? new Date());
+    const refresh = await resolveRefreshUser();
+
+    logger.info("cron.start", {
+      capturedOn: day,
+      refreshUser: refresh.user?.email ?? null,
+      ...(refresh.skipped ? { refreshSkipped: refresh.skipped } : {}),
+    });
+    if (refresh.skipped) {
+      // Degrading is by design (decision 4) — but it means every team's cache goes stale, so it
+      // is a warning, not a footnote in an unread response body.
+      logger.warn("cron.refresh_skipped", { reason: refresh.skipped });
+    }
+
+    const sprints = await prisma.sprint.findMany({
+      where: { state: SprintState.ACTIVE },
+      orderBy: { developmentStart: "asc" },
+      select: { id: true, name: true, developmentStart: true, developmentEnd: true },
+    });
+
+    const sprintSummaries = [];
+    for (const sprint of sprints) {
+      sprintSummaries.push(await runSprint(sprint, day, refresh.user ?? null));
+    }
+
+    const bugReports = await runBugReports(day);
+    const prunedErrors = await pruneErrorLog();
+
+    const teamFailures = sprintSummaries.reduce(
+      (count, summary) => count + summary.teams.filter((team) => team.refresh?.error).length,
+      0,
+    );
+    logger.info("cron.done", {
+      ms: Date.now() - startedAt,
+      sprints: sprintSummaries.length,
+      teams: sprintSummaries.reduce((count, summary) => count + summary.teams.length, 0),
+      teamFailures,
+      bugReports: bugReports.length,
+      bugReportFailures: bugReports.filter((report) => report.error).length,
+      prunedErrors,
+    });
+
+    return {
+      capturedOn: day,
+      runId,
+      refresh: refresh.user
+        ? { user: { email: refresh.user.email, displayName: refresh.user.displayName } }
+        : { skipped: refresh.skipped },
+      sprints: sprintSummaries,
+      bugReports,
+    };
   });
-
-  const sprintSummaries = [];
-  for (const sprint of sprints) {
-    sprintSummaries.push(await runSprint(sprint, day, refresh.user ?? null));
-  }
-
-  const bugReports = await runBugReports(day);
-
-  return {
-    capturedOn: day,
-    refresh: refresh.user
-      ? { user: { email: refresh.user.email, displayName: refresh.user.displayName } }
-      : { skipped: refresh.skipped },
-    sprints: sprintSummaries,
-    bugReports,
-  };
 }
 
 /**
@@ -183,6 +236,15 @@ async function runBugReports(capturedOn) {
       });
     } catch (error) {
       summaries.push({ id: report.id, name: report.name, error: error.message });
+      logger.error("cron.bug_report_failed", { report: report.name, err: error });
+      await recordError({
+        error,
+        code: error.code ?? "INTERNAL",
+        status: error.status ?? 500,
+        source: "cron",
+        route: "cron.daily",
+        details: { report: report.name },
+      });
     }
   }
   return summaries;

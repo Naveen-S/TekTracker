@@ -6,24 +6,20 @@
  */
 import { prisma } from "@/lib/db";
 import { requireTeamRole, NotFoundError, TEAM_ALL_ROLES } from "@/lib/rbac";
-import { handleRouteError } from "@/lib/api/route-helpers";
+import { withRoute } from "@/lib/api/route-helpers";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_request, { params }) {
-  try {
-    const { teamId, sprintId } = await params;
-    await requireTeamRole(teamId, TEAM_ALL_ROLES);
-    const sprint = await prisma.sprint.findUnique({ where: { id: sprintId }, select: { id: true } });
-    if (!sprint) {
-      throw new NotFoundError("Sprint not found");
-    }
-    const progress = await prisma.issueProgress.findMany({
-      where: { teamId, sprintId },
-      orderBy: { jiraKey: "asc" },
-    });
-    return Response.json(progress);
-  } catch (error) {
-    return handleRouteError(error);
+export const GET = withRoute("teams.sprints.progress", async (_request, { params }) => {
+  const { teamId, sprintId } = await params;
+  await requireTeamRole(teamId, TEAM_ALL_ROLES);
+  const sprint = await prisma.sprint.findUnique({ where: { id: sprintId }, select: { id: true } });
+  if (!sprint) {
+    throw new NotFoundError("Sprint not found");
   }
-}
+  const progress = await prisma.issueProgress.findMany({
+    where: { teamId, sprintId },
+    orderBy: { jiraKey: "asc" },
+  });
+  return Response.json(progress);
+});

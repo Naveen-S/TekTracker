@@ -1,0 +1,16 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/components/dashboard/issue-row.jsx"
+        ],
+        "createdAt": "2026-08-21T12:58:48.322Z"
+      }
+    ]
+  }
+}

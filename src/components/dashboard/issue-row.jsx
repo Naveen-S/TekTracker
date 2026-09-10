@@ -9,6 +9,7 @@
  */
 import {
   calculateWeightedCompletion,
+  formatPoints,
   getHealthStatus,
   resolveProgress,
 } from "@/lib/metrics.mjs";
@@ -95,7 +96,7 @@ export function IssueRow({
         </div>
         <strong className="line-clamp-2 text-[13px] leading-snug font-medium">{issue.title}</strong>
         <p className="text-[11px] font-semibold text-muted-foreground">
-          {issue.assigneeName ?? "Unassigned"} · {issue.issueType} · {issue.storyPoints} pts
+          {issue.assigneeName ?? "Unassigned"} · {issue.issueType} · {formatPoints(issue.storyPoints)} pts
           {issue.jiraStatus ? (
             <>
               {" · "}

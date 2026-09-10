@@ -1,9 +1,13 @@
 "use client";
 
 /**
- * Add-filter modal — port of AddFilterModal onto POST …/filters (the caller then triggers sync,
- * ui-port.md decision 6). Unlike the prototype, a display name is required for BOTH source types
- * (the create API requires it; Jira-filter names are refreshed as jql at sync, not as our name).
+ * Add / edit a board track — one dialog for both (editable-filters.md decision 1). Created as the
+ * port of AddFilterModal onto POST …/filters (the caller then triggers sync, ui-port.md decision 6);
+ * it grew the edit mode when PATCH …/filters/[filterId] finally got a UI. Unlike the prototype, a
+ * display name is required for BOTH source types (the create API requires it; Jira-filter names are
+ * refreshed as jql at sync, not as our name).
+ *
+ * `filter` null ⇒ create; otherwise every control seeds from that row and the caller PATCHes.
  */
 import { useState } from "react";
 import { Dialog, DialogError } from "@/components/ui/dialog";
@@ -13,17 +17,29 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { WORKFLOWS } from "@/lib/workflows.mjs";
-import { accentColorForIndex } from "@/lib/accent-palette.mjs";
+import { ACCENT_PALETTE, accentColorForIndex } from "@/lib/accent-palette.mjs";
+import { cn } from "@/lib/utils";
 
 const WORKFLOW_OPTIONS = ["FEATURE", "TECH_DEBT", "SUPPORT", "INTERNAL_BUG"];
 
-export function AddFilterDialog({ onAdd, onClose, busy, existingCount = 0 }) {
-  const [workflowType, setWorkflowType] = useState("FEATURE");
-  const [sourceType, setSourceType] = useState("JIRA_FILTER");
-  const [name, setName] = useState("");
-  const [jiraFilterId, setJiraFilterId] = useState("");
-  const [jql, setJql] = useState("");
+export function FilterDialog({ filter = null, onSubmit, onClose, busy, existingCount = 0 }) {
+  const editing = Boolean(filter);
+  const [workflowType, setWorkflowType] = useState(filter?.workflowType ?? "FEATURE");
+  const [sourceType, setSourceType] = useState(filter?.sourceType ?? "JIRA_FILTER");
+  const [name, setName] = useState(filter?.name ?? "");
+  const [jiraFilterId, setJiraFilterId] = useState(filter?.jiraFilterId ?? "");
+  const [jql, setJql] = useState(filter?.jql ?? "");
+  const [accentColor, setAccentColor] = useState(
+    filter?.accentColor ?? accentColorForIndex(existingCount),
+  );
   const [error, setError] = useState("");
+
+  // Changing a track's workflow changes its stage COUNT, and sync re-shapes every progress row to
+  // the new length (reshapeStageCompletion) — shrinking drops the checks past the last stage. Say so
+  // before the save, not after.
+  const fromStages = editing ? WORKFLOWS[filter.workflowType]?.stages.length ?? 0 : 0;
+  const toStages = WORKFLOWS[workflowType].stages.length;
+  const shrinks = editing && workflowType !== filter.workflowType && toStages < fromStages;
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -32,36 +48,38 @@ export function AddFilterDialog({ onAdd, onClose, busy, existingCount = 0 }) {
     if (sourceType === "JIRA_FILTER" && !jiraFilterId.trim())
       return setError("Please enter a filter ID");
     if (sourceType === "JQL" && !jql.trim()) return setError("Please enter a JQL query");
-    onAdd({
-      name: name.trim(),
-      workflowType,
-      sourceType,
-      accentColor: accentColorForIndex(existingCount),
-      ...(sourceType === "JIRA_FILTER"
-        ? { jiraFilterId: jiraFilterId.trim() }
-        : { jql: jql.trim() }),
-    });
+    onSubmit({ name, workflowType, sourceType, jql, jiraFilterId, accentColor });
   };
 
   return (
     <Dialog
       open
-      title="Add Jira Source"
-      description="Point this board at a saved Jira filter or a JQL query. Its issues load right away."
+      title={editing ? "Edit Jira Source" : "Add Jira Source"}
+      description={
+        editing
+          ? "Rename this track, repoint it at a different Jira filter or JQL, or change how it is tracked."
+          : "Point this board at a saved Jira filter or a JQL query. Its issues load right away."
+      }
       onClose={busy ? undefined : onClose}
       footer={
         <>
           <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button type="submit" form="add-filter-form" disabled={busy}>
+          <Button type="submit" form="filter-form" disabled={busy}>
             {busy && <Spinner />}
-            {busy ? "Adding + syncing…" : "Add Source"}
+            {busy
+              ? editing
+                ? "Saving…"
+                : "Adding + syncing…"
+              : editing
+                ? "Save changes"
+                : "Add Source"}
           </Button>
         </>
       }
     >
-      <form id="add-filter-form" className="flex flex-col gap-4" onSubmit={handleSubmit}>
+      <form id="filter-form" className="flex flex-col gap-4" onSubmit={handleSubmit}>
         <fieldset className="flex flex-col gap-1.5">
           <Label>Workflow Type</Label>
           <div className="grid grid-cols-2 gap-1.5">
@@ -90,6 +108,13 @@ export function AddFilterDialog({ onAdd, onClose, busy, existingCount = 0 }) {
           <p className="text-xs text-muted-foreground">
             {WORKFLOWS[workflowType].stages.join(" → ")}
           </p>
+          {shrinks && (
+            <p className="rounded-md border border-warn/35 bg-warn-soft px-2.5 py-1.5 text-xs text-warn-strong">
+              Stage checklists are re-shaped on the next sync — {WORKFLOWS[filter.workflowType].name}{" "}
+              ({fromStages} stages) → {WORKFLOWS[workflowType].name} ({toStages} stages) drops every
+              check past stage {toStages}.
+            </p>
+          )}
         </fieldset>
 
         <fieldset className="flex flex-col gap-1.5">
@@ -157,6 +182,29 @@ export function AddFilterDialog({ onAdd, onClose, busy, existingCount = 0 }) {
             />
           </div>
         )}
+
+        <fieldset className="flex flex-col gap-1.5">
+          <Label>Accent Colour</Label>
+          <div className="flex items-center gap-2">
+            {ACCENT_PALETTE.map((color) => (
+              <button
+                key={color}
+                type="button"
+                onClick={() => setAccentColor(color)}
+                disabled={busy}
+                aria-label={`Use accent colour ${color}`}
+                aria-pressed={accentColor === color}
+                className={cn(
+                  "size-6 cursor-pointer rounded-full transition-transform hover:scale-110",
+                  accentColor === color
+                    ? "ring-2 ring-ring ring-offset-2 ring-offset-background"
+                    : "opacity-70",
+                )}
+                style={{ backgroundColor: color }}
+              />
+            ))}
+          </div>
+        </fieldset>
 
         <DialogError>{error}</DialogError>
       </form>
