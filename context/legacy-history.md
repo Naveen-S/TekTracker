@@ -2375,3 +2375,43 @@ context/features/editable-filters.md.
   real-browser visual acceptance.
 - **Done.** **Next:** Naveen's commit (gitleaks hook) and his real-browser visual acceptance. See
   context/features/observability-and-errors.md.
+- **2026-09-27 — Brand refresh: Jigsaw logo + "Every piece. One picture."** (brand-logo-tagline.md,
+  branch `feature/brand-jigsaw` off `main` @ `03602d7`). Naveen picked Concept A (Jigsaw), lockup
+  line 2, and the two-tone + serif wordmark from the brand board PDF. New `components/ui/brand.jsx`
+  (`BrandMark` inline SVG with dark/light/tile variants, `Wordmark`, `BrandTagline`,
+  `BRAND_TAGLINE`); Instrument Serif italic via `next/font` as `--font-tagline`; sidebar, login,
+  four mobile top bars, share header and welcome hero swapped; `icon.png`/`favicon.ico`/
+  `public/app-icon.png` re-rendered; then (same day, Naveen) the sidebar went bare (no tile) and the favicon became an adaptive `icon.svg` (ink piece flips white on dark tabs; `icon.png` deleted) with a light-tone `favicon.ico` for Safari. Also added the **Jigsaw loader** (`BrandLoader`): the veil + AI digest waits now show the mark assembling itself, pieces flying in with the white one last; button spinners unchanged. Verified: lint
+  clean, env-free build exit 0 at **50 ƒ Dynamic**, 0 warnings, 13 migrations; headless visual pass
+  in both themes. **Done.** **Next:** Naveen's commit + real-browser acceptance.
+- 2026-09-29 — **Finished the brand refresh (/finish-feature).** Final verification on
+  `feature/brand-jigsaw`: `yarn lint` exit 0; `prisma validate` ✓; `migrate status` 13 migrations, up
+  to date; cold env-free build (`rm -rf .next`, `.env` **and** `.env.production` genuinely moved aside)
+  → exit 0, **50 ƒ Dynamic**, 0 warnings / 0 `Node.js module` lines, `○ /icon.svg` static; `next
+  start` smoke — `/login` 200 with *"Every piece. One picture."* and exactly two `rel="icon"` links
+  (`favicon.ico` 32x32, `icon.svg` sizes=any), `/icon.svg` 200 `image/svg+xml`, `/favicon.ico` 200
+  `image/x-icon`, `/app-icon.png` 200, `/p/health` 200, `/api/auth/me` 401 `UNAUTHENTICATED`. Spec
+  gained a `## Status` block + final as-built notes 9–11 (the favicon IS a new — static — app-router
+  file despite the scope line; out-of-order note numbering kept; unrelated untracked files excluded
+  from the commit). Doc-sync: §5 row no longer says the favicon is tiled; `Last reviewed` → 2026-09-29.
+  **Done.** **Next:** Naveen's commit + authed browser acceptance, then migrate-on-start (stashed).
+- 2026-09-29 — **Reworked the Jigsaw brand loader** (Naveen: "not very attractive", and it jumped
+  when the "Refreshing from Jira…" label and elapsed seconds appeared). Root cause: the veil centred
+  mark + label + timer as one column, so every text change re-centred it. Now only the mark is
+  centred and the words hang below it absolutely, with the timer line reserved and faded in (mark
+  box measured identical across all three text states). `BrandLoader` gained a static 15 % ghost of
+  the picture (no empty frames) and an optional teal halo (`glow`) that blooms as the white piece
+  lands; pieces spring in and dissolve back in place in arrival order (2.6 s cycle) instead of
+  flying apart; veil mark `size-18` + drop shadow. Files: `ui/brand.jsx`, `ui/spinner.jsx`,
+  `globals.css`. Verified: lint clean; env-free cold build → exit 0, **50 ƒ Dynamic**, 0 warnings;
+  headless filmstrip in both themes + mobile + digest + reduced motion. **Done.** **Next:** Naveen's
+  eyeball on a real sync, then the brand-refresh commit.
+- 2026-09-29 — **Re-ran /finish-feature after the loader rework.** `yarn lint` exit 0; `prisma
+  validate` ✓; 13 migrations, up to date; cold env-free build in a scratch copy (APFS-cloned
+  `node_modules`, zero `.env*`) → exit 0, **50 ƒ Dynamic**, 0 warnings, no `Environments:` line, all
+  four `@keyframes jigsaw-{assemble,click,halo,breathe}` in the emitted CSS (the first check grepped
+  the wrong stylesheet link and came back empty — re-built and grepped `.next/static` directly
+  rather than assume); `next start` smoke — `/p/health` 200, `/login` 200 with the tagline,
+  `/icon.svg` + `/favicon.ico` 200, `/api/auth/me` 401, no `error`-level log lines. Doc-sync: §5
+  Brand row describes the ghost + halo and the fixed veil layout; §11 build log gained the
+  2026-09-29 loader-rework row. **Done.** **Next:** Naveen's commit + a real-sync eyeball.

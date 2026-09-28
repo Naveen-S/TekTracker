@@ -17,6 +17,7 @@ import { Copy, RefreshCw, Sparkles } from "lucide-react";
 import { Dialog, DialogError } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { BrandLoader } from "@/components/ui/brand";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api-client";
@@ -135,7 +136,7 @@ export function AiDigestDialog({
         {busy && (
           <div className="flex flex-col gap-3" role="status" aria-label="Writing digest">
             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Spinner className="size-4 text-primary" /> Writing digest…
+              <BrandLoader tone="light" className="size-7" /> Writing digest…
             </div>
             <Skeleton className="h-5 w-3/5" />
             <div className="flex flex-col gap-2">

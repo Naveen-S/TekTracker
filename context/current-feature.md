@@ -1,123 +1,40 @@
 # Current Feature
 
-**Production observability & error contract**
-(@context/features/observability-and-errors.md) — StoryBoard is in production, and a production
-incident started from nothing: **four `console.*` calls in the entire `src/` tree**, and every route
-answering failures with a bare `{ error: "message" }` — no code, no correlation id, no context.
-
-The trigger was concrete (Naveen, 2026-09-03): *"In prod we don't have Neon. In login failed for
-some XYZ reason which is hard to debug."* `api/auth/login` was funnelling **five structurally
-different deployment failures** into two strings — a malformed `TOKEN_ENCRYPTION_KEY`, a short
-`SESSION_PASSWORD`, an unreachable database, **migrations not deployed**, and blocked egress to
-Atlassian — all reported as `"Login failed"`.
-
-The goal, in the user's words: make the **API response itself** carry what's needed, so triage does
-not begin at a log aggregator. Post-v1, not a master-plan step.
+**Brand refresh — Jigsaw logo + "Every piece. One picture."**
+(@context/features/brand-logo-tagline.md) — StoryBoard was renamed on 2026-07-31 but still shipped
+the placeholder teal "T" icon and a one-colour wordmark. Naveen picked from the brand board PDF:
+Concept A (the Jigsaw), the tagline *"Every piece. One picture."*, and the two-tone wordmark with a
+serif tagline. Presentation-only; post-v1, not a master-plan step.
 
 ## Status
 
-**Done 2026-09-04 · seven review fixes (2026-09-07 ×2, 2026-09-09 ×2, 2026-09-10 ×3) · one
-build-warning fix · verified six times.** Committed on `error-handling`: `a79db75` (feature) →
-`78e42b1` (instrumentation split + first two review fixes) → `b2fd4f2` (the two redaction fixes).
-**Uncommitted (41 files):** the three blocking fixes — the **34-file / 54-handler inner-`try/catch`
-sweep**, `/api/diagnostics` scrubbing, and the `onRequestError` framework-signal guard — plus docs.
-Pending Naveen's commit (gitleaks hook) + real-browser visual acceptance. Full spec + As-built:
-@context/features/observability-and-errors.md.
+**Done 2026-09-29 · verified · uncommitted.** Branch `feature/brand-jigsaw`, cut from `main` @
+`03602d7` (the migrate-on-start work is in Naveen's stash, not on this branch). Final /finish-feature
+pass: lint exit 0 · 13 migrations, up to date · cold env-free build (`.env` + `.env.production` moved
+aside) → exit 0, **50 ƒ Dynamic**, **0 warnings** (log grepped) · `next start` smoke: `/login` carries
+the tagline + exactly two `rel="icon"` links, `/icon.svg` · `/favicon.ico` · `/app-icon.png` 200,
+`/p/health` 200, `/api/auth/me` 401. **Loader reworked the same day** (Naveen: unattractive + jumped
+when the label/seconds appeared): mark-only centring with the text hung below and the timer line
+reserved (mark box measured identical in all three text states), a ghost picture + teal halo,
+dissolve-in-place choreography; re-verified — lint 0, 13 migrations up to date, env-free cold build
+exit 0 at **50 ƒ Dynamic** / 0 warnings, all four `jigsaw-*` keyframes emitted, `next start` smoke
+green. **Next:** Naveen's commit (gitleaks hook; leave the untracked
+launch-video / migrate-on-start files out) + authed real-browser acceptance, then resume
+**migrate-on-start** from the stash.
 
-**Suite 2026-09-11 (sixth pass, re-derived from source):** lint clean · `prisma validate` valid +
-**13 migrations, up to date** · env-free cold build → exit 0, no `Environments:` line, **50 ƒ
-Dynamic**, 0 static API routes, **0 warnings** · **pure fixtures 41/41** · **live smoke 17/17** ·
-**22-request route audit: exactly one `route.*` line per request, no failing request logging
-`route.ok`** · **0 `render.error`** across six page views · Neon left at **0 `ErrorLog` rows**.
-Five checks first showed red and were **harness quoting bugs, not product failures** — re-run
-correctly, all pass.
+**Implemented:** `src/components/ui/brand.jsx` (`BrandMark`, `Wordmark`, `BrandTagline`,
+`BRAND_TAGLINE`) · Instrument Serif → `--font-tagline` · sidebar, login card, four mobile top bars,
+share header, welcome hero · bare mark on the ink sidebar · adaptive `src/app/icon.svg` favicon (replaces the deleted `icon.png`) + light-tone `favicon.ico` Safari fallback · `public/app-icon.png` keeps the tile. · **`BrandLoader`** — the jigsaw assembling itself — in the `PageLoader` veil (all 5 call sites) + the AI digest wait; button spinners stay rings.
 
-⚠️ **Correction — "0 Node-API warnings" below was false in all three earlier passes.** The build
-emitted **four** Edge-runtime warnings from `instrumentation.js` from this feature's landing until
-2026-09-09 (the spec's own as-built note 4 recorded them, contradicting its verification blocks).
-Fixed by moving all Node-only instrumentation behind `src/instrumentation-node.js`; true as of the
-2026-09-09 run. See as-built note 11.
-
-**Suite 2026-09-09 (fourth pass, after the instrumentation split):** lint clean · `prisma validate`
-valid + **13 migrations, up to date** · env-free cold build (`.env` **and** `.env.production` moved
-aside, absence asserted mid-build) → exit 0, no `Environments:` line, **50 ƒ Dynamic**, 0 static API
-routes, **0 Node-API warnings and 0 warning blocks of any kind — genuinely, for the first time** ·
-**boot instrumentation 3/3** against a real `next start` (`app.boot` + both probes still fire, so
-the Edge/Node split did not silence what it refactored) · **API error-contract smoke 11/11** ·
-**pre-auth debug gate 11/11** under `DEBUG_ERRORS=1` (anonymous callers get no `debug`, no stack, no
-filesystem path — incl. a real `JIRA_AUTH` failure) · **ErrorLog writer state machine 27/27** pure ·
-**redaction 27/27** pure + **4/4 live** (secrets scrubbed out of upstream `error.message`/`.cause`
-free text; Jira emails no longer logged in plaintext).
-
-**Final suite 2026-09-07 (re-derived, run after both fixes):** lint clean · **13 migrations** ·
-env-free cold build → exit 0, **50 ƒ Dynamic**, 0 static API routes, 0 Node-API warnings · **pure
-fixtures 164/164** · **login taxonomy 19/19** · **API smoke 55/55** · **headless browser 11/11** ·
-Neon left at 0 fixture rows and 0 ErrorLog rows.
-
-**Verified 2026-09-04:** `yarn lint` clean · **pure fixtures 107/107** · **login taxonomy 15/15**
-against a real `next start` server (one broken setting per case) · **API smoke 52/52** on Neon
-(`main` 45 · `debugflag` 1 · `forced500` 6) · **headless browser 11/11** · `prisma validate` +
-`prisma migrate status` **13 migrations, up to date** · cold `rm -rf .next` build with `.env` **and**
-`.env.production` moved aside → exit 0, **no `Environments:` line**, **50 ƒ Dynamic**, **0 Node-API
-warnings** · fixtures torn down to 0 rows.
-
-**Re-verified 2026-09-07 against an unchanged tree**, with the suite **re-derived from the source
-rather than replayed** (the first pass's harness had been deleted): lint clean · `prisma validate` +
-**13 migrations** · env-free cold build → exit 0, no `Environments:` line, **50 ƒ Dynamic**, **0
-static API routes**, 0 Node-API warnings · **pure fixtures 134/134** (27 checks the first pass
-lacked, incl. every class's *readable* name — the minification trap) · **login taxonomy 15/15** ·
-**API smoke 51/51** · **headless browser 11/11** · Neon left at **0 fixture rows, 0 ErrorLog rows**.
-
-**Post-review fix 2026-09-07 (commit pending, on `error-handling` after `a79db75`).** PR review
-(`orbit-central[bot]`) correctly found that `DEBUG_ERRORS=1` bypassed the admin gate on the
-**pre-auth** login surface: that route never resolves a user, so the flag alone handed anonymous
-callers the `debug` stack — contradicting the feature's own "never a stack pre-auth" rule.
-`shouldExposeDebug()` now requires `context.userId` for the env-var branch. Reproduced before the
-fix and re-checked after (**6/6**: anonymous gets no debug, authenticated non-admin still does);
-lint clean, build green at **50 ƒ Dynamic**. Docs realigned (the rule was written as "everyone" in
-four places). ⚠️ The review thread was marked **resolved without the code changing** — the finding
-would otherwise have been lost.
-
-**Second post-review fix 2026-09-07.** The same review round flagged that the `ErrorLog` writer's
-"stop trying" latch treated `P1001`/`P1002` as permanent: a 30-second network partition silenced
-error recording for the container's whole lifetime. Also found while fixing it — an *unknown* write
-failure retried on every 5xx, the exact storm the old comment claimed to prevent. Both now go
-through a pure state machine (`applyWriteFailure` / `isWriterMuted`): schema codes (`P2021`/`P2022`)
-latch until the next deploy, everything else takes a 60s cooldown and resumes. Verified **41/41**
-pure + **7/7** live against Neon (a real rejected insert mutes rather than latches, and the same
-process resumes writing), plus route→ErrorLog end-to-end; lint clean, build green at 50 ƒ Dynamic.
-
-The load-bearing claim, reproduced end to end: each of the five login failures now answers with its
-**own** code — `CONFIG_MISSING` (naming the variable) · `JIRA_UNREACHABLE` (naming `ENOTFOUND`) ·
-`JIRA_AUTH` · `DB_UNAVAILABLE` · `DB_MIGRATION_MISSING` — every one carrying a `requestId` that also
-appears on the `x-request-id` header, in the log line, and in Admin → Recent errors.
-
-**Implemented:** `lib/errors.js` (one `AppError` taxonomy, re-exported from every old module) ·
-`lib/log.js` (AsyncLocalStorage context, JSON lines, recursive redaction, `cause`-chain
-serialization) · `lib/error-log.js` · `lib/sync/warnings.mjs` · `withRoute` + the envelope in
-`route-helpers.js` · Jira timeouts/`classifyFetchFailure`/`errorMessages` capture ·
-`instrumentation.js` + `instrumentation-node.js` · `error.jsx`/`global-error.jsx` · `api/diagnostics` · `ErrorLog` (migration 13)
-+ Admin → Recent errors · `CODE · requestId` on the login card and alert dialog with Copy diagnostics.
-
-## Goals
-
-- **The response is the diagnostic.** `{ error, code, requestId, details, debug? }` — `error` keeps
-  its exact prior meaning, so no existing client changed.
-- **One taxonomy, one mapping.** Every typed error carries its own `code`/`status`; routes stopped
-  hand-rolling `instanceof` ladders that only stripped the new fields.
-- **Name the cause, not the symptom.** Jira's own `errorMessages`, the offending JQL, the failing
-  track, the missing env var, the unapplied migration.
+**Verified:** lint clean · 13 migrations · env-free cold build → exit 0, **50 ƒ Dynamic**, 0 warnings
+· headless visual pass (login, board desktop + mobile, roll-up mobile; Tekion + Modern) · icons
+served.
 
 ## Notes
 
-- **§12 metric core untouched** — additive everywhere.
-- **Two invariants moved and are declared:** **49 → 50 ƒ Dynamic** (`/api/diagnostics`) and **12 → 13
-  migrations** (`add_error_log`). The 2026-09-09 instrumentation split moved **neither** — it is a
-  bundler-boundary refactor with no route, schema, or behavior change (boot hooks re-proved firing).
-- **`status` is always OUR HTTP status.** An upstream's own status goes to `details.jiraStatus` /
-  `details.providerStatus` — echoing Jira's 429 would tell the browser to retry our route.
-- **The ErrorLog writer must survive its own table being missing** (migrations are a separate deploy
-  step): it falls back to `console.error` and disables itself, never recursing.
+- **§12 metric core untouched**; no schema or route change — both invariants hold.
+- The mark's colours are fixed; only "Board" follows the theme (`primary`, or `on-ink-accent` on ink).
+- Out of scope: export PDF footers/metadata, error pages.
 
 ## Carry-forward — critical for any new feature
 

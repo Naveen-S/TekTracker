@@ -11,10 +11,10 @@
  * Collapse ↔ icon-rail state is a third ephemeral localStorage pref (§17).
  */
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Bug, Layers, LayoutGrid, PanelLeft, PanelLeftClose, Settings, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BrandMark, Wordmark } from "./brand";
 import { NavLink } from "./nav-link";
 import { useLocalPref } from "@/lib/use-local-pref";
 
@@ -61,15 +61,8 @@ export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess }) {
           collapsed && "justify-center px-0",
         )}
       >
-        <Image
-          src="/app-icon.png"
-          alt=""
-          width={32}
-          height={32}
-          priority
-          className="size-8 shrink-0 rounded-lg"
-        />
-        {!collapsed && <span className="font-display text-sm font-bold whitespace-nowrap">StoryBoard</span>}
+        <BrandMark className="size-8" />
+        {!collapsed && <Wordmark onInk className="text-sm whitespace-nowrap" />}
       </Link>
 
       <nav className="mt-2 flex flex-col gap-1 px-2.5">
