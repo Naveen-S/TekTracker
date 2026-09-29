@@ -6,6 +6,7 @@
  * server-rendered and read-only.
  */
 import Image from "next/image";
+import { Wordmark } from "@/components/ui/brand";
 import { useTransition } from "react";
 import { NavLink } from "@/components/ui/nav-link";
 import { useRouter } from "next/navigation";
@@ -42,7 +43,7 @@ export function LeaderboardTopBar({ user, sprints, selectedSprint, view, hasBugR
         <Image src="/tekion-logo.svg" alt="Tekion" width={92} height={22} priority />
         <span className="hidden h-5.5 w-px bg-border sm:block" aria-hidden="true" />
         <div className="hidden leading-tight sm:block">
-          <p className="font-display text-sm font-bold">StoryBoard</p>
+          <Wordmark className="block text-sm" />
           <p className="text-[11px] text-muted-foreground">Leaderboard</p>
         </div>
       </div>

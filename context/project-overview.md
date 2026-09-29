@@ -6,7 +6,7 @@
 > **[BUILT]**, **[PARTIAL]**, **[PLANNED]**, or **[GAP]** so the as-built state is never confused
 > with the target state.
 >
-> Last reviewed: 2026-09-09 · Owner: Naveen · Audience: engineers + Claude Code.
+> Last reviewed: 2026-09-29 · Owner: Naveen · Audience: engineers + Claude Code.
 >
 > **Rename note (2026-07-31):** the product was renamed to **StoryBoard** (was "Sprint Tracker",
 > earlier codename "Tek Tracker" / "TekTracker"). The rename is display/branding only — no schema,
@@ -36,6 +36,9 @@ without hunting through multiple Jira filters. StoryBoard sits *on top of* Jira 
 roll-ups that leadership can actually read.
 
 It is an **internal engineering tool at Tekion Corp.**
+
+**Tagline (2026-09-27):** *"Every piece. One picture."* — each scrum team is a piece; StoryBoard is
+the one picture leadership reads. Brand mark = the Concept-A "Jigsaw" (brand-logo-tagline.md).
 
 ---
 
@@ -140,6 +143,7 @@ Key relationships:
 | Default scrum team & release (per-user board default) | **[BUILT]** | Each user pins a default team + release (`User.defaultTeamId`/`defaultSprintId`), resolved server-side in `getDashboardData`/`getSprintSelection`; set via a **star** in the top bar (`PATCH /api/me`). Board-only, additive. See context/features/default-team-release.md. |
 | Program grouping + Program roll-up | **[BUILT]** | First-class `Program` groups scrum teams (`Team.programId`, SetNull); admins CRUD programs + assign teams (Programs admin section + team-dialog picker). Leadership (`PROGRAM_ROLES` + admin) scope `/rollup` to a program via a picker → aggregate across **all** its teams; reuses the entire roll-up stack (only the team-set source changes). See context/features/program-rollup.md. |
 | Scrum-team member roster + auto "Needs attention" track | **[BUILT]** | Admin-entered per-team `Team.memberEmails String[]` (Jira assignee identities, distinct from RBAC `TeamMembership`) power an always-on `WorkflowType.NEEDS_ATTENTION` board track auto-generated/refreshed inside `syncTeamSprint` from `assignee in (roster) AND ("sub-component[dropdown]" IS EMPTY OR fixVersion IS EMPTY)` — the team's own items missing a sub-component/fix version that every sub-component-scoped filter misses. Partitioned out of the delivery matrix into its own panel; excluded from all §12 metrics (one additive no-op guard). See context/features/needs-attention-roster.md. |
+| Brand: Jigsaw logo + tagline | **[BUILT]** | Concept-A "Jigsaw" mark (inline SVG, `components/ui/brand.jsx`) replaces the placeholder "T" — bare on the ink sidebar, tiled only for the unreferenced 256 px app icon — in the sidebar, login card, mobile top bars, share header and welcome hero; two-tone wordmark ("Board" in the theme primary / on-ink accent) + the tagline *"Every piece. One picture."* in Instrument Serif italic. favicon = an adaptive `icon.svg` (ink piece flips white under `prefers-color-scheme: dark`; replaces `icon.png`) + a light-tone `favicon.ico` fallback for Safari; `public/app-icon.png` keeps the tiled app icon. A **`BrandLoader`** (the mark assembling itself over a faint ghost of the finished picture; white piece lands last, a teal halo blooms on the veil) is the indicator for the long-wait tier — the `PageLoader` veil + the AI digest wait; button spinners stay rings. **[Amended 2026-09-29]** the veil centres only the mark and hangs its label + elapsed-time line below it, so text appearing mid-wait never moves it. Presentation-only. See context/features/brand-logo-tagline.md. |
 
 ---
 
@@ -1269,6 +1273,9 @@ UI/UX *direction* is the spec above; this table is the *history* of what shipped
 | 2026-08-28 | Editable sprint filters (sidebar pencil → prefilled dialog + accent swatches) | editable-filters.md |
 | 2026-08-29 | Export type-weight pass — black section titles, heavier report title, wider legend gap (all 3 exports) | rollup-export.md |
 | 2026-09-04 | Error reference (`CODE · requestId`) on the login card + alert dialog w/ Copy diagnostics; `warn` dialog tone for sync warnings; Admin → Recent errors; app error boundaries | observability-and-errors.md |
+| 2026-09-27 | Brand refresh — Jigsaw mark, two-tone StoryBoard wordmark, serif tagline "Every piece. One picture.", new favicon/app icon | brand-logo-tagline.md |
+| 2026-09-27 | Jigsaw brand loader in the long-wait veil + AI digest (pieces fly in, white piece last; reduced motion breathes) | brand-logo-tagline.md |
+| 2026-09-29 | Brand loader rework — ghost picture + teal halo, pieces dissolve in place; veil text no longer shifts the mark | brand-logo-tagline.md |
 
 ---
 

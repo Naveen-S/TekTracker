@@ -8,6 +8,7 @@
  * Frozen shares pass `asOf = capturedAt` down so health/velocity can't drift (decision 6).
  */
 import Image from "next/image";
+import { BrandTagline, Wordmark } from "@/components/ui/brand";
 import { getShareData } from "@/lib/dashboard-data";
 import { formatSprintWindow } from "@/lib/metrics.mjs";
 import { Badge } from "@/components/ui/badge";
@@ -50,7 +51,8 @@ function ShareChrome({ children }) {
         <div className="flex items-center gap-3">
           <Image src="/tekion-logo.svg" alt="Tekion" width={92} height={22} priority />
           <div className="hidden border-l border-border-subtle pl-3 sm:block">
-            <p className="font-display text-sm leading-tight font-extrabold">StoryBoard</p>
+            <Wordmark className="block text-sm leading-tight font-extrabold" />
+            <BrandTagline className="block text-[13px] leading-tight text-muted-foreground" />
           </div>
         </div>
         <Badge tone="neutral">Shared view · read-only</Badge>

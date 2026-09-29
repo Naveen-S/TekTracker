@@ -2,6 +2,7 @@
 
 import { useState, useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
+import { BrandLoader } from "./brand";
 
 /**
  * Async-feedback vocabulary, tiered by how long the work actually takes. One indicator for every
@@ -14,6 +15,10 @@ import { cn } from "@/lib/utils";
  *   > 2s      `PageLoader` — the bar PLUS a blocking scrim that names the operation and starts
  *             reporting elapsed time, so a long Jira round-trip explains itself instead of
  *             looking hung.
+ *
+ * The veil's indicator is the brand loader — the Jigsaw mark assembling itself (brand-logo-tagline.md).
+ * Button waits keep the ring `Spinner` on purpose: at 14px the knobs are sub-pixel and an assembly
+ * loop inside a button reads as noise.
  *
  * The 260ms threshold is expressed in CSS (`--animate-veil`, delayed + `both` fill), not a React
  * timer: the element mounts and blocks input immediately — correctness — while its paint is
@@ -92,19 +97,29 @@ function Veil({ label }) {
       <div
         role="status"
         aria-live="polite"
-        className="fixed inset-0 z-60 flex animate-veil items-center justify-center bg-ink/45 backdrop-blur-[3px] backdrop-saturate-125"
+        className="fixed inset-0 z-60 flex animate-veil items-center justify-center bg-ink/60 backdrop-blur-[4px] backdrop-saturate-125"
       >
-        <div className="flex animate-veil-panel items-center gap-3 rounded-xl bg-ink px-5 py-3.5 shadow-xl ring-1 ring-white/10">
-          <Spinner className="size-4 text-on-ink-accent" />
-          <span className="flex flex-col gap-0.5">
-            <span className="text-sm font-semibold text-white">{label}</span>
-            {/* Speaks only once the wait is long enough to feel uncertain — before that,
-                a counter would just draw attention to a wait nobody had noticed. */}
-            {seconds >= 3 && (
-              <span className="text-[11px] font-medium tabular-nums text-white/55">
-                {seconds}s{seconds >= 15 ? " · large syncs can take a minute" : ""}
-              </span>
-            )}
+        {/* No card (Naveen, 2026-09-27): the jigsaw and its words float on the scrim. The scrim is
+            darker than the old 45% so the white label holds contrast over light pages without a
+            panel behind it; the soft text shadow covers busy blurred content.
+            Only the jigsaw takes part in centring — the words hang below it absolutely — so the
+            elapsed line appearing, the hint lengthening it, or the label changing mid-wait
+            ("Syncing Jira…" → "Updating…") can never move the mark. */}
+        <div className="relative animate-veil-panel">
+          <BrandLoader glow className="size-18" />
+          <span className="absolute top-full left-1/2 mt-6 flex w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-col items-center gap-1.5 text-center text-shadow-sm text-shadow-black/40">
+            <span className="text-base font-semibold tracking-tight text-white">{label}</span>
+            {/* Speaks only once the wait is long enough to feel uncertain — before that, a counter
+                would just draw attention to a wait nobody had noticed. Its line is always
+                reserved and fades in, rather than popping in and pushing anything. */}
+            <span
+              className={cn(
+                "h-4 whitespace-nowrap text-xs font-medium tabular-nums text-white/70 transition-opacity duration-500",
+                seconds >= 3 ? "opacity-100" : "opacity-0",
+              )}
+            >
+              {seconds >= 3 && `${seconds}s${seconds >= 15 ? " · large syncs can take a minute" : ""}`}
+            </span>
           </span>
         </div>
       </div>

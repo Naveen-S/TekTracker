@@ -8,6 +8,7 @@ import {
   HeroShell,
   HeroTitle,
 } from "@/components/ui/hero-shell";
+import { BrandTagline, Wordmark } from "@/components/ui/brand";
 import { ProgramChip } from "@/components/ui/program-chip";
 import { formatDate, formatSprintWindow } from "@/lib/metrics.mjs";
 import { SprintPhaseBar } from "./sprint-phase-bar";
@@ -37,7 +38,10 @@ export function Hero({
           {team.name} · {sprint.name} · {formatDate(sprint.developmentStart)} –{" "}
           {formatDate(sprint.developmentEnd)}
         </span>
-        <HeroTitle className="mt-0">StoryBoard</HeroTitle>
+        <HeroTitle className="mt-0">
+          <Wordmark onInk className="font-extrabold" />
+        </HeroTitle>
+        <BrandTagline className="-mt-2 text-xl text-white/80" />
         <HeroCopy className="max-w-md">
           Track delivery progress across multiple Jira filters with real-time visibility
         </HeroCopy>

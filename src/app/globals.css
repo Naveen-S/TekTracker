@@ -292,6 +292,8 @@
   --font-display: var(--font-manrope), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", monospace;
+  /* Brand tagline only (brand-logo-tagline.md) — never body copy. */
+  --font-tagline: var(--font-instrument-serif), Georgia, serif;
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -458,6 +460,101 @@
       opacity: 1;
       transform: translateY(0) scale(1);
     }
+  }
+}
+
+/* Brand loader (brand-logo-tagline.md, "Loader"). A static ghost of the finished picture sits
+   behind (BrandLoader), so the loop never shows an empty frame. One 2.6s cycle per piece,
+   staggered 0.15s by arrival slot --i so the white piece lands last:
+     0–20%   spring in from its own corner (--dx/--dy) with a small overshoot
+     20–68%  hold — all four are joined for ~0.8s, the "one picture"
+     68–82%  dissolve back into the ghost in place, in arrival order (no flying apart)
+     82–100% rest, so the last piece is gone just before the first returns — a clean seam.
+   The first cycle waits out the veil's 260ms invisible delay (`--animate-veil`). */
+.jigsaw-piece {
+  transform-box: fill-box;
+  transform-origin: center;
+  /* `backwards`: a piece still inside its delay shows the 0% frame (away, invisible), not its
+     resting place — otherwise the first frame is three pieces already assembled. */
+  animation: jigsaw-assemble 2.6s linear infinite backwards;
+  animation-delay: calc(0.26s + var(--i) * 0.15s);
+}
+@keyframes jigsaw-assemble {
+  0% {
+    transform: translate(var(--dx), var(--dy)) scale(0.86);
+    opacity: 0;
+    animation-timing-function: cubic-bezier(0.34, 1.45, 0.64, 1);
+  }
+  8% {
+    opacity: 1;
+  }
+  20%,
+  68% {
+    transform: none;
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.4, 0, 1, 1);
+  }
+  82%,
+  100% {
+    transform: scale(0.94);
+    opacity: 0;
+  }
+}
+/* The authored moment: the white piece (slot 3) lands at 0.45s + 20% of 2.6s ≈ 0.97s ≈ 37% of
+   the cycle. The picture gives one small settle and the halo blooms behind it; both share the
+   pieces' period and start, so they stay locked to that landing on every loop. */
+.jigsaw-loader {
+  animation: jigsaw-click 2.6s linear 0.26s infinite;
+}
+.jigsaw-lift {
+  filter: drop-shadow(0 6px 14px rgb(0 0 0 / 0.35));
+}
+@keyframes jigsaw-click {
+  0%,
+  36% {
+    transform: none;
+  }
+  39% {
+    transform: scale(1.04);
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  50%,
+  100% {
+    transform: none;
+  }
+}
+.jigsaw-halo {
+  background: radial-gradient(closest-side, rgb(0 191 165 / 0.75), rgb(0 191 165 / 0.22) 50%, transparent);
+  opacity: 0;
+  animation: jigsaw-halo 2.6s linear 0.26s infinite backwards;
+}
+@keyframes jigsaw-halo {
+  0%,
+  34% {
+    opacity: 0;
+    transform: scale(0.7);
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  44%,
+  66% {
+    opacity: 1;
+    transform: scale(1);
+    animation-timing-function: cubic-bezier(0.4, 0, 1, 1);
+  }
+  82%,
+  100% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+}
+
+@keyframes jigsaw-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
   }
 }
 
@@ -643,6 +740,14 @@
   .dialog-overlay {
     animation-name: veil-in !important;
     animation-duration: 0.15s !important;
+  }
+  /* The loader holds the finished picture and breathes instead of flying apart. */
+  .jigsaw-piece,
+  .jigsaw-halo {
+    animation: none !important;
+  }
+  .jigsaw-loader {
+    animation: jigsaw-breathe 2.4s ease-in-out infinite;
   }
 }
 

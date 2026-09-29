@@ -1,4 +1,4 @@
-import { Inter, JetBrains_Mono, Manrope } from "next/font/google";
+import { Instrument_Serif, Inter, JetBrains_Mono, Manrope } from "next/font/google";
 import "./globals.css";
 
 // Legacy type stack (src/styles.css :69-80): Manrope for headings/display numerals,
@@ -24,10 +24,18 @@ const jetbrainsMono = JetBrains_Mono({
   weight: ["400", "500", "600"],
 });
 
+// Brand tagline face (brand-logo-tagline.md): italic-only, used for "Every piece. One picture."
+const instrumentSerif = Instrument_Serif({
+  variable: "--font-instrument-serif",
+  subsets: ["latin"],
+  weight: "400",
+  style: ["italic"],
+});
+
 export const metadata = {
   title: "StoryBoard",
   description:
-    "One fast, comprehensive view of an entire sprint — from roadmap to backlog. Engineering internal tool @ Tekion Corp.",
+    "Every piece. One picture. One fast, comprehensive view of an entire sprint — from roadmap to backlog. Engineering internal tool @ Tekion Corp.",
 };
 
 // No-FOUC theme boot (modern-theme.md): apply the saved theme class to <html>
@@ -41,7 +49,7 @@ export default function RootLayout({ children }) {
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${manrope.variable} ${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${manrope.variable} ${inter.variable} ${jetbrainsMono.variable} ${instrumentSerif.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
