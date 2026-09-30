@@ -27,10 +27,15 @@ Nothing is marked Done until every step below has actually run. In order:
      dense (files, verification results, as-built deviations, `**Done.**`, `**Next:**`). Match the
      voice of the existing entries exactly.
 
-5. **Next step** — read the Production Migration Plan and report the next in-order step (and any
+5. **Office DB bundle** — if this feature added any directory under `prisma/migrations/`, run the
+   `dba-migration-bundle` skill: generate + rehearse the incremental psql bundle and hand it to
+   Naveen with the rule "apply on the office DB before the image rollout". Not optional — the
+   container cannot apply DDL itself there.
+
+6. **Next step** — read the Production Migration Plan and report the next in-order step (and any
    ratified alternative, e.g. "importer (seed.md, step 9) or Domain APIs (step 4)").
 
-6. **Commit — only with explicit permission** (ai-interaction.md), and only after the build passes:
+7. **Commit — only with explicit permission** (ai-interaction.md), and only after the build passes:
    - Conventional message: `feat:` / `fix:` / `chore:` …, one feature per commit.
    - **House rule overrides defaults: NO "Generated with Claude" and NO `Co-Authored-By: Claude`
      lines in commit messages.**

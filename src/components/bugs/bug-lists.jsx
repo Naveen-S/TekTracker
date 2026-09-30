@@ -2,6 +2,7 @@ import { ExternalLink, Link2, ListOrdered, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Panel } from "@/components/bugs/panel";
+import { AnalyseButton } from "@/components/analysis/analyse-button";
 
 /**
  * The list panels (gm-bug-report.md (g)8–10): SLA breach call-outs, the ticket table, and the
@@ -75,8 +76,15 @@ export function BugBreachPanel({ breached, jiraBaseUrl }) {
             <span className="relative text-[11px] font-bold whitespace-nowrap text-danger-strong tabular-nums">
               +{issue.daysOverSla}d
             </span>
-            <span className="relative">
+            <span className="relative flex items-center gap-0.5">
               <IssueKey jiraKey={issue.jiraKey} jiraBaseUrl={jiraBaseUrl} />
+              <AnalyseButton
+                jiraKey={issue.jiraKey}
+                source="BUG"
+                title={issue.title}
+                jiraBaseUrl={jiraBaseUrl}
+                className="size-5"
+              />
             </span>
             <span className="relative truncate text-xs" title={issue.title}>
               {issue.title}
@@ -136,7 +144,16 @@ export function BugTicketTable({ issues, jiraBaseUrl, asOf }) {
                   className="border-b transition-colors last:border-0 hover:bg-muted/40"
                 >
                   <td className="py-1.5 pr-3">
-                    <IssueKey jiraKey={issue.jiraKey} jiraBaseUrl={jiraBaseUrl} />
+                    <span className="flex items-center gap-0.5">
+                      <IssueKey jiraKey={issue.jiraKey} jiraBaseUrl={jiraBaseUrl} />
+                      <AnalyseButton
+                        jiraKey={issue.jiraKey}
+                        source="BUG"
+                        title={issue.title}
+                        jiraBaseUrl={jiraBaseUrl}
+                        className="size-5"
+                      />
+                    </span>
                   </td>
                   <td className="max-w-100 truncate py-1.5 pr-3" title={issue.title}>
                     {issue.title}

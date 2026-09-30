@@ -144,6 +144,7 @@ Key relationships:
 | Program grouping + Program roll-up | **[BUILT]** | First-class `Program` groups scrum teams (`Team.programId`, SetNull); admins CRUD programs + assign teams (Programs admin section + team-dialog picker). Leadership (`PROGRAM_ROLES` + admin) scope `/rollup` to a program via a picker → aggregate across **all** its teams; reuses the entire roll-up stack (only the team-set source changes). See context/features/program-rollup.md. |
 | Scrum-team member roster + auto "Needs attention" track | **[BUILT]** | Admin-entered per-team `Team.memberEmails String[]` (Jira assignee identities, distinct from RBAC `TeamMembership`) power an always-on `WorkflowType.NEEDS_ATTENTION` board track auto-generated/refreshed inside `syncTeamSprint` from `assignee in (roster) AND ("sub-component[dropdown]" IS EMPTY OR fixVersion IS EMPTY)` — the team's own items missing a sub-component/fix version that every sub-component-scoped filter misses. Partitioned out of the delivery matrix into its own panel; excluded from all §12 metrics (one additive no-op guard). See context/features/needs-attention-roster.md. |
 | Brand: Jigsaw logo + tagline | **[BUILT]** | Concept-A "Jigsaw" mark (inline SVG, `components/ui/brand.jsx`) replaces the placeholder "T" — bare on the ink sidebar, tiled only for the unreferenced 256 px app icon — in the sidebar, login card, mobile top bars, share header and welcome hero; two-tone wordmark ("Board" in the theme primary / on-ink accent) + the tagline *"Every piece. One picture."* in Instrument Serif italic. favicon = an adaptive `icon.svg` (ink piece flips white under `prefers-color-scheme: dark`; replaces `icon.png`) + a light-tone `favicon.ico` fallback for Safari; `public/app-icon.png` keeps the tiled app icon. A **`BrandLoader`** (the mark assembling itself over a faint ghost of the finished picture; white piece lands last, a teal halo blooms on the veil) is the indicator for the long-wait tier — the `PageLoader` veil + the AI digest wait; button spinners stay rings. **[Amended 2026-09-29]** the veil centres only the mark and hangs its label + elapsed-time line below it, so text appearing mid-wait never moves it. Presentation-only. See context/features/brand-logo-tagline.md. |
+| Claude Connector — per-ticket "Analyse with Claude" | **[BUILT]** | A sparkle on every `/` board track row (Roadmap, Tech Debt incl. Vulnerability, External, Internal), the Needs-attention panel, `/bugs` ticket rows and `/rollup` risks opens a per-ticket analysis: root cause (or implementation areas), similar past tickets, triage & sizing — plus a security section for Vulnerability tickets and a missing sub-component/fix-version suggestion for Needs-attention ones. It runs on the **user's own Claude Code** (company subscription + signed-in ORBIT DeepContext) through a local **StoryBoard Connector** (`public/storyboard-connector.mjs`, paired from `/settings`) that long-polls StoryBoard, runs `claude -p` headless with read-only DeepContext tools only, and posts a zod-gated result. Saved latest-only for everyone who can see the ticket; admin sets allowed models, effort, per-run budget and timeout. Separate from the server-side AI Digest. See context/features/claude-connector-analysis.md. |
 
 ---
 
@@ -339,6 +340,9 @@ model User {
   createdSprints Sprint[]         @relation("SprintCreatedBy")
   progressEdits  IssueProgress[]  @relation("ProgressUpdatedBy")
   sharedViews    SharedView[]
+  connectorToken ConnectorToken?
+  analysisJobs   AnalysisJob[]
+  analyses       IssueAnalysis[]
 }
 
 /// Personal Jira access. Token is ENCRYPTED at rest (app-layer AES-GCM, key from KMS/secret).
@@ -890,6 +894,87 @@ model BugReportSnapshot {
   @@unique([reportId, capturedOn, rowKey, scopeKey, bandKey])
   @@index([reportId, capturedOn])
 }
+
+// ─────────────────────────────────────────────────────────────
+// Claude Connector — per-ticket AI analysis (claude-connector-analysis.md, 2026-09-29)
+// ─────────────────────────────────────────────────────────────
+
+/// A user's paired local StoryBoard Connector. The connector runs the user's OWN Claude Code
+/// (company subscription + Orbit DeepContext sign-in) on their machine and dials out to StoryBoard
+/// with this token as a Bearer credential. Only the sha256 hash is stored — the plaintext is shown
+/// once at generation. One pairing per user: regenerating replaces the row, revoking deletes it.
+/// The token authorizes the /api/connector/* routes ONLY, never the session-authenticated API.
+model ConnectorToken {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash        String    @unique                   // sha256(plaintext), hex
+  lastSeenAt       DateTime?                           // bumped on every poll; "online" = recent
+  connectorVersion String?
+  claudeVersion    String?
+  createdAt        DateTime  @default(now())
+}
+
+enum AnalysisJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+/// Transient queue of analysis requests. A job is only ever claimed by the REQUESTER's own
+/// connector (it spends their subscription). `context` is the server-built ticket facts snapshot
+/// sent to Claude — never client-supplied. Pruned after 7 days by the daily cron.
+model AnalysisJob {
+  id            String            @id @default(cuid())
+  jiraKey       String
+  source        String                                 // "BUG" (/bugs cache) | "SPRINT" (board Issue cache)
+  kind          String                                 // "BUG" | "DELIVERY" | "VULNERABILITY" | "HYGIENE"
+  requestedById String
+  requestedBy   User              @relation(fields: [requestedById], references: [id], onDelete: Cascade)
+  status        AnalysisJobStatus @default(QUEUED)
+  model         String
+  effort        String
+  context       Json
+  progressNote  String?
+  error         String?
+  claimedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime          @default(now())
+
+  @@index([requestedById, status])
+  @@index([jiraKey])
+}
+
+/// The latest saved analysis of one Jira ticket — LATEST ONLY (a re-run replaces it), keyed by
+/// jiraKey alone because a ticket is the same ticket across bug reports and teams. Visible to anyone
+/// who can see the ticket. Display-only annotation: never a §12 metric input.
+model IssueAnalysis {
+  id           String   @id @default(cuid())
+  jiraKey      String   @unique
+  source       String
+  kind         String
+  result       Json                                    // zod-validated + sanitized analysisResultSchema
+  model        String
+  costUsd      Float?
+  durationMs   Int?
+  analyzedById String?
+  analyzedBy   User?    @relation(fields: [analyzedById], references: [id], onDelete: SetNull)
+  analyzedAt   DateTime @default(now())
+}
+
+/// Admin configuration for Claude analysis — a singleton row (id = "default"). Read with code
+/// defaults when the row is absent, so an unseeded database still works (disabled).
+model ClaudeAnalysisSettings {
+  id             String   @id @default("default")
+  enabled        Boolean  @default(false)
+  allowedModels  String[]
+  defaultModel   String
+  effort         String
+  maxBudgetUsd   Float
+  timeoutMinutes Int
+  updatedAt      DateTime @updatedAt
+}
 ```
 
 ### Entity-relationship diagram
@@ -932,6 +1017,10 @@ erDiagram
     BUG_REPORT ||--o{ BUG_REPORT_SNAPSHOT : "history"
     BUG_REPORT_SCOPE ||--o{ BUG_SLA_TARGET : "SLA days by priority"
     BUG_REPORT_SCOPE ||--o{ BUG_REPORT_ISSUE : "universe of""
+
+    USER ||--o| CONNECTOR_TOKEN : "pairs"
+    USER ||--o{ ANALYSIS_JOB : "requests"
+    USER |o--o{ ISSUE_ANALYSIS : "last analysed"
 
     USER {
         string id PK
@@ -1094,6 +1183,35 @@ erDiagram
         int count
         int breachedCount
     }
+    CONNECTOR_TOKEN {
+        string id PK
+        string userId FK,UK
+        string tokenHash UK "sha256 only"
+        datetime lastSeenAt
+    }
+    ANALYSIS_JOB {
+        string id PK
+        string jiraKey
+        string source "BUG | SPRINT"
+        string kind
+        string requestedById FK
+        AnalysisJobStatus status
+        json context
+    }
+    ISSUE_ANALYSIS {
+        string id PK
+        string jiraKey UK "latest only"
+        string kind
+        json result
+        string analyzedById FK
+    }
+    CLAUDE_ANALYSIS_SETTINGS {
+        string id PK "singleton 'default'"
+        bool enabled
+        string_arr allowedModels
+        float maxBudgetUsd
+        int timeoutMinutes
+    }
     ERROR_LOG {
         string id PK
         string requestId
@@ -1107,6 +1225,10 @@ erDiagram
     }
 ```
 
+> **Note — `ClaudeAnalysisSettings` is a singleton** (admin config, no relations) and
+> **`IssueAnalysis` is keyed by `jiraKey` alone** — joined to `Issue`/`BugReportIssue` by key at read
+> time with no FK, like `Issue ↔ IssueProgress` (claude-connector-analysis.md).
+>
 > **Note — `ErrorLog` has no relationships at all**, which is why it floats free in the diagram
 > above: it records failures *about* entities that may not exist (a deleted team, a user who never
 > signed in, a request that died before auth), and a cascade must never erase incident history.
@@ -1198,6 +1320,15 @@ erDiagram
   `getRollupData` with the team set sourced from `program.teams` instead of the viewer's
   memberships. See context/features/program-rollup.md.
 
+- **The Claude Connector cluster (added 2026-09-29) stores the OUTPUT of analyses run on users'
+  own machines.** `ConnectorToken` is a per-user pairing credential (sha256 only; one per user;
+  authorizes `/api/connector/*` and nothing else). `AnalysisJob` is a transient queue (claimed only
+  by the requester's own connector, pruned after 7 days by the daily cron). `IssueAnalysis` is
+  latest-only product data keyed by `jiraKey` alone — a ticket is the same ticket across bug
+  reports and teams — visible to anyone who can see the ticket, and a display-only annotation that
+  never feeds §12. `ClaudeAnalysisSettings` is the admin singleton (enabled, allowed models, effort,
+  per-run $ budget, timeout). See context/features/claude-connector-analysis.md.
+
 ---
 
 ## 10. Tech stack
@@ -1276,6 +1407,7 @@ UI/UX *direction* is the spec above; this table is the *history* of what shipped
 | 2026-09-27 | Brand refresh — Jigsaw mark, two-tone StoryBoard wordmark, serif tagline "Every piece. One picture.", new favicon/app icon | brand-logo-tagline.md |
 | 2026-09-27 | Jigsaw brand loader in the long-wait veil + AI digest (pieces fly in, white piece last; reduced motion breathes) | brand-logo-tagline.md |
 | 2026-09-29 | Brand loader rework — ghost picture + teal halo, pieces dissolve in place; veil text no longer shifts the mark | brand-logo-tagline.md |
+| 2026-09-29 | "Analyse with Claude" sparkle on ticket rows + analysis dialog; `/settings` Claude Connector card; admin "Claude analysis" section | claude-connector-analysis.md |
 
 ---
 
@@ -1418,6 +1550,13 @@ file store. Token is **plaintext on disk** in `.sessions/`. Acceptable for a loc
    from carrying a connection-string password into stdout or `ErrorLog`. `email` is on the key list
    as PII default-deny; the login routes log a masked `actor` (`n***@tekion.com`) so triage keeps an
    identifier. See context/features/observability-and-errors.md as-built note 12.
+7. **Claude Connector pairing tokens** (added 2026-09-29, claude-connector-analysis.md) — the app's
+   second bearer surface after `CRON_SECRET` and its first per-USER issued credential. `sbc_` + 192
+   random bits, shown once, stored as sha256 only (`ConnectorToken.tokenHash`), one per user,
+   regenerate-replaces / revocable from `/settings`; it authorizes ONLY `/api/connector/*` (claim
+   the holder's own jobs, post events for them) — never the session API. AI keys and the ORBIT Okta
+   tokens never reach StoryBoard: analysis runs on the user's machine, with `--tools ""` (no shell,
+   files or web) and a local allowlist ceiling of read-only ORBIT tools the server cannot widen.
 
 ---
 
@@ -1662,6 +1801,20 @@ All previously open decisions are now resolved:
   invariants moved and are declared: **49 → 50 ƒ Dynamic** (one new route) and **12 → 13 migrations**
   (`add_error_log`). §12 metrics are untouched; `error` keeps its exact meaning so no existing client
   changed. See context/features/observability-and-errors.md.
+
+- **Claude Connector — per-ticket analysis on the user's own Claude Code (ratified 2026-09-29).**
+  Naveen wanted analysis *inside* StoryBoard but powered by the company Claude Code subscription so
+  ORBIT DeepContext comes along automatically. Because DeepContext only accepts a per-user Okta
+  sign-in and a subscription login may not power a server app, the work runs on the user's machine:
+  a local connector **dials out** (long-poll; browser→localhost rejected), claims the requester's
+  own job, runs `claude -p` read-only, and posts the result. 14 AskUserQuestion decisions: saved +
+  team-visible, latest only, per-ticket only in v1 (board-level is v2), buttons on every `/` track
+  row + Needs attention + `/bugs` rows + `/rollup` risks, kind-adapted analysis (bug / delivery /
+  vulnerability / hygiene), access = can-see-the-ticket, script served by StoryBoard (npm package is
+  a TODO), offline ⇒ button disabled, Claude fetches the ticket body itself, read-only tools + $
+  budget + timeout, admin-set model list with a per-run pick. Invariants moved and declared: **50 → 57
+  ƒ Dynamic** and **13 → 14 migrations** (`add_claude_connector`). §12 untouched. See
+  context/features/claude-connector-analysis.md.
 
 ---
 

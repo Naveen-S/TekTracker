@@ -2415,3 +2415,42 @@ context/features/editable-filters.md.
   `/icon.svg` + `/favicon.ico` 200, `/api/auth/me` 401, no `error`-level log lines. Doc-sync: §5
   Brand row describes the ghost + halo and the fixed veil layout; §11 build log gained the
   2026-09-29 loader-rework row. **Done.** **Next:** Naveen's commit + a real-sync eyeball.
+- 2026-09-29 — **Brand refresh committed** (`565f290` "Brand changes", on `feature/brand-jigsaw`,
+  pushed to `tekion`; not yet merged to `main`).
+- 2026-09-29 — **Planning session: Claude Connector** — drafted
+  `context/features/claude-connector-analysis.md` (14 decisions ratified with Naveen via
+  AskUserQuestion). Spike against Claude Code 2.1.284 proved headless `claude -p` loads the Orbit
+  plugin's DeepContext with the existing Okta sign-in, `--json-schema` → `structured_output`,
+  `--max-budget-usd` enforced; context bloat (122 tools, ~$1/trivial call) cut to 38 tools / $0.24 by
+  disabling claude.ai connectors + skills. Branch `feature/claude-connector` cut from
+  `feature/brand-jigsaw` @ `565f290`.
+- 2026-09-29 — **Implemented the Claude Connector** (`context/features/claude-connector-analysis.md`).
+  - **What it does:** a per-ticket "Analyse with Claude" button inside StoryBoard, powered by the
+    user's own Claude Code (company subscription) and their signed-in ORBIT DeepContext. A local
+    connector (`public/storyboard-connector.mjs`) long-polls StoryBoard, runs `claude -p` headless
+    with read-only DeepContext tools only, and posts a zod-gated result. The result is saved,
+    latest-only, for everyone who can see the ticket.
+  - **Schema:** migration `add_claude_connector` (13 → **14**) adds `ConnectorToken`, `AnalysisJob` +
+    `AnalysisJobStatus`, `IssueAnalysis` and `ClaudeAnalysisSettings`, and the seed creates the
+    settings singleton.
+  - **Server:** 6 routes plus the `/settings` page (50 → **57** ƒ Dynamic); `lib/connector/*`, pure
+    `lib/ai/issue-analysis.mjs`, `lib/schemas/analysis.js`, 4 error codes and a cron prune.
+  - **UI:** `AnalyseButton`/dialog/provider on board track rows, Needs attention, risk call-outs
+    (board + roll-up + All-risks dialog) and `/bugs` breach + oldest rows; a Settings card; an admin
+    section; and an open-dialog stack in `ui/dialog.jsx`.
+  - **As-built:**
+    - A 15 s long-poll instead of a 3 s poll, with a 30 s online window.
+    - `sanitizeAnalysis(result, kind)` drops off-kind sections. The first live run filled hygiene on
+      a plain bug.
+    - Vulnerability wins over hygiene.
+    - Page-level `getAnalysisUiState` instead of growing the data loaders.
+  - **Verified:**
+    - lint 0; 14 migrations up to date
+    - cold env-free build exit 0, 57 ƒ Dynamic, 0 warnings
+    - 22 pure fixtures; 38/38 API smoke checks, with teardown leaving 0 rows
+    - `next start` smoke
+    - **real end-to-end**: headless Chrome → Analyse on `/bugs` ENG-205877 → the real connector →
+      Claude Code (sonnet) with DeepContext → a grounded analysis saved in 46 s for $0.35 notional
+  - The dev DB was reset afterwards (feature disabled, 0 rows). Doc-sync covered project-overview §5,
+    §9 + ERD, §11, §13.7 and §16. **Done.**
+  - **Next:** Naveen's commit, then an authed browser pass, then resume migrate-on-start.

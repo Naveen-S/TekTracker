@@ -1,40 +1,40 @@
 # Current Feature
 
-**Brand refresh — Jigsaw logo + "Every piece. One picture."**
-(@context/features/brand-logo-tagline.md) — StoryBoard was renamed on 2026-07-31 but still shipped
-the placeholder teal "T" icon and a one-colour wordmark. Naveen picked from the brand board PDF:
-Concept A (the Jigsaw), the tagline *"Every piece. One picture."*, and the two-tone wordmark with a
-serif tagline. Presentation-only; post-v1, not a master-plan step.
+**Claude Connector — per-ticket "Analyse with Claude"**
+(@context/features/claude-connector-analysis.md) — analyse a single ticket inside StoryBoard using the
+user's own company Claude Code subscription, so ORBIT DeepContext (already signed in via the Orbit
+plugin) comes along automatically. A local **StoryBoard Connector** dials out to StoryBoard, claims
+the user's queued job, runs their `claude -p` headless with read-only DeepContext tools, and streams
+the result back; StoryBoard saves it (latest only) for everyone who can see the ticket. Post-v1, not a
+master-plan step. §12 untouched.
 
 ## Status
 
-**Done 2026-09-29 · verified · uncommitted.** Branch `feature/brand-jigsaw`, cut from `main` @
-`03602d7` (the migrate-on-start work is in Naveen's stash, not on this branch). Final /finish-feature
-pass: lint exit 0 · 13 migrations, up to date · cold env-free build (`.env` + `.env.production` moved
-aside) → exit 0, **50 ƒ Dynamic**, **0 warnings** (log grepped) · `next start` smoke: `/login` carries
-the tagline + exactly two `rel="icon"` links, `/icon.svg` · `/favicon.ico` · `/app-icon.png` 200,
-`/p/health` 200, `/api/auth/me` 401. **Loader reworked the same day** (Naveen: unattractive + jumped
-when the label/seconds appeared): mark-only centring with the text hung below and the timer line
-reserved (mark box measured identical in all three text states), a ghost picture + teal halo,
-dissolve-in-place choreography; re-verified — lint 0, 13 migrations up to date, env-free cold build
-exit 0 at **50 ƒ Dynamic** / 0 warnings, all four `jigsaw-*` keyframes emitted, `next start` smoke
-green. **Next:** Naveen's commit (gitleaks hook; leave the untracked
-launch-video / migrate-on-start files out) + authed real-browser acceptance, then resume
-**migrate-on-start** from the stash.
+**Done 2026-09-29 · verified · uncommitted.** Branch `feature/claude-connector`, cut from
+`feature/brand-jigsaw` @ `565f290`. Rebase it onto `main` once the brand work merges.
 
-**Implemented:** `src/components/ui/brand.jsx` (`BrandMark`, `Wordmark`, `BrandTagline`,
-`BRAND_TAGLINE`) · Instrument Serif → `--font-tagline` · sidebar, login card, four mobile top bars,
-share header, welcome hero · bare mark on the ink sidebar · adaptive `src/app/icon.svg` favicon (replaces the deleted `icon.png`) + light-tone `favicon.ico` Safari fallback · `public/app-icon.png` keeps the tile. · **`BrandLoader`** — the jigsaw assembling itself — in the `PageLoader` veil (all 5 call sites) + the AI digest wait; button spinners stay rings.
+Final verification:
+- `yarn lint` exits 0.
+- `prisma validate` passes; **14 migrations**, up to date.
+- The cold env-free build (scratch copy, zero `.env*`) exits 0 with **57 ƒ Dynamic** and **0 warnings**.
+- **22 pure fixtures** and **38/38 API smoke** checks pass (`next start` + dev Neon). Teardown left 0 rows.
+- The `next start` smoke returns the expected 200/401 on every new surface.
+- **Real end-to-end:** headless Chrome clicked Analyse on `/bugs` ENG-205877. The real connector ran
+  Naveen's Claude Code with DeepContext, and the result was saved in 46 s for $0.35. The dev DB was
+  reset and the feature disabled afterwards.
 
-**Verified:** lint clean · 13 migrations · env-free cold build → exit 0, **50 ƒ Dynamic**, 0 warnings
-· headless visual pass (login, board desktop + mobile, roll-up mobile; Tekion + Modern) · icons
-served.
+**Next:** Naveen's commit (gitleaks hook). Leave out the untracked launch-video, migrate-on-start,
+`docker-entrypoint.sh`, `scripts/` and `Claude outputs/`. Then:
+1. An authed real-browser pass: enable the feature in `/admin`, pair from `/settings`, analyse a
+   Needs-attention ticket and a Vulnerability ticket.
+2. Resume **migrate-on-start** from the stash.
 
 ## Notes
 
-- **§12 metric core untouched**; no schema or route change — both invariants hold.
-- The mark's colours are fixed; only "Board" follows the theme (`primary`, or `on-ink-accent` on ink).
-- Out of scope: export PDF footers/metadata, error pages.
+- 14 ratified decisions and 5 PROPOSED defaults, plus 12 as-built notes; see the spec.
+- **Declared invariant moves:** 50 → **57** ƒ Dynamic (6 API routes plus the `/settings` page) and
+  13 → **14** migrations.
+- The brand refresh is Done; its commit is `565f290`.
 
 ## Carry-forward — critical for any new feature
 
@@ -44,9 +44,24 @@ details live in [legacy-history.md](legacy-history.md); house conventions live i
 layer that sits between them.)
 
 **Repo / branch state (2026-09-04)**
-- **Baseline invariants to preserve:** **50 ƒ Dynamic** routes / **13 Prisma migrations**
-  (…`add_error_log`). Node 22, dev on **:3002**. A feature that changes either count must say so and
-  justify it. Nothing since the board-polish round had, until this feature moved both.
+- **Baseline invariants to preserve:** **57 ƒ Dynamic** routes / **14 Prisma migrations**
+  (…`add_claude_connector`, 2026-09-29; the previous baseline was 50 / 13 through
+  `add_error_log`). Node 22, dev on **:3002**. A feature that changes either count must say so and
+  justify it.
+- **Claude Connector (2026-09-29):**
+  - AI analysis runs on the USER's machine, not the server. StoryBoard only queues jobs and stores
+    results. `/api/connector/*` is authenticated by a per-user `sbc_` bearer token (sha256 at rest).
+  - The connector must pass `ENABLE_CLAUDEAI_MCP_SERVERS=false` and `--disable-slash-commands`.
+    Otherwise every run drags in the user's whole plugin, skill and connector context: 122 tools and
+    about $1 per trivial call.
+  - Its tool ceiling is enforced locally, so the server can't widen it.
+- **Office DB migrations are hand-run (2026-09-29).**
+  - Every new migration gets an incremental psql bundle from the `dba-migration-bundle` skill
+    (`scripts/dba-migration-bundle.mjs`). Naveen applies it via the jumpserver **before** the image
+    rollout.
+  - **Office DB head:** 13 migrations (`…add_error_log`, bootstrap 2026-09-22).
+  - The bundle for 14 (`…add_claude_connector`) is generated and rehearsed, and is **pending
+    Naveen's run**. Once he confirms it, update this head to 14.
 - **`main` is at `c8c2731`** ("Editable filters.") — it carries editable filters, the roll-up export
   (incl. the Velocity variant), the sync-stages P2028 fix, the bug-board arc, the unplanned-split,
   default-team-release, needs-attention-roster, program-rollup, AND the office-deployment work
@@ -159,7 +174,9 @@ layer that sits between them.)
 **Open post-v1 backlog (deferred, not forgotten)**
 - Export-embedded AI narrative · AI Q&A over sprint data · AI stage suggestions · a share link for
   `/bugs` · leaderboard rank-delta ("moved since last sprint") arrows · external APM/OTel export ·
-  `IssueProgress.createdAt` stage provenance (§14.13).
+  `IssueProgress.createdAt` stage provenance (§14.13) · **publish `@tekion/storyboard-connector` to
+  JFrog npm** (the connector is a StoryBoard-served script today) · board-level / multi-issue Claude
+  analysis (Claude Connector v2).
 
 ## History
 

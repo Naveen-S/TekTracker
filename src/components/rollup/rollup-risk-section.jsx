@@ -18,6 +18,7 @@ import {
   sortRiskyIssues,
 } from "@/components/dashboard/risk-callouts-panel";
 import { formatPoints } from "@/lib/metrics.mjs";
+import { AnalyseButton } from "@/components/analysis/analyse-button";
 
 export function RollupRiskSection({ issues, series, jiraBaseUrl }) {
   const [open, setOpen] = useState(false);
@@ -61,6 +62,13 @@ export function RollupRiskSection({ issues, series, jiraBaseUrl }) {
                     </Badge>
                   )}
                   <IssueKey jiraKey={issue.jiraKey} jiraBaseUrl={jiraBaseUrl} />
+                  <AnalyseButton
+                    jiraKey={issue.jiraKey}
+                    source="SPRINT"
+                    title={issue.title}
+                    jiraBaseUrl={jiraBaseUrl}
+                    className="size-5"
+                  />
                   <span className="min-w-0 flex-1 truncate text-sm text-secondary-foreground">
                     {issue.title}
                   </span>

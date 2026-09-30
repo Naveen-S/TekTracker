@@ -8,7 +8,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CalendarRange, Layers, Target, Users, X } from "lucide-react";
+import { AlertTriangle, CalendarRange, Layers, Sparkles, Target, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,7 @@ import {
   HeroTitle,
 } from "@/components/ui/hero-shell";
 import { apiFetch } from "@/lib/api-client";
+import { AnalysisSettingsConfig } from "@/components/admin/analysis-settings-config";
 import { BugReportConfig } from "@/components/admin/bug-report-config";
 import { JiraComponentsConfig } from "@/components/admin/jira-components-config";
 import { ProgramsConfig } from "@/components/admin/programs-config";
@@ -254,6 +255,7 @@ export function AdminPanel({
   bugStatusVocabulary = [],
   bugPriorityVocabulary = [],
   recentErrors = [],
+  analysisSettings = null,
 }) {
   const router = useRouter();
   // busy spans the API call AND the router.refresh() re-render, so forms stay disabled until
@@ -567,6 +569,17 @@ export function AdminPanel({
           busy={busy}
         />
       </SectionCard>
+
+      {analysisSettings && (
+        <SectionCard
+          title="Claude analysis"
+          subtitle="Per-ticket “Analyse with Claude”, run on each user’s own Claude Code via the StoryBoard Connector. Results are saved for everyone who can see the ticket."
+          icon={Sparkles}
+          tone="brand"
+        >
+          <AnalysisSettingsConfig settings={analysisSettings} run={run} busy={busy} />
+        </SectionCard>
+      )}
 
       <SectionCard
         title="Recent errors"

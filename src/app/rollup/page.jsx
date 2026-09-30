@@ -32,6 +32,8 @@ import { RollupExport } from "@/components/rollup/rollup-export";
 import { RollupStoryPoints } from "@/components/rollup/rollup-story-points";
 import { compositionBreakdown } from "@/components/dashboard/story-points-highlight";
 import { AppShell } from "@/components/ui/app-shell";
+import { AnalysisProvider } from "@/components/analysis/analysis-context";
+import { getAnalysisUiState } from "@/lib/connector/ui-state";
 
 export const dynamic = "force-dynamic";
 
@@ -65,134 +67,140 @@ export default async function RollupPage({ searchParams }) {
   // Combined burndown over the per-day summed snapshots (trend-burndown.md decisions 6–7).
   const trend = selectedSprint ? buildTrendSeries(combinedSnapshots, selectedSprint, asOf) : null;
   const velocityOverride = trend ? snapshotVelocity(trend.points, selectedSprint, asOf) : null;
+  // Claude analysis on the risk rows (claude-connector-analysis.md decision 6).
+  const analysis = await getAnalysisUiState(
+    perTeam.flatMap((entry) => entry.metrics?.deliveryIssues.map((issue) => issue.jiraKey) ?? []),
+  );
 
   return (
-    <AppShell
-      user={data.user}
-      hasBugReport={data.hasBugReport}
-      hasLeaderboardAccess={data.hasLeaderboardAccess}
-    >
-      <div className="flex min-h-screen flex-col">
-      <RollupTopBar
+    <AnalysisProvider enabled={analysis.enabled} analyzedKeys={analysis.analyzedKeys}>
+      <AppShell
         user={data.user}
-        programs={programs}
-        selectedProgram={selectedProgram}
-        sprints={sprints}
-        selectedSprint={selectedSprint}
         hasBugReport={data.hasBugReport}
-      />
+        hasLeaderboardAccess={data.hasLeaderboardAccess}
+      >
+        <div className="flex min-h-screen flex-col">
+        <RollupTopBar
+          user={data.user}
+          programs={programs}
+          selectedProgram={selectedProgram}
+          sprints={sprints}
+          selectedSprint={selectedSprint}
+          hasBugReport={data.hasBugReport}
+        />
 
-      <main className="flex w-full flex-1 flex-col gap-5 p-4 md:p-6">
-        {teams.length === 0 ? (
-          selectedProgram ? (
+        <main className="flex w-full flex-1 flex-col gap-5 p-4 md:p-6">
+          {teams.length === 0 ? (
+            selectedProgram ? (
+              <EmptyState
+                title={`No teams in ${selectedProgram.name} yet`}
+                body={
+                  data.user.isAdmin
+                    ? `Assign scrum teams to the ${selectedProgram.key} program from the Admin page, then their sprint roll-up appears here.`
+                    : `No scrum teams are assigned to the ${selectedProgram.key} program yet. Ask an admin to associate teams, or switch back to your own teams.`
+                }
+                actionHref={data.user.isAdmin ? "/admin" : undefined}
+                actionLabel={data.user.isAdmin ? "Open Admin" : undefined}
+              />
+            ) : (
+              <EmptyState
+                title="You're not on a team yet"
+                body={
+                  data.user.isAdmin
+                    ? "Create a team and add members from the Admin page to get started."
+                    : "Ask an admin to add you to a scrum team — you'll see its sprint board here."
+                }
+                actionHref={data.user.isAdmin ? "/admin" : undefined}
+                actionLabel={data.user.isAdmin ? "Open Admin" : undefined}
+              />
+            )
+          ) : !selectedSprint ? (
             <EmptyState
-              title={`No teams in ${selectedProgram.name} yet`}
-              body={
-                data.user.isAdmin
-                  ? `Assign scrum teams to the ${selectedProgram.key} program from the Admin page, then their sprint roll-up appears here.`
-                  : `No scrum teams are assigned to the ${selectedProgram.key} program yet. Ask an admin to associate teams, or switch back to your own teams.`
-              }
-              actionHref={data.user.isAdmin ? "/admin" : undefined}
-              actionLabel={data.user.isAdmin ? "Open Admin" : undefined}
+              title="No sprint configured"
+              body="An admin needs to configure the first sprint (Gate) before roll-ups can render."
             />
           ) : (
-            <EmptyState
-              title="You're not on a team yet"
-              body={
-                data.user.isAdmin
-                  ? "Create a team and add members from the Admin page to get started."
-                  : "Ask an admin to add you to a scrum team — you'll see its sprint board here."
-              }
-              actionHref={data.user.isAdmin ? "/admin" : undefined}
-              actionLabel={data.user.isAdmin ? "Open Admin" : undefined}
-            />
-          )
-        ) : !selectedSprint ? (
-          <EmptyState
-            title="No sprint configured"
-            body="An admin needs to configure the first sprint (Gate) before roll-ups can render."
-          />
-        ) : (
-          <>
-            <HeroShell className="flex flex-wrap items-center justify-between gap-4 px-5 py-6 md:px-8 md:py-7">
-              <div>
-                {selectedProgram && (
-                  <ProgramChip name={selectedProgram.name} className="mb-2" />
-                )}
-                <HeroEyebrow>
-                  {selectedSprint.name} · {formatSprintWindow(selectedSprint)}
-                </HeroEyebrow>
-                <HeroTitle>
-                  {scopeLabel} — {perTeam.length}{" "}
-                  {perTeam.length === 1 ? "team" : "teams"}
-                </HeroTitle>
-                <HeroCopy className="mt-2">
-                  {selectedProgram
-                    ? `Read-only roll-up across every team in the ${selectedProgram.name} program.`
-                    : "Read-only portfolio view across every team you belong to."}
-                </HeroCopy>
-              </div>
-              <div className="flex flex-wrap items-center gap-2.5">
-                <DaysRemainingPill sprint={selectedSprint} asOf={asOf} />
-                {data.aiEnabled && combined && combined.totalIssues > 0 && (
-                  <RollupDigestButton
-                    sprintId={selectedSprint.id}
-                    programId={selectedProgram?.id}
+            <>
+              <HeroShell className="flex flex-wrap items-center justify-between gap-4 px-5 py-6 md:px-8 md:py-7">
+                <div>
+                  {selectedProgram && (
+                    <ProgramChip name={selectedProgram.name} className="mb-2" />
+                  )}
+                  <HeroEyebrow>
+                    {selectedSprint.name} · {formatSprintWindow(selectedSprint)}
+                  </HeroEyebrow>
+                  <HeroTitle>
+                    {scopeLabel} — {perTeam.length}{" "}
+                    {perTeam.length === 1 ? "team" : "teams"}
+                  </HeroTitle>
+                  <HeroCopy className="mt-2">
+                    {selectedProgram
+                      ? `Read-only roll-up across every team in the ${selectedProgram.name} program.`
+                      : "Read-only portfolio view across every team you belong to."}
+                  </HeroCopy>
+                </div>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <DaysRemainingPill sprint={selectedSprint} asOf={asOf} />
+                  {data.aiEnabled && combined && combined.totalIssues > 0 && (
+                    <RollupDigestButton
+                      sprintId={selectedSprint.id}
+                      programId={selectedProgram?.id}
+                      jiraBaseUrl={data.jiraBaseUrl}
+                    />
+                  )}
+                  <RollupExport
+                    perTeam={perTeam}
+                    sprint={selectedSprint}
+                    scopeLabel={scopeLabel}
+                    teamSnapshots={teamSnapshots}
                     jiraBaseUrl={data.jiraBaseUrl}
+                    asOf={asOf}
                   />
-                )}
-                <RollupExport
-                  perTeam={perTeam}
-                  sprint={selectedSprint}
-                  scopeLabel={scopeLabel}
-                  teamSnapshots={teamSnapshots}
-                  jiraBaseUrl={data.jiraBaseUrl}
-                  asOf={asOf}
-                />
-              </div>
-            </HeroShell>
+                </div>
+              </HeroShell>
 
-            <RollupStoryPoints
-              completedPoints={combined.completedPoints}
-              totalPoints={combined.points}
-              scope={`this sprint · ${perTeam.length} ${perTeam.length === 1 ? "team" : "teams"}`}
-              breakdown={compositionBreakdown(combined)}
-              capacity={combinedCapacity}
-              teams={perTeam}
-            />
-            <MetricGrid
-              metrics={combined}
-              sprint={selectedSprint}
-              velocityOverride={velocityOverride}
-            />
-            <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-              <TrendPanel
-                series={trend}
+              <RollupStoryPoints
+                completedPoints={combined.completedPoints}
+                totalPoints={combined.points}
+                scope={`this sprint · ${perTeam.length} ${perTeam.length === 1 ? "team" : "teams"}`}
+                breakdown={compositionBreakdown(combined)}
+                capacity={combinedCapacity}
+                teams={perTeam}
+              />
+              <MetricGrid
+                metrics={combined}
                 sprint={selectedSprint}
+                velocityOverride={velocityOverride}
+              />
+              <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                <TrendPanel
+                  series={trend}
+                  sprint={selectedSprint}
+                  asOf={asOf}
+                  totalTeams={perTeam.length}
+                />
+                <RollupRiskSection
+                  issues={perTeam.flatMap((entry) =>
+                    entry.metrics.deliveryIssues.map((issue) => ({
+                      ...issue,
+                      teamKey: entry.team.key,
+                    })),
+                  )}
+                  series={trend}
+                  jiraBaseUrl={data.jiraBaseUrl}
+                />
+              </section>
+              <TeamSummaryTable
+                perTeam={perTeam}
+                selectedSprint={selectedSprint}
                 asOf={asOf}
-                totalTeams={perTeam.length}
+                viewerIsAdmin={data.user.isAdmin}
               />
-              <RollupRiskSection
-                issues={perTeam.flatMap((entry) =>
-                  entry.metrics.deliveryIssues.map((issue) => ({
-                    ...issue,
-                    teamKey: entry.team.key,
-                  })),
-                )}
-                series={trend}
-                jiraBaseUrl={data.jiraBaseUrl}
-              />
-            </section>
-            <TeamSummaryTable
-              perTeam={perTeam}
-              selectedSprint={selectedSprint}
-              asOf={asOf}
-              viewerIsAdmin={data.user.isAdmin}
-            />
-          </>
-        )}
-      </main>
-      </div>
-    </AppShell>
+            </>
+          )}
+        </main>
+        </div>
+      </AppShell>
+    </AnalysisProvider>
   );
 }

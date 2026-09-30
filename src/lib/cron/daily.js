@@ -21,6 +21,7 @@
 import { prisma } from "@/lib/db";
 import { logger, runWithContext, getRequestId, newRequestId } from "@/lib/log";
 import { pruneErrorLog, recordError } from "@/lib/error-log";
+import { pruneAnalysisJobs } from "@/lib/connector/jobs";
 import { syncTeamSprint } from "@/lib/sync/engine";
 import { getJiraAuthForUser, fetchMyself } from "@/lib/jira/client";
 import { computeSprintMetrics, snapshotValues } from "@/lib/metrics.mjs";
@@ -177,6 +178,7 @@ export async function runDailyJob({ capturedOn } = {}) {
 
     const bugReports = await runBugReports(day);
     const prunedErrors = await pruneErrorLog();
+    const prunedAnalysisJobs = await pruneAnalysisJobs();
 
     const teamFailures = sprintSummaries.reduce(
       (count, summary) => count + summary.teams.filter((team) => team.refresh?.error).length,
@@ -190,6 +192,7 @@ export async function runDailyJob({ capturedOn } = {}) {
       bugReports: bugReports.length,
       bugReportFailures: bugReports.filter((report) => report.error).length,
       prunedErrors,
+      prunedAnalysisJobs,
     });
 
     return {

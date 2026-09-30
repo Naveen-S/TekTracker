@@ -44,6 +44,13 @@ const TONES = {
   warn: { icon: AlertTriangle, tile: "bg-warn-soft text-warn-strong" },
 };
 
+/**
+ * Open dialogs, innermost last. A dialog can open another (the roll-up "All risks" list opens a
+ * ticket's Claude analysis), and every dialog listens for keys on `document` — without this, one
+ * Escape closed both. Only the top of the stack handles Escape/Tab.
+ */
+const openDialogs = [];
+
 const FOCUSABLE =
   'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
@@ -120,11 +127,24 @@ function Dialog({
 
   React.useEffect(() => () => exitTimer.current && clearTimeout(exitTimer.current), []);
 
+  // Stack membership lives in its own [open] effect with a stable token, so the key effect below
+  // re-running (a new `onClose` identity on every parent render) can't reorder the stack.
+  const stackToken = React.useRef({});
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const token = stackToken.current;
+    openDialogs.push(token);
+    return () => {
+      openDialogs.splice(openDialogs.indexOf(token), 1);
+    };
+  }, [open]);
+
   // Escape + Tab containment. Keeping both on one listener means the trap can never disagree with
-  // the close handler about which dialog is on top — the last one mounted wins both.
+  // the close handler about which dialog is on top — only the top of `openDialogs` handles either.
   React.useEffect(() => {
     if (!open) return undefined;
     const onKeyDown = (event) => {
+      if (openDialogs[openDialogs.length - 1] !== stackToken.current) return;
       if (event.key === "Escape") {
         event.stopPropagation();
         requestClose();

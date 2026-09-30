@@ -12,7 +12,16 @@
  */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bug, Layers, LayoutGrid, PanelLeft, PanelLeftClose, Settings, Trophy } from "lucide-react";
+import {
+  Bug,
+  Layers,
+  LayoutGrid,
+  PanelLeft,
+  PanelLeftClose,
+  Settings,
+  Trophy,
+  UserCog,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandMark, Wordmark } from "./brand";
 import { NavLink } from "./nav-link";
@@ -41,6 +50,8 @@ export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess }) {
     ...(hasBugReport
       ? [{ href: "/bugs", label: "Bug report", icon: Bug, active: pathname.startsWith("/bugs") }]
       : []),
+    // Personal settings — the Claude Connector pairing (claude-connector-analysis.md), for everyone.
+    { href: "/settings", label: "Settings", icon: UserCog, active: pathname.startsWith("/settings") },
     ...(user?.isAdmin
       ? [{ href: "/admin", label: "Admin", icon: Settings, active: pathname.startsWith("/admin") }]
       : []),

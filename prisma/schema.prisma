@@ -51,6 +51,9 @@ model User {
   createdSprints Sprint[]         @relation("SprintCreatedBy")
   progressEdits  IssueProgress[]  @relation("ProgressUpdatedBy")
   sharedViews    SharedView[]
+  connectorToken ConnectorToken?
+  analysisJobs   AnalysisJob[]
+  analyses       IssueAnalysis[]
 }
 
 /// Personal Jira access. Token is ENCRYPTED at rest (app-layer AES-GCM, key from KMS/secret).
@@ -626,4 +629,85 @@ model ErrorLog {
   @@index([createdAt])
   @@index([code])
   @@index([requestId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Claude Connector — per-ticket AI analysis (claude-connector-analysis.md, 2026-09-29)
+// ─────────────────────────────────────────────────────────────
+
+/// A user's paired local StoryBoard Connector. The connector runs the user's OWN Claude Code
+/// (company subscription + Orbit DeepContext sign-in) on their machine and dials out to StoryBoard
+/// with this token as a Bearer credential. Only the sha256 hash is stored — the plaintext is shown
+/// once at generation. One pairing per user: regenerating replaces the row, revoking deletes it.
+/// The token authorizes the /api/connector/* routes ONLY, never the session-authenticated API.
+model ConnectorToken {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash        String    @unique                   // sha256(plaintext), hex
+  lastSeenAt       DateTime?                           // bumped on every poll; "online" = recent
+  connectorVersion String?
+  claudeVersion    String?
+  createdAt        DateTime  @default(now())
+}
+
+enum AnalysisJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+/// Transient queue of analysis requests. A job is only ever claimed by the REQUESTER's own
+/// connector (it spends their subscription). `context` is the server-built ticket facts snapshot
+/// sent to Claude — never client-supplied. Pruned after 7 days by the daily cron.
+model AnalysisJob {
+  id            String            @id @default(cuid())
+  jiraKey       String
+  source        String                                 // "BUG" (/bugs cache) | "SPRINT" (board Issue cache)
+  kind          String                                 // "BUG" | "DELIVERY" | "VULNERABILITY" | "HYGIENE"
+  requestedById String
+  requestedBy   User              @relation(fields: [requestedById], references: [id], onDelete: Cascade)
+  status        AnalysisJobStatus @default(QUEUED)
+  model         String
+  effort        String
+  context       Json
+  progressNote  String?
+  error         String?
+  claimedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime          @default(now())
+
+  @@index([requestedById, status])
+  @@index([jiraKey])
+}
+
+/// The latest saved analysis of one Jira ticket — LATEST ONLY (a re-run replaces it), keyed by
+/// jiraKey alone because a ticket is the same ticket across bug reports and teams. Visible to anyone
+/// who can see the ticket. Display-only annotation: never a §12 metric input.
+model IssueAnalysis {
+  id           String   @id @default(cuid())
+  jiraKey      String   @unique
+  source       String
+  kind         String
+  result       Json                                    // zod-validated + sanitized analysisResultSchema
+  model        String
+  costUsd      Float?
+  durationMs   Int?
+  analyzedById String?
+  analyzedBy   User?    @relation(fields: [analyzedById], references: [id], onDelete: SetNull)
+  analyzedAt   DateTime @default(now())
+}
+
+/// Admin configuration for Claude analysis — a singleton row (id = "default"). Read with code
+/// defaults when the row is absent, so an unseeded database still works (disabled).
+model ClaudeAnalysisSettings {
+  id             String   @id @default("default")
+  enabled        Boolean  @default(false)
+  allowedModels  String[]
+  defaultModel   String
+  effort         String
+  maxBudgetUsd   Float
+  timeoutMinutes Int
+  updatedAt      DateTime @updatedAt
 }
