@@ -85,18 +85,38 @@ function tryParseJson(text) {
 }
 
 /**
+ * The model for Ask StoryBoard (ask-storyboard.md P2): `AI_ASK_MODEL` lets the operator put the
+ * latency-sensitive voice Q&A on a faster tier than the digest without touching code. Falls back
+ * to the provider's normal model (`AI_MODEL`, then its default). Read lazily, like everything here.
+ * @returns {string}
+ */
+export function getAskModel() {
+  return process.env.AI_ASK_MODEL?.trim() || getAiConfig().model;
+}
+
+/**
  * Generate a schema-conforming JSON object from the active provider (decision 8): ask for native
  * JSON output (`schema.json` steers the provider), parse, zod-validate (`schema.zod` is the real
  * gate), and on failure retry ONCE with the validation error appended to the prompt. Timeouts and
  * network failures surface as `AiProviderError` (→ 502).
  *
+ * `model` and `timeoutMs` are per-call overrides (ask-storyboard.md): omitted, every existing
+ * caller gets exactly the behavior it had — the active provider's model and the 30s timeout.
+ *
  * @template T
  * @param {{ system: string, prompt: string,
  *   schema: { name: string, zod: import("zod").ZodType<T>, json: object },
- *   maxOutputTokens?: number }} request
+ *   maxOutputTokens?: number, model?: string, timeoutMs?: number }} request
  * @returns {Promise<T>}
  */
-export async function generateJson({ system, prompt, schema, maxOutputTokens = 2048 }) {
+export async function generateJson({
+  system,
+  prompt,
+  schema,
+  maxOutputTokens = 2048,
+  model,
+  timeoutMs = TIMEOUT_MS,
+}) {
   const config = getAiConfig();
 
   let attemptPrompt = prompt;
@@ -106,17 +126,17 @@ export async function generateJson({ system, prompt, schema, maxOutputTokens = 2
     try {
       text = await config.generate({
         apiKey: config.apiKey,
-        model: config.model,
+        model: model ?? config.model,
         system,
         prompt: attemptPrompt,
         jsonSchema: schema.json,
         maxOutputTokens,
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
       if (error instanceof AiProviderError) throw error;
       if (error?.name === "TimeoutError" || error?.name === "AbortError") {
-        throw new AiProviderError(`${config.label} request timed out after ${TIMEOUT_MS / 1000}s`);
+        throw new AiProviderError(`${config.label} request timed out after ${timeoutMs / 1000}s`);
       }
       // fetch network failure (DNS, refused connection, TLS) — no response to curate.
       throw new AiProviderError(`Could not reach ${config.label} (${error?.message ?? "network error"})`);

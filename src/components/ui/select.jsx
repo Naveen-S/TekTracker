@@ -12,9 +12,13 @@ import { cn } from "@/lib/utils";
 const selectVariants = cva(
   // Match Input's control box (h-9, rounded-md, px-3, py-1, text-sm) so a bare Select lines up with
   // Inputs/Buttons in the same row; call sites still override height with h-7/h-8 via className.
-  "flex h-9 w-full appearance-none rounded-md border bg-background pl-3 pr-9 py-1 text-sm shadow-xs outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+  "flex w-full appearance-none rounded-md border bg-background py-1 shadow-xs outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-50",
   {
     variants: {
+      size: {
+        default: "h-9 pl-3 pr-9 text-sm",
+        sm: "h-8 pl-2.5 pr-8 text-[13px]",
+      },
       variant: {
         default:
           "border-input text-foreground hover:border-border-strong focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
@@ -24,7 +28,7 @@ const selectVariants = cva(
           "border-white/15 bg-white/10 text-white backdrop-blur-sm hover:border-white/25 hover:bg-white/15 focus-visible:border-white/40 focus-visible:ring-[3px] focus-visible:ring-white/25",
       },
     },
-    defaultVariants: { variant: "default" },
+    defaultVariants: { variant: "default", size: "default" },
   },
 );
 
@@ -41,13 +45,13 @@ const chevronVariants = cva(
   },
 );
 
-function Select({ className, variant, disabled, children, ...props }) {
+function Select({ className, variant, size, disabled, children, ...props }) {
   return (
     <div className="group relative">
       <select
         data-slot="select"
         disabled={disabled}
-        className={cn(selectVariants({ variant, className }))}
+        className={cn(selectVariants({ variant, size, className }))}
         {...props}
       >
         {children}
@@ -56,6 +60,7 @@ function Select({ className, variant, disabled, children, ...props }) {
         aria-hidden="true"
         className={cn(
           chevronVariants({ variant }),
+          size === "sm" && "right-2 size-3.5",
           !disabled && "group-hover:text-foreground group-focus-within:text-foreground",
           variant === "onDark" && !disabled && "group-hover:text-white group-focus-within:text-white",
           disabled && "opacity-50",

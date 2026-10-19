@@ -34,6 +34,7 @@ export const ERROR_CODES = Object.freeze({
   FORBIDDEN: "FORBIDDEN",
   NOT_FOUND: "NOT_FOUND",
   CONFLICT: "CONFLICT",
+  RATE_LIMITED: "RATE_LIMITED",
   // deployment / configuration
   CONFIG_MISSING: "CONFIG_MISSING",
   SESSION_WRITE_FAILED: "SESSION_WRITE_FAILED",
@@ -53,6 +54,14 @@ export const ERROR_CODES = Object.freeze({
   // AI
   AI_NOT_CONFIGURED: "AI_NOT_CONFIGURED",
   AI_PROVIDER: "AI_PROVIDER",
+  // Text-to-speech (ask-storyboard.md as-built 15 — the ElevenLabs answer voice)
+  TTS_NOT_CONFIGURED: "TTS_NOT_CONFIGURED",
+  TTS_PROVIDER: "TTS_PROVIDER",
+  // Claude Connector (claude-connector-analysis.md)
+  CONNECTOR_UNAUTHORIZED: "CONNECTOR_UNAUTHORIZED",
+  CONNECTOR_OFFLINE: "CONNECTOR_OFFLINE",
+  ANALYSIS_DISABLED: "ANALYSIS_DISABLED",
+  ANALYSIS_IN_PROGRESS: "ANALYSIS_IN_PROGRESS",
   // fallback
   INTERNAL: "INTERNAL",
 });
@@ -134,6 +143,21 @@ export class ConflictError extends AppError {
   constructor(message = "Conflict", details = null) {
     super(message, { code: ERROR_CODES.CONFLICT, status: 409, details });
     this.name = "ConflictError";
+  }
+}
+
+/**
+ * The caller has asked too often in a short window (ask-storyboard.md P4 — the per-user Ask
+ * StoryBoard limit). Maps to HTTP 429; `details.retryAfterSeconds` says when to try again.
+ */
+export class RateLimitError extends AppError {
+  constructor(message = "Too many requests — try again shortly", { retryAfterSeconds = null } = {}) {
+    super(message, {
+      code: ERROR_CODES.RATE_LIMITED,
+      status: 429,
+      details: retryAfterSeconds !== null ? { retryAfterSeconds } : null,
+    });
+    this.name = "RateLimitError";
   }
 }
 

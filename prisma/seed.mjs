@@ -20,6 +20,10 @@ import { z } from "zod";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.ts";
 import { SEEDABLE_WORKFLOW_TYPES, stageCountFor } from "../src/lib/workflows.mjs";
+import {
+  ANALYSIS_SETTINGS_DEFAULTS,
+  ANALYSIS_SETTINGS_ID,
+} from "../src/lib/connector/defaults.mjs";
 
 // ── Global StatusStageMapping defaults (teamId = null) ───────────────────────────────────────────
 // Map each raw Jira status to the HIGHEST lifecycle stage it implies (seeding auto-checks 0..n per
@@ -147,11 +151,20 @@ async function main() {
       return count;
     });
 
+    // 3. Claude analysis settings singleton (claude-connector-analysis.md). Create-only: an
+    //    admin's edits in /admin are never reset by a re-seed.
+    const analysisSettings = await prisma.claudeAnalysisSettings.upsert({
+      where: { id: ANALYSIS_SETTINGS_ID },
+      update: {},
+      create: { id: ANALYSIS_SETTINGS_ID, ...ANALYSIS_SETTINGS_DEFAULTS },
+    });
+
     console.log(
       `Bootstrap seed complete:\n` +
         `  • admin user: ${admin.email} (isAdmin=${admin.isAdmin})\n` +
         `  • global StatusStageMapping rows: ${written} ` +
-        `(${SEEDABLE_WORKFLOW_TYPES.join(", ")}; CUSTOM skipped)`,
+        `(${SEEDABLE_WORKFLOW_TYPES.join(", ")}; CUSTOM skipped)\n` +
+        `  • Claude analysis settings: enabled=${analysisSettings.enabled}`,
     );
   } finally {
     await prisma.$disconnect();

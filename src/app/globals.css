@@ -26,6 +26,8 @@
   /* Page canvas + quiet surfaces (legacy --bg-app / --bg-subtle) */
   --bg-app: #f4f7fa;
   --bg-subtle: #f7f9fb;
+  /* Backdrop behind a report's paper preview in the export dialogs (was a hex at each call site). */
+  --preview-canvas: #e9eef3;
 
   --background: #ffffff;
   --foreground: #0b1620;
@@ -219,6 +221,7 @@
 @theme inline {
   --color-app: var(--bg-app);
   --color-subtle: var(--bg-subtle);
+  --color-preview-canvas: var(--preview-canvas);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -309,6 +312,11 @@
   --shadow-md: 0 4px 12px rgb(11 22 32 / 0.07), 0 2px 4px rgb(11 22 32 / 0.04);
   --shadow-lg: 0 12px 32px rgb(11 22 32 / 0.1), 0 4px 8px rgb(11 22 32 / 0.05);
   --shadow-xl: 0 24px 56px rgb(11 22 32 / 0.16);
+  /* Modal elevation (dialog-redesign.md): deep layered drop + a faint halo in the theme primary, so a
+     dialog lifts off a dark page instead of merging into the ink hero panels behind the scrim. */
+  --shadow-dialog:
+    0 32px 72px -16px rgb(0 0 0 / 0.5), 0 12px 24px -12px rgb(0 0 0 / 0.3),
+    0 0 96px -20px color-mix(in oklab, var(--primary) 45%, transparent);
   /* Teal glow under primary buttons (legacy --shadow-brand) */
   --shadow-brand: 0 6px 18px rgb(0 191 165 / 0.3);
   /* Right-edge shadow separating the matrix's frozen column while it scrolls */
@@ -582,6 +590,12 @@
   a {
     text-underline-offset: 3px;
   }
+  /* Tailwind v4 dropped v3's pointer cursor on buttons; restore it app-wide (the upgrade guide's
+     recommended rule). Disabled buttons keep the default cursor. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 /* ── "Modern" theme (modern-theme.md) — blue, sidebar-shell alternative ──
@@ -592,6 +606,7 @@
 :root.theme-modern {
   --bg-app: #eef1f5;
   --bg-subtle: #f6f8fb;
+  --preview-canvas: #e6eaf1;
 
   --background: #ffffff;
   --foreground: #1b1e24;
@@ -718,6 +733,158 @@
   opacity: 1;
 }
 
+/* ── Dialog motion (dialog-redesign.md) ───────────────────────────────────
+   Driven by data-state on the overlay + panel. Enter 200ms on the house
+   --ease-out; exit 140ms and slightly smaller, so leaving reads as the system
+   stepping aside. `forwards` only on exit: the open animation must leave no
+   persistent transform on the panel, because the export dialogs park fixed
+   offscreen print sheets inside it (a transform would re-anchor them). Below
+   sm the panel is a bottom sheet and slides instead of scaling. */
+@keyframes dialog-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes dialog-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes dialog-panel-in {
+  from { opacity: 0; transform: translateY(4px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes dialog-panel-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: scale(0.98); }
+}
+@keyframes dialog-sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+@keyframes dialog-sheet-out {
+  from { transform: none; }
+  to { transform: translateY(100%); }
+}
+.dialog-overlay[data-state="open"] {
+  animation: dialog-fade-in 200ms var(--ease-out);
+}
+.dialog-overlay[data-state="closed"] {
+  animation: dialog-fade-out 140ms ease-in forwards;
+}
+.dialog-panel[data-state="open"] {
+  animation: dialog-panel-in 200ms var(--ease-out);
+}
+.dialog-panel[data-state="closed"] {
+  animation: dialog-panel-out 140ms ease-in forwards;
+}
+@media (max-width: 639.98px) {
+  .dialog-panel[data-state="open"] {
+    animation: dialog-sheet-in 260ms var(--ease-out);
+  }
+  .dialog-panel[data-state="closed"] {
+    animation: dialog-sheet-out 160ms ease-in forwards;
+  }
+}
+
+/* ── Dialog hero header (dialog-redesign.md, round 2) ─────────────────────
+   Moment dialogs (confirms, alerts, success, share, AI digest) open on the
+   ink hero surface with a medallion over the seam. --hero-base is the tone:
+   the theme primary by default, so Tekion reads teal and Modern reads blue. */
+.dialog-panel {
+  --hero-base: var(--primary);
+  --hero-deep: color-mix(in oklab, var(--primary) 78%, var(--ink));
+}
+.dialog-panel[data-tone="success"] {
+  --hero-base: var(--success);
+  --hero-deep: var(--success-strong);
+}
+.dialog-panel[data-tone="warn"] {
+  --hero-base: var(--warn);
+  --hero-deep: var(--warn-strong);
+}
+.dialog-panel[data-tone="danger"] {
+  --hero-base: var(--danger);
+  --hero-deep: var(--danger-strong);
+}
+.dialog-panel[data-tone="info"] {
+  --hero-base: var(--info);
+  --hero-deep: var(--info-strong);
+}
+/* A tone-coloured bloom rising behind the medallion, over the hero glow. */
+.dialog-hero-glow {
+  background: radial-gradient(
+    60% 90% at 50% 115%,
+    color-mix(in oklab, var(--hero-base) 45%, transparent),
+    transparent 70%
+  );
+}
+.dialog-wave-back {
+  fill: color-mix(in oklab, var(--hero-base) 22%, var(--card));
+  opacity: 0.35;
+}
+.dialog-wave-front {
+  fill: var(--card);
+}
+.dialog-medallion {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--hero-base) 20%, transparent),
+    0 18px 34px -16px color-mix(in oklab, var(--hero-deep) 75%, transparent);
+}
+.dialog-medallion-disc {
+  background: radial-gradient(
+    circle at 50% 30%,
+    color-mix(in oklab, var(--hero-base) 16%, var(--card)),
+    color-mix(in oklab, var(--hero-base) 5%, var(--card)) 72%
+  );
+}
+.dialog-medallion-tile {
+  background: linear-gradient(
+    150deg,
+    color-mix(in oklab, var(--hero-base) 68%, white),
+    var(--hero-base) 50%,
+    var(--hero-deep)
+  );
+  box-shadow:
+    inset 0 -3px 6px color-mix(in oklab, var(--hero-deep) 55%, transparent),
+    0 8px 14px -6px color-mix(in oklab, var(--hero-deep) 70%, transparent);
+  transform: rotate(-6deg);
+}
+.dialog-medallion-gloss {
+  top: 7%;
+  left: 14%;
+  right: 14%;
+  height: 36%;
+  border-radius: 9999px;
+  background: linear-gradient(to bottom, rgb(255 255 255 / 0.5), rgb(255 255 255 / 0));
+}
+.dialog-sparkle {
+  color: var(--hero-base);
+}
+@keyframes dialog-medallion-pop {
+  0% { opacity: 0; transform: translateY(10px) scale(0.5); }
+  60% { opacity: 1; transform: translateY(0) scale(1.07); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes dialog-sparkle-in {
+  0% { opacity: 0; transform: scale(0) rotate(-60deg); }
+  65% { opacity: 1; transform: scale(1.3) rotate(10deg); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes dialog-twinkle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.7); }
+}
+.dialog-panel[data-state="open"] .dialog-medallion {
+  animation: dialog-medallion-pop 520ms cubic-bezier(0.34, 1.56, 0.64, 1) 60ms both;
+}
+.dialog-panel[data-state="open"] .dialog-sparkle {
+  animation:
+    dialog-sparkle-in 480ms cubic-bezier(0.34, 1.56, 0.64, 1) var(--sparkle-delay) both,
+    dialog-twinkle 3s ease-in-out calc(var(--sparkle-delay) + 700ms) infinite;
+}
+.dialog-sparkle-1 { --sparkle-delay: 320ms; }
+.dialog-sparkle-2 { --sparkle-delay: 420ms; }
+.dialog-sparkle-3 { --sparkle-delay: 500ms; }
+
 /* Motion sensitivity — the loading and dialog systems are the app's only
    continuously-animating surfaces, so they honour the OS preference explicitly.
    Reduced motion means CALMER, not absent: the skeletons keep a static tint and
@@ -736,10 +903,17 @@
     width: 100% !important;
     opacity: 0.5;
   }
-  .dialog-panel,
-  .dialog-overlay {
-    animation-name: veil-in !important;
-    animation-duration: 0.15s !important;
+  .dialog-panel[data-state="open"],
+  .dialog-overlay[data-state="open"] {
+    animation: dialog-fade-in 150ms ease-out !important;
+  }
+  .dialog-panel[data-state="closed"],
+  .dialog-overlay[data-state="closed"] {
+    animation: dialog-fade-out 140ms ease-in forwards !important;
+  }
+  .dialog-panel[data-state] .dialog-medallion,
+  .dialog-panel[data-state] .dialog-sparkle {
+    animation: none !important;
   }
   /* The loader holds the finished picture and breathes instead of flying apart. */
   .jigsaw-piece,

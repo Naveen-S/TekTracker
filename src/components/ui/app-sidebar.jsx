@@ -12,7 +12,17 @@
  */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bug, Layers, LayoutGrid, PanelLeft, PanelLeftClose, Settings, Trophy } from "lucide-react";
+import {
+  AudioLines,
+  Bug,
+  Layers,
+  LayoutGrid,
+  PanelLeft,
+  PanelLeftClose,
+  Settings,
+  Trophy,
+  UserCog,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandMark, Wordmark } from "./brand";
 import { NavLink } from "./nav-link";
@@ -20,7 +30,7 @@ import { useLocalPref } from "@/lib/use-local-pref";
 
 const COLLAPSE_KEY = "sprintTracker_sidebarCollapsed";
 
-export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess }) {
+export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess, onAsk = null }) {
   const pathname = usePathname();
   const [collapsedPref, setCollapsedPref] = useLocalPref(COLLAPSE_KEY, "false");
   const collapsed = collapsedPref === "true";
@@ -41,6 +51,8 @@ export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess }) {
     ...(hasBugReport
       ? [{ href: "/bugs", label: "Bug report", icon: Bug, active: pathname.startsWith("/bugs") }]
       : []),
+    // Personal settings — the Claude Connector pairing (claude-connector-analysis.md), for everyone.
+    { href: "/settings", label: "Settings", icon: UserCog, active: pathname.startsWith("/settings") },
     ...(user?.isAdmin
       ? [{ href: "/admin", label: "Admin", icon: Settings, active: pathname.startsWith("/admin") }]
       : []),
@@ -85,6 +97,32 @@ export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess }) {
           </NavLink>
         ))}
       </nav>
+
+      {/* Ask StoryBoard launcher (ask-storyboard.md (e)) — an action, not a page, so it sits apart
+          from the nav list; ⌘/Ctrl+K opens the same panel. */}
+      {onAsk && (
+        <div className="mt-4 px-2.5">
+          <button
+            type="button"
+            onClick={onAsk}
+            title={collapsed ? "Ask StoryBoard (⌘K)" : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border border-white/12 bg-white/6 px-2.5 py-2 text-sm font-medium text-white/85 transition-colors hover:bg-white/12 hover:text-white",
+              collapsed && "justify-center border-transparent bg-transparent px-0",
+            )}
+          >
+            <AudioLines className="size-[18px] shrink-0" />
+            {!collapsed && (
+              <>
+                <span className="whitespace-nowrap">Ask StoryBoard</span>
+                <kbd className="ml-auto rounded bg-white/10 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-white/60">
+                  ⌘K
+                </kbd>
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
       <div className="mt-auto p-2.5">
         <button

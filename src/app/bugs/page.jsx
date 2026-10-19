@@ -6,6 +6,8 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { hasLeaderboardAccess } from "@/lib/rbac";
+import { prisma } from "@/lib/db";
+import { isAskEnabled } from "@/lib/ask/availability";
 import { BugsTopBar } from "@/components/bugs/bugs-top-bar";
 import { BugsPage } from "@/components/bugs/bugs-page";
 import { AppShell } from "@/components/ui/app-shell";
@@ -18,9 +20,25 @@ export default async function BugsRoute() {
     redirect("/login");
   }
   const canSeeLeaderboard = await hasLeaderboardAccess(user);
+  // Ask StoryBoard's context label (ask-storyboard.md) — the same report BugsPage defaults to.
+  const report = await prisma.bugReport.findFirst({
+    where: { isActive: true },
+    orderBy: { name: "asc" },
+    select: { slug: true, name: true },
+  });
 
   return (
-    <AppShell user={user} hasBugReport hasLeaderboardAccess={canSeeLeaderboard}>
+    <AppShell
+      user={user}
+      hasBugReport
+      hasLeaderboardAccess={canSeeLeaderboard}
+      askEnabled={await isAskEnabled()}
+      askContext={{
+        page: "bugs",
+        ...(report ? { bugReportSlug: report.slug } : {}),
+        label: report ? `${report.name} bug report` : "Bug report",
+      }}
+    >
       <div className="flex min-h-screen flex-col">
         <BugsTopBar user={user} />
         <BugsPage user={user} />

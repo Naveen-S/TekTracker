@@ -8,8 +8,8 @@
  */
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronRight } from "lucide-react";
-import { Dialog, DialogError } from "@/components/ui/dialog";
+import { ChevronRight, Users } from "lucide-react";
+import { Dialog, DialogClose, DialogError } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
@@ -115,14 +115,14 @@ export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, on
     <Dialog
       open
       size="lg"
+      icon={Users}
+      hero
       title={mode === "create" ? "Create team" : `Edit ${team.name}`}
       description="A scrum team owns its filters, progress, and its claimed Jira sub-components."
       onClose={saving ? undefined : onClose}
       footer={
         <>
-          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
-            Cancel
-          </Button>
+          <DialogClose />
           <Button type="submit" form="team-config-form" disabled={saving}>
             {saving && <Spinner />}
             {saving ? "Saving…" : mode === "create" ? "Create team" : "Save changes"}
@@ -130,7 +130,7 @@ export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, on
         </>
       }
     >
-      <form id="team-config-form" className="flex flex-col gap-4" onSubmit={handleSubmit}>
+      <form id="team-config-form" className="flex flex-col gap-5" onSubmit={handleSubmit}>
         <div className="grid grid-cols-[1fr_auto] gap-3">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="team-name">Name</Label>
@@ -235,7 +235,7 @@ export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, on
           </p>
         </div>
 
-        <fieldset className="flex flex-col gap-2.5 rounded-lg border p-3">
+        <fieldset className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-subtle/60 p-4">
           <div className="flex items-center justify-between gap-2">
             <Label>Jira sub-components</Label>
             <Badge tone={claimedCount > 0 ? "brand" : "neutral"}>{claimedCount} claimed</Badge>
@@ -250,7 +250,8 @@ export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, on
                 value={selectedComponentId}
                 onChange={(event) => setSelectedComponentId(event.target.value)}
                 disabled={saving}
-                className="h-8 text-xs"
+                size="sm"
+                aria-label="Jira component"
               >
                 {jiraComponents.map((component) => (
                   <option key={component.id} value={component.id}>
@@ -259,7 +260,7 @@ export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, on
                 ))}
               </Select>
               {selectedComponent && (
-                <ul className="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
+                <ul className="flex max-h-48 flex-col gap-0.5 overflow-y-auto rounded-md border border-border-subtle bg-card p-1">
                   {selectedComponent.subComponents.length === 0 ? (
                     <li className="px-2 py-1.5 text-xs text-muted-foreground">
                       This component has no sub-components yet.
@@ -271,7 +272,7 @@ export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, on
                       return (
                         <li
                           key={sub.id}
-                          className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-muted/50 has-[:disabled]:hover:bg-transparent"
+                          className="flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-muted/60 has-[:disabled]:hover:bg-transparent"
                         >
                           <Checkbox
                             id={`sub-${sub.id}`}
@@ -300,22 +301,22 @@ export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, on
           )}
         </fieldset>
 
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border border-border-subtle">
           <button
             type="button"
             onClick={() => setAdvancedOpen((open) => !open)}
-            className="flex w-full items-center gap-1.5 text-xs font-semibold"
+            aria-expanded={advancedOpen}
+            className="flex w-full items-center gap-2 rounded-lg px-4 py-3 text-left text-sm font-medium transition-colors hover:bg-subtle focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           >
-            {advancedOpen ? (
-              <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden="true" />
-            ) : (
-              <ChevronRight className="size-3.5 text-muted-foreground" aria-hidden="true" />
-            )}
+            <ChevronRight
+              className={`size-4 text-muted-foreground transition-transform duration-150 ${advancedOpen ? "rotate-90" : ""}`}
+              aria-hidden="true"
+            />
             Advanced: Issue Type overrides
           </button>
           {advancedOpen && (
-            <>
-              <p className="mt-1.5 mb-3 text-xs text-muted-foreground">
+            <div className="border-t border-border-subtle px-4 pt-3 pb-4">
+              <p className="mb-3 text-xs text-muted-foreground">
                 Leave blank to use the global default shown as a placeholder.
               </p>
               <div className="grid grid-cols-2 gap-3">
@@ -327,7 +328,7 @@ export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, on
                     onChange={(event) => setFeatureIssueTypes(event.target.value)}
                     placeholder="Story (default)"
                     disabled={saving}
-                    className="h-8 text-xs"
+                    size="sm"
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -338,7 +339,7 @@ export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, on
                     onChange={(event) => setTechDebtIssueTypes(event.target.value)}
                     placeholder="Tech Story (default)"
                     disabled={saving}
-                    className="h-8 text-xs"
+                    size="sm"
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -349,7 +350,7 @@ export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, on
                     onChange={(event) => setInternalBugIssueTypes(event.target.value)}
                     placeholder="Bug (default)"
                     disabled={saving}
-                    className="h-8 text-xs"
+                    size="sm"
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -360,7 +361,7 @@ export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, on
                     onChange={(event) => setSupportIssueTypes(event.target.value)}
                     placeholder="Tap Ticket (default)"
                     disabled={saving}
-                    className="h-8 text-xs"
+                    size="sm"
                   />
                 </div>
               </div>
@@ -368,7 +369,7 @@ export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, on
                 External Bug&rsquo;s project stays fixed (ENG) — only its Issue Type list is
                 overridable.
               </p>
-            </>
+            </div>
           )}
         </div>
 

@@ -127,3 +127,29 @@ export async function hasProgramAccess(user) {
   });
   return membership !== null;
 }
+
+/**
+ * The team ids whose sprint data `user` may read, or `null` meaning "every team" (global admin):
+ * their memberships (any role), plus — for leadership with `hasProgramAccess` — every team that
+ * belongs to a Program, exactly the set a program roll-up on /rollup can already show them.
+ * Ask StoryBoard (ask-storyboard.md) uses it to decide which teams a question may reach.
+ *
+ * @param {import("@/generated/prisma/client").User} user
+ * @returns {Promise<string[] | null>}
+ */
+export async function visibleTeamIds(user) {
+  if (user.isAdmin) return null;
+  const memberships = await prisma.teamMembership.findMany({
+    where: { userId: user.id },
+    select: { teamId: true },
+  });
+  const ids = new Set(memberships.map((membership) => membership.teamId));
+  if (await hasProgramAccess(user)) {
+    const programTeams = await prisma.team.findMany({
+      where: { programId: { not: null } },
+      select: { id: true },
+    });
+    for (const team of programTeams) ids.add(team.id);
+  }
+  return [...ids];
+}

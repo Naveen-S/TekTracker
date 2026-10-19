@@ -13,6 +13,7 @@ import { getLeaderboardData } from "@/lib/leaderboard-data";
 import { HeroCopy, HeroEyebrow, HeroShell, HeroTitle } from "@/components/ui/hero-shell";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { AppShell } from "@/components/ui/app-shell";
+import { isAskEnabled } from "@/lib/ask/availability";
 import { LeaderboardTopBar } from "@/components/leaderboard/leaderboard-top-bar";
 import { TeamLeaderboard } from "@/components/leaderboard/team-leaderboard";
 import { DeveloperLeaderboard } from "@/components/leaderboard/developer-leaderboard";
@@ -40,7 +41,17 @@ export default async function LeaderboardPage({ searchParams }) {
     data.teamBoard.length > 0 || data.developerBoard.length > 0 || data.unconfiguredTeams.length > 0;
 
   return (
-    <AppShell user={data.user} hasBugReport={data.hasBugReport} hasLeaderboardAccess>
+    <AppShell
+      user={data.user}
+      hasBugReport={data.hasBugReport}
+      hasLeaderboardAccess
+      askEnabled={await isAskEnabled()}
+      askContext={{
+        page: "leaderboard",
+        ...(data.selectedSprint ? { sprintId: data.selectedSprint.id } : {}),
+        label: data.selectedSprint ? `Leaderboard · ${data.selectedSprint.name}` : "Leaderboard",
+      }}
+    >
       <div className="flex min-h-screen flex-col">
         <LeaderboardTopBar
           user={data.user}

@@ -54,6 +54,15 @@ share page renders with **no AI affordance**); fixture torn down to **0 leftover
 deleted, `.env` restored byte-identical, dev server left healthy. ⚠️ Human acceptance (Naveen):
 set a real `AI_PROVIDER`/key, read a real digest, flip providers once end-to-end.
 
+> **[Amended 2026-10-05 — ask-storyboard.md]** The third §16 use case, **Q&A over sprint data**,
+> shipped as **Ask StoryBoard** on this same platform, unchanged in shape: still `generateJson`,
+> still provider-agnostic, still no SDK. Two additive per-call options were needed and decision 10's
+> "~30s timeout" is now the *default*, not a constant: `generateJson({ model, timeoutMs })` (Ask
+> uses 20 s and `getAskModel()` → `AI_ASK_MODEL`); every existing caller passes neither and behaves
+> exactly as before. Multi-turn is a transcript in the prompt (adapters stay single-turn), and tool
+> use is a two-round JSON contract rather than native tool calls. `digest.mjs` exports its
+> risk-ordering/shaping helpers so both features rank risks identically.
+
 ## As-built notes (vs. the spec)
 
 - **`src/lib/ai/errors.js` split out** (the spec put errors in `provider.js`) — provider imports

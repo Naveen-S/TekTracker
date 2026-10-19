@@ -19,6 +19,9 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 hover:-translate-y-px hover:shadow-sm active:translate-y-0",
         ghost:
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+        // Quiet destructive action beside a primary (e.g. "Remove comment", a row's "Delete").
+        ghostDestructive:
+          "text-danger-strong hover:bg-danger-soft hover:text-danger-strong focus-visible:ring-destructive/20",
         link: "text-primary underline-offset-4 hover:underline",
         // Glass button for the ink hero (legacy .btn-on-dark, src/styles.css :317-335)
         onDark:

@@ -20,13 +20,16 @@
  * on demand via dynamic import.
  */
 import { useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Download, FileDown } from "lucide-react";
+import { Download, FileDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogError } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogError } from "@/components/ui/dialog";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { PreviewCanvas, PreviewPager } from "@/components/export/export-dialog-kit";
 import { Toast, useToast } from "@/components/ui/toast";
 import { PrintSheet } from "@/components/export/print-kit.jsx";
 import { sortRiskyIssues } from "@/components/dashboard/risk-callouts-panel";
@@ -467,39 +470,20 @@ function RollupExportDialog({
   return (
     <Dialog
       open
-      title={`Portfolio Report — ${sprint.name}`}
+      icon={FileDown}
+      hero="compact"
+      title={`Portfolio report — ${sprint.name}`}
       description="Pick the view, the effort metric and the teams, check the preview, then export. Jira keys stay clickable in the PDF."
       onClose={busy ? undefined : onClose}
       size="xl"
+      footerStart={
+        <PreviewPager index={pageIndex} total={totalPages} onChange={setCurrentPage} />
+      }
       footer={
         <>
-          {totalPages > 1 && (
-            <div className="mr-auto flex items-center gap-1.5">
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label="Previous page"
-                onClick={() => setCurrentPage(Math.max(0, pageIndex - 1))}
-                disabled={pageIndex === 0}
-              >
-                <ChevronLeft />
-              </Button>
-              <span className="text-xs font-semibold tabular-nums text-muted-foreground">
-                Page {pageIndex + 1} of {totalPages}
-              </span>
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label="Next page"
-                onClick={() => setCurrentPage(Math.min(totalPages - 1, pageIndex + 1))}
-                disabled={pageIndex === totalPages - 1}
-              >
-                <ChevronRight />
-              </Button>
-            </div>
-          )}
+          <DialogClose />
           <Button
-            variant="secondary"
+            variant="outline"
             onClick={() => handleExport("image")}
             disabled={busy || nothingSelected}
           >
@@ -512,80 +496,67 @@ function RollupExportDialog({
         </>
       }
     >
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
-          <Field label="View">
-            <span
-              role="group"
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-4">
+          <Field label="View" eyebrow>
+            <Segmented
               aria-label="Report view"
-              className="flex items-center gap-0.5 rounded-full border border-border bg-subtle p-0.5"
-            >
-              {VARIANTS.map((option) => {
-                const active = variant === option.id;
+              size="sm"
+              value={variant}
+              onChange={setVariant}
+              disabled={busy}
+              options={VARIANTS.map((option) => {
                 const locked = option.completedOnly && !sprintComplete;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => setVariant(option.id)}
-                    aria-pressed={active}
-                    disabled={busy || locked}
-                    title={
-                      locked
-                        ? "Available once the sprint is complete — velocity is a retrospective number"
-                        : undefined
-                    }
-                    className={cn(
-                      "rounded-full px-3 py-1 text-xs font-bold transition-colors",
-                      locked && "cursor-not-allowed opacity-45",
-                      active
-                        ? "bg-card text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                );
+                return {
+                  value: option.id,
+                  label: option.label,
+                  disabled: locked,
+                  title: locked
+                    ? "Available once the sprint is complete — velocity is a retrospective number"
+                    : undefined,
+                };
               })}
-            </span>
+            />
           </Field>
 
           {variant !== "velocity" && (
-          <>
-          <Field label="Effort">
-            <Select
-              value={effortMode}
-              onChange={(event) => setEffortMode(event.target.value)}
-              disabled={busy}
-              aria-label="Effort metric"
-            >
-              {EFFORT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
+            <>
+              <Field label="Effort" eyebrow htmlFor="rollup-export-effort">
+                <Select
+                  id="rollup-export-effort"
+                  size="sm"
+                  value={effortMode}
+                  onChange={(event) => setEffortMode(event.target.value)}
+                  disabled={busy}
+                >
+                  {EFFORT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
 
-          <Field label="Risk">
-            <label className="flex cursor-pointer items-center gap-2 text-xs font-medium">
-              <Checkbox
-                checked={riskEmphasis}
-                onChange={(event) => setRiskEmphasis(event.target.checked)}
-                disabled={busy}
-              />
-              Include risk call-outs
-            </label>
-          </Field>
-          </>
+              <Field label="Risk" eyebrow>
+                <label className="flex h-8 cursor-pointer items-center gap-2 text-[13px]">
+                  <Checkbox
+                    checked={riskEmphasis}
+                    onChange={(event) => setRiskEmphasis(event.target.checked)}
+                    disabled={busy}
+                  />
+                  Include risk call-outs
+                </label>
+              </Field>
+            </>
           )}
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-bold tracking-[0.08em] uppercase text-accent-foreground">
-            Include teams
-          </span>
-          <div role="group" aria-label="Include teams" className="flex flex-wrap gap-1.5">
+        <Field
+          label="Include teams"
+          eyebrow
+          error={nothingSelected ? "Select at least one team to export." : undefined}
+        >
+          <div className="flex flex-wrap gap-1.5">
             {perTeam.map((entry) => {
               const active = selectedIds.has(entry.team.id);
               return (
@@ -612,27 +583,21 @@ function RollupExportDialog({
               );
             })}
           </div>
-          {nothingSelected && (
-            <span className="text-xs text-danger">Select at least one team to export.</span>
-          )}
-        </div>
+        </Field>
 
         {variant === "velocity" && (
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-bold tracking-[0.08em] uppercase text-accent-foreground">
-              Team sizes
-            </span>
-            <div
-              role="group"
-              aria-label="Team sizes"
-              className="flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-border-subtle bg-subtle px-3 py-2.5"
-            >
+          <Field
+            label="Team sizes"
+            eyebrow
+            hint="Prefilled from Admin · edited here for this report only. Clear a field to report that team without a per-developer rate."
+          >
+            <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-border-subtle bg-subtle px-3.5 py-3">
               {perTeam
                 .filter((entry) => selectedIds.has(entry.team.id))
                 .map((entry) => (
                   <label
                     key={entry.team.id}
-                    className="flex items-center gap-1.5 text-xs font-semibold"
+                    className="flex items-center gap-2 text-xs font-medium"
                     title={entry.team.name}
                   >
                     <span className="text-muted-foreground">{entry.team.key}</span>
@@ -641,35 +606,28 @@ function RollupExportDialog({
                       min="1"
                       max="200"
                       inputMode="numeric"
+                      size="sm"
                       aria-label={`${entry.team.name} team size`}
                       value={teamSizes[entry.team.id] ?? ""}
                       disabled={busy}
                       onChange={(event) =>
                         setTeamSizes((prev) => ({ ...prev, [entry.team.id]: event.target.value }))
                       }
-                      className="h-7 w-14 px-2 text-xs"
+                      className="w-16"
                     />
                   </label>
                 ))}
             </div>
-            <span className="text-xs text-muted-foreground">
-              Prefilled from Admin · edited here for this report only. Clear a field to report that
-              team without a per-developer rate.
-            </span>
-          </div>
+          </Field>
         )}
 
         <DialogError>{error}</DialogError>
 
-        <div className="rounded-xl border border-border-subtle bg-[#e9eef3] p-2 sm:p-4">
-          <div className="mb-2 flex items-center justify-between gap-3 px-1 text-[11px] text-muted-foreground">
-            <span>Responsive preview · A4 landscape</span>
-            <span className="font-semibold text-foreground">Internal</span>
-          </div>
+        <PreviewCanvas orientation="landscape">
           <LandscapePreview>
             {totalPages > 0 ? renderPage(pages[pageIndex], pageIndex) : null}
           </LandscapePreview>
-        </div>
+        </PreviewCanvas>
       </div>
 
       {/* Offscreen A4 print sheets — what html2canvas-pro captures. Rendered (not display:none) so
@@ -685,17 +643,6 @@ function RollupExportDialog({
         ))}
       </div>
     </Dialog>
-  );
-}
-
-function Field({ label, children }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-[11px] font-bold tracking-[0.08em] uppercase text-accent-foreground">
-        {label}
-      </span>
-      {children}
-    </div>
   );
 }
 

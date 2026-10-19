@@ -6,7 +6,7 @@
 > **[BUILT]**, **[PARTIAL]**, **[PLANNED]**, or **[GAP]** so the as-built state is never confused
 > with the target state.
 >
-> Last reviewed: 2026-09-29 · Owner: Naveen · Audience: engineers + Claude Code.
+> Last reviewed: 2026-10-09 · Owner: Naveen · Audience: engineers + Claude Code.
 >
 > **Rename note (2026-07-31):** the product was renamed to **StoryBoard** (was "Sprint Tracker",
 > earlier codename "Tek Tracker" / "TekTracker"). The rename is display/branding only — no schema,
@@ -132,7 +132,7 @@ Key relationships:
 | Multi-team / ED roll-up | **[BUILT]** | Read-only `/rollup` server page (combined `MetricGrid` + per-team table via pure `aggregateRollup`), membership-derived, no Sync. See context/features/ed-rollup.md. |
 | Roll-up export (portfolio PDF / PNG) | **[BUILT]** | A4 **landscape** leadership report off `/rollup`, third consumer of the shared export kit. One dialog, **three** variants — **Executive** (KPIs + composition band + per-scrum-team effort scorecard + burndown), **Full detail** (adds every team's tracks and issue rows, Jira-linked), and **Velocity** (completed sprints only: story points **per developer split by work type** per team + the portfolio rate; no health/completion/risk). Effort metric, risk emphasis, team set and — for Velocity — per-team sizes are chosen at generation time; risk defaults **off** once a sprint is `CLOSED`/released. See context/features/rollup-export.md. |
 | Trend / burndown / "projected by end of sprint" | **[BUILT]** | Daily per-team `SprintSnapshot` (cron) → burndown panel (ideal/actual/projection SVG + snapshot velocity) on `/` and `/rollup`. See context/features/trend-burndown.md. |
-| AI summary (pluggable provider) | **[BUILT in part]** | Provider-agnostic `src/lib/ai/` (Gemini + Anthropic, `AI_PROVIDER` env) behind the on-demand **"AI Digest"** on `/` and `/rollup` (risk call-outs + leadership narrative); Q&A + stage suggestions open. See context/features/ai-insights.md. |
+| AI summary (pluggable provider) | **[BUILT in part]** | Provider-agnostic `src/lib/ai/` (Gemini + Anthropic, `AI_PROVIDER` env) behind the on-demand **"AI Digest"** on `/` and `/rollup` (risk call-outs + leadership narrative) and **Ask StoryBoard** Q&A (row below); stage suggestions open. See context/features/ai-insights.md. |
 | Risk call-out comments + roll-up all-risks dialog | **[BUILT]** | `IssueProgress.riskComment` annotates a known/agreed risk (managed context, not a fresh alarm); `/rollup` shows every team's comments + a "View all risks" dialog. See context/features/risk-comments-rollup-digest.md. |
 | Bug report dashboards (`/bugs`) | **[BUILT]** | Config-driven bug matrix + executive dashboard (categories × scope × priority band, SLA-breach overlay) — all admin config, so a second report (Honda) is configuration not code; External/Internal/All scope toggle, Bugs-by-scrum-team drill, sprint-ownership grouping, and a landscape executive PDF. See context/features/gm-bug-report.md, enhancing-bug-board.md, bug-report-pdf-export.md, bug-sprint-ownership.md. |
 | Admin settings / RBAC | **[PARTIAL]** | Server-side RBAC (`User.isAdmin` + `TeamMembership.role`, `lib/rbac.js`) on all domain routes; admin UI for teams/members/sprints + bug-report config; broader settings UI still absent. |
@@ -143,7 +143,9 @@ Key relationships:
 | Default scrum team & release (per-user board default) | **[BUILT]** | Each user pins a default team + release (`User.defaultTeamId`/`defaultSprintId`), resolved server-side in `getDashboardData`/`getSprintSelection`; set via a **star** in the top bar (`PATCH /api/me`). Board-only, additive. See context/features/default-team-release.md. |
 | Program grouping + Program roll-up | **[BUILT]** | First-class `Program` groups scrum teams (`Team.programId`, SetNull); admins CRUD programs + assign teams (Programs admin section + team-dialog picker). Leadership (`PROGRAM_ROLES` + admin) scope `/rollup` to a program via a picker → aggregate across **all** its teams; reuses the entire roll-up stack (only the team-set source changes). See context/features/program-rollup.md. |
 | Scrum-team member roster + auto "Needs attention" track | **[BUILT]** | Admin-entered per-team `Team.memberEmails String[]` (Jira assignee identities, distinct from RBAC `TeamMembership`) power an always-on `WorkflowType.NEEDS_ATTENTION` board track auto-generated/refreshed inside `syncTeamSprint` from `assignee in (roster) AND ("sub-component[dropdown]" IS EMPTY OR fixVersion IS EMPTY)` — the team's own items missing a sub-component/fix version that every sub-component-scoped filter misses. Partitioned out of the delivery matrix into its own panel; excluded from all §12 metrics (one additive no-op guard). See context/features/needs-attention-roster.md. |
+| Ask StoryBoard — grounded voice Q&A | **[BUILT]** | Ask a question out loud (or type it) and hear a 1–3 sentence answer grounded ONLY in StoryBoard data the viewer can see: roll-up/program, one team's board, bug reports, trend vs earlier sprints, leaderboard, one ticket. Browser speech in and out (no vendor); the server-side `lib/ai` provider answers through RBAC-checked **data packs** (`lib/ask/`) and a two-round JSON contract (answer, or request ≤ 3 more packs) — at most two model calls, cited Jira keys/sources sanitized to what was sent, `AI_ASK_MODEL` for a fast tier, 30 questions / 10 min / user. Sidebar launcher + ⌘/Ctrl+K on every page (context-aware), a one-tap "talk" floating button on every screen size (opens Ask already listening), and an installable full-screen **`/ask`** page (web manifest + "Ask" shortcut, Siri/Assistant recipe). The conversation is kept in the browser only (localStorage per user, 12 h, cleared on logout), so closing the panel, changing page or reloading keeps it, and follow-ups keep their context — nothing is stored server-side. Each question goes to the asker's own **Claude Connector first** (tool-less Haiku, ~7–9 s per Claude run). The server provider (Gemini) answers when the connector is offline, outdated or busy, or fails the round. Needs connector 1.1.0 or later. Ask is on when **either** engine is set up: `AI_PROVIDER` **or** admin Claude analysis (no Gemini key needed; without one, an asker whose connector can't answer is told how to fix it). The AI Digest still needs `AI_PROVIDER`. Answers can be spoken in a custom **ElevenLabs voice** (`POST /api/ask/speech`; set `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID`). The browser voice is the fallback, and the only voice when those are unset. When StoryBoard's data can't answer (and nothing was access-denied), the asker's Connector searches Jira through read-only **ORBIT DeepContext**, scoped to the program/teams in view. See context/features/ask-storyboard.md. |
 | Brand: Jigsaw logo + tagline | **[BUILT]** | Concept-A "Jigsaw" mark (inline SVG, `components/ui/brand.jsx`) replaces the placeholder "T" — bare on the ink sidebar, tiled only for the unreferenced 256 px app icon — in the sidebar, login card, mobile top bars, share header and welcome hero; two-tone wordmark ("Board" in the theme primary / on-ink accent) + the tagline *"Every piece. One picture."* in Instrument Serif italic. favicon = an adaptive `icon.svg` (ink piece flips white under `prefers-color-scheme: dark`; replaces `icon.png`) + a light-tone `favicon.ico` fallback for Safari; `public/app-icon.png` keeps the tiled app icon. A **`BrandLoader`** (the mark assembling itself over a faint ghost of the finished picture; white piece lands last, a teal halo blooms on the veil) is the indicator for the long-wait tier — the `PageLoader` veil + the AI digest wait; button spinners stay rings. **[Amended 2026-09-29]** the veil centres only the mark and hangs its label + elapsed-time line below it, so text appearing mid-wait never moves it. Presentation-only. See context/features/brand-logo-tagline.md. |
+| Claude Connector — per-ticket "Analyse with Claude" | **[BUILT]** | A sparkle on every `/` board track row (Roadmap, Tech Debt incl. Vulnerability, External, Internal), the Needs-attention panel, `/bugs` ticket rows and `/rollup` risks opens a per-ticket analysis: root cause (or implementation areas), similar past tickets, triage & sizing — plus a security section for Vulnerability tickets and a missing sub-component/fix-version suggestion for Needs-attention ones. It runs on the **user's own Claude Code** (company subscription + signed-in ORBIT DeepContext) through a local **StoryBoard Connector** (`public/storyboard-connector.mjs`, paired from `/settings`) that long-polls StoryBoard, runs `claude -p` headless with read-only DeepContext tools only, and posts a zod-gated result. Saved latest-only for everyone who can see the ticket; admin sets allowed models, effort, per-run budget and timeout. Separate from the server-side AI Digest. See context/features/claude-connector-analysis.md. |
 
 ---
 
@@ -245,7 +247,7 @@ Next.js 16 (App Router) — single deployable
   ├─ Jira Cloud REST v3 client            ← per-user token OR Atlassian OAuth (see §13)
   ├─ Background sync (cron/queue)          ← refresh issue snapshots; write daily SprintSnapshot
   ├─ Redis (optional)                      ← hot reads / rate-limit smoothing for ED multi-team views
-  ├─ AI provider (pluggable)               ← AI Digest narrative (BUILT 2026-07-20: lib/ai/, Gemini/Anthropic)
+  ├─ AI provider (pluggable)               ← AI Digest narrative (BUILT 2026-07-20: lib/ai/, Gemini/Anthropic) + Ask StoryBoard Q&A (BUILT 2026-10-05: lib/ask/)
   └─ Bug report read path (non-sprint)     ← BUILT 2026-07-21: BugReport* models + /bugs (gm-bug-report.md)
 ```
 
@@ -339,6 +341,9 @@ model User {
   createdSprints Sprint[]         @relation("SprintCreatedBy")
   progressEdits  IssueProgress[]  @relation("ProgressUpdatedBy")
   sharedViews    SharedView[]
+  connectorToken ConnectorToken?
+  analysisJobs   AnalysisJob[]
+  analyses       IssueAnalysis[]
 }
 
 /// Personal Jira access. Token is ENCRYPTED at rest (app-layer AES-GCM, key from KMS/secret).
@@ -890,6 +895,87 @@ model BugReportSnapshot {
   @@unique([reportId, capturedOn, rowKey, scopeKey, bandKey])
   @@index([reportId, capturedOn])
 }
+
+// ─────────────────────────────────────────────────────────────
+// Claude Connector — per-ticket AI analysis (claude-connector-analysis.md, 2026-09-29)
+// ─────────────────────────────────────────────────────────────
+
+/// A user's paired local StoryBoard Connector. The connector runs the user's OWN Claude Code
+/// (company subscription + Orbit DeepContext sign-in) on their machine and dials out to StoryBoard
+/// with this token as a Bearer credential. Only the sha256 hash is stored — the plaintext is shown
+/// once at generation. One pairing per user: regenerating replaces the row, revoking deletes it.
+/// The token authorizes the /api/connector/* routes ONLY, never the session-authenticated API.
+model ConnectorToken {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash        String    @unique                   // sha256(plaintext), hex
+  lastSeenAt       DateTime?                           // bumped on every poll; "online" = recent
+  connectorVersion String?
+  claudeVersion    String?
+  createdAt        DateTime  @default(now())
+}
+
+enum AnalysisJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+/// Transient queue of analysis requests. A job is only ever claimed by the REQUESTER's own
+/// connector (it spends their subscription). `context` is the server-built ticket facts snapshot
+/// sent to Claude — never client-supplied. Pruned after 7 days by the daily cron.
+model AnalysisJob {
+  id            String            @id @default(cuid())
+  jiraKey       String
+  source        String                                 // "BUG" (/bugs cache) | "SPRINT" (board Issue cache) | "ASK" (Ask StoryBoard round)
+  kind          String                                 // "BUG" | "DELIVERY" | "VULNERABILITY" | "HYGIENE" | "ASK" | "ASK_DEEP"
+  requestedById String
+  requestedBy   User              @relation(fields: [requestedById], references: [id], onDelete: Cascade)
+  status        AnalysisJobStatus @default(QUEUED)
+  model         String
+  effort        String
+  context       Json
+  progressNote  String?
+  error         String?
+  claimedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime          @default(now())
+
+  @@index([requestedById, status])
+  @@index([jiraKey])
+}
+
+/// The latest saved analysis of one Jira ticket — LATEST ONLY (a re-run replaces it), keyed by
+/// jiraKey alone because a ticket is the same ticket across bug reports and teams. Visible to anyone
+/// who can see the ticket. Display-only annotation: never a §12 metric input.
+model IssueAnalysis {
+  id           String   @id @default(cuid())
+  jiraKey      String   @unique
+  source       String
+  kind         String
+  result       Json                                    // zod-validated + sanitized analysisResultSchema
+  model        String
+  costUsd      Float?
+  durationMs   Int?
+  analyzedById String?
+  analyzedBy   User?    @relation(fields: [analyzedById], references: [id], onDelete: SetNull)
+  analyzedAt   DateTime @default(now())
+}
+
+/// Admin configuration for Claude analysis — a singleton row (id = "default"). Read with code
+/// defaults when the row is absent, so an unseeded database still works (disabled).
+model ClaudeAnalysisSettings {
+  id             String   @id @default("default")
+  enabled        Boolean  @default(false)
+  allowedModels  String[]
+  defaultModel   String
+  effort         String
+  maxBudgetUsd   Float
+  timeoutMinutes Int
+  updatedAt      DateTime @updatedAt
+}
 ```
 
 ### Entity-relationship diagram
@@ -932,6 +1018,10 @@ erDiagram
     BUG_REPORT ||--o{ BUG_REPORT_SNAPSHOT : "history"
     BUG_REPORT_SCOPE ||--o{ BUG_SLA_TARGET : "SLA days by priority"
     BUG_REPORT_SCOPE ||--o{ BUG_REPORT_ISSUE : "universe of""
+
+    USER ||--o| CONNECTOR_TOKEN : "pairs"
+    USER ||--o{ ANALYSIS_JOB : "requests"
+    USER |o--o{ ISSUE_ANALYSIS : "last analysed"
 
     USER {
         string id PK
@@ -1094,6 +1184,35 @@ erDiagram
         int count
         int breachedCount
     }
+    CONNECTOR_TOKEN {
+        string id PK
+        string userId FK,UK
+        string tokenHash UK "sha256 only"
+        datetime lastSeenAt
+    }
+    ANALYSIS_JOB {
+        string id PK
+        string jiraKey
+        string source "BUG | SPRINT | ASK"
+        string kind
+        string requestedById FK
+        AnalysisJobStatus status
+        json context
+    }
+    ISSUE_ANALYSIS {
+        string id PK
+        string jiraKey UK "latest only"
+        string kind
+        json result
+        string analyzedById FK
+    }
+    CLAUDE_ANALYSIS_SETTINGS {
+        string id PK "singleton 'default'"
+        bool enabled
+        string_arr allowedModels
+        float maxBudgetUsd
+        int timeoutMinutes
+    }
     ERROR_LOG {
         string id PK
         string requestId
@@ -1107,6 +1226,10 @@ erDiagram
     }
 ```
 
+> **Note — `ClaudeAnalysisSettings` is a singleton** (admin config, no relations) and
+> **`IssueAnalysis` is keyed by `jiraKey` alone** — joined to `Issue`/`BugReportIssue` by key at read
+> time with no FK, like `Issue ↔ IssueProgress` (claude-connector-analysis.md).
+>
 > **Note — `ErrorLog` has no relationships at all**, which is why it floats free in the diagram
 > above: it records failures *about* entities that may not exist (a deleted team, a user who never
 > signed in, a request that died before auth), and a cascade must never erase incident history.
@@ -1198,6 +1321,20 @@ erDiagram
   `getRollupData` with the team set sourced from `program.teams` instead of the viewer's
   memberships. See context/features/program-rollup.md.
 
+- **The Claude Connector cluster (added 2026-09-29) stores the OUTPUT of analyses run on users'
+  own machines.** `ConnectorToken` is a per-user pairing credential (sha256 only; one per user;
+  authorizes `/api/connector/*` and nothing else). `AnalysisJob` is a transient queue (claimed only
+  by the requester's own connector, pruned after 7 days by the daily cron). `IssueAnalysis` is
+  latest-only product data keyed by `jiraKey` alone — a ticket is the same ticket across bug
+  reports and teams — visible to anyone who can see the ticket, and a display-only annotation that
+  never feeds §12. `ClaudeAnalysisSettings` is the admin singleton (enabled, allowed models, effort,
+  per-run $ budget, timeout). See context/features/claude-connector-analysis.md. **[Amended 2026-10-05/09,
+  ask-storyboard.md as-built 13–16]** `AnalysisJob` also carries Ask StoryBoard rounds: kind `ASK`
+  (tool-less) and `ASK_DEEP` (read-only DeepContext), source `ASK`, with the sentinel `jiraKey`
+  `"ASK"`. They are claimed ahead of analyses, never written to `IssueAnalysis`, their prompt (the
+  question) is wiped when they finish, and the waiting request deletes the row. No schema change:
+  `kind`/`source` were already free strings.
+
 ---
 
 ## 10. Tech stack
@@ -1210,7 +1347,7 @@ erDiagram
 | ORM | **Prisma 7** | Schema in §9. |
 | Caching | **Redis** (optional) | For ED multi-team reads + Jira rate-limit smoothing. |
 | Auth | **Jira email + API token, encrypted at rest** (decided 2026-06-10) | AES-GCM, key from a secret store; OAuth 3LO remains a later option (§13). **[BUILT in `web/` 2026-06-29]** iron-session cookie + AES-256-GCM `JiraCredential` (auth-layer.md). |
-| AI | **Pluggable provider** (amended 2026-07-20; was "Gemini") | Provider-agnostic `src/lib/ai/` platform switched by `AI_PROVIDER` env (Gemini + Anthropic adapters ship). **[BUILT in part 2026-07-20]** — risk call-outs + leadership narrative ("AI Digest" dialog on `/`); Q&A over sprint data + stage suggestions remain post-v1. |
+| AI | **Pluggable provider** (amended 2026-07-20; was "Gemini") | Provider-agnostic `src/lib/ai/` platform switched by `AI_PROVIDER` env (Gemini + Anthropic adapters ship). **[BUILT in part 2026-07-20]** — risk call-outs + leadership narrative ("AI Digest" dialog on `/`); **Q&A over sprint data BUILT 2026-10-05** as Ask StoryBoard (voice + text, ask-storyboard.md); stage suggestions remain post-v1. |
 | Styling | **Tailwind CSS v4 + shadcn/ui** | CSS-var token theme in `globals.css` `@theme`. **Two themes (Tekion + Modern) BUILT 2026-07-24** — a `theme-modern` class on `<html>` swaps palette AND layout (blue + a dark nav sidebar via `AppShell`), localStorage-backed (modern-theme.md). Dark mode still post-v1 (dormant `.dark`). |
 
 ---
@@ -1276,6 +1413,12 @@ UI/UX *direction* is the spec above; this table is the *history* of what shipped
 | 2026-09-27 | Brand refresh — Jigsaw mark, two-tone StoryBoard wordmark, serif tagline "Every piece. One picture.", new favicon/app icon | brand-logo-tagline.md |
 | 2026-09-27 | Jigsaw brand loader in the long-wait veil + AI digest (pieces fly in, white piece last; reduced motion breathes) | brand-logo-tagline.md |
 | 2026-09-29 | Brand loader rework — ghost picture + teal halo, pieces dissolve in place; veil text no longer shifts the mark | brand-logo-tagline.md |
+| 2026-09-29 | "Analyse with Claude" sparkle on ticket rows + analysis dialog; `/settings` Claude Connector card; admin "Claude analysis" section | claude-connector-analysis.md |
+| 2026-10-01 | Dialog redesign — refined-enterprise chrome (quiet scrim, semibold title, white footer, scroll-aware dividers), shared dialog kit (Callout, Field, RadioCard, Segmented, ConfirmDialog), all ~19 dialogs swept | dialog-redesign.md |
+| 2026-10-05 | Ask StoryBoard — sidebar launcher + ⌘K slide-over, mobile mic FAB, full-screen installable `/ask` (tap-to-talk), web manifest + apple icon | ask-storyboard.md |
+| 2026-10-05 | Ask answer provenance: "Asking your Claude…" / "Not in StoryBoard — searching Jira with DeepContext…" status line, "Answered by your Claude" and "From ORBIT DeepContext (Jira)" labels, optional ElevenLabs answer voice | ask-storyboard.md |
+| 2026-10-06 | One-tap floating "talk" button on every screen size (opens Ask already listening); phone-setup dialog moved onto the redesign's hero | ask-storyboard.md |
+| 2026-10-06 | Ask conversation kept across panel close, page changes and reloads (in the browser; "Start a new conversation" clears it) | ask-storyboard.md |
 
 ---
 
@@ -1418,6 +1561,23 @@ file store. Token is **plaintext on disk** in `.sessions/`. Acceptable for a loc
    from carrying a connection-string password into stdout or `ErrorLog`. `email` is on the key list
    as PII default-deny; the login routes log a masked `actor` (`n***@tekion.com`) so triage keeps an
    identifier. See context/features/observability-and-errors.md as-built note 12.
+7. **Claude Connector pairing tokens** (added 2026-09-29, claude-connector-analysis.md) — the app's
+   second bearer surface after `CRON_SECRET` and its first per-USER issued credential. `sbc_` + 192
+   random bits, shown once, stored as sha256 only (`ConnectorToken.tokenHash`), one per user,
+   regenerate-replaces / revocable from `/settings`; it authorizes ONLY `/api/connector/*` (claim
+   the holder's own jobs, post events for them) — never the session API. AI keys and the ORBIT Okta
+   tokens never reach StoryBoard: analysis runs on the user's machine, with `--tools ""` (no shell,
+   files or web) and a local allowlist ceiling of read-only ORBIT tools the server cannot widen.
+   **[Amended 2026-10-05/09, ask-storyboard.md as-built 13–16]** The connector now also answers Ask
+   StoryBoard questions for its own user. An `ASK` round runs with **no tools and no MCP servers**
+   (`--strict-mcp-config`). An `ASK_DEEP` round may use only the read-only DeepContext Jira tools,
+   still inside the local ceiling. Its scope is built server-side from teams the asker can see, and
+   it never runs after an access denial.
+8. **Third-party egress for Ask answers** (added 2026-10-05, ask-storyboard.md as-built 15). When
+   `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID` are set, each spoken **answer's text** (never the
+   question) is sent to ElevenLabs. The key stays server-side behind `POST /api/ask/speech`
+   (signed-in only, 60 per 10 min per user, only the character count is logged), and the panel says
+   "Answers are voiced by ElevenLabs." Unset, nothing leaves StoryBoard for speech output.
 
 ---
 
@@ -1470,7 +1630,8 @@ spec-internal ambiguities to resolve.
     decided AND built for the first two §16 use cases (risk call-outs + leadership narrative): the
     on-demand "AI Digest" dialog on `/`, atop a **provider-agnostic** platform (`src/lib/ai/` —
     Gemini is the first adapter, not load-bearing; switch providers via `AI_PROVIDER` env).
-    Export-embedded narrative, Q&A, and stage suggestions remain open post-v1 ideas.
+    Export-embedded narrative, Q&A, and stage suggestions remain open post-v1 ideas. **[Q&A built
+    2026-10-05]** as Ask StoryBoard (ask-storyboard.md).
 11. **JavaScript for a data-heavy, multi-persona app.** Higher bug surface. *Recommend* TypeScript for
     the migration, or `zod` validation at every boundary if staying on JS.
 12. **Internal Bugs lacks its own workflow** (reuses support/techdebt stages). Add `internalbug` if it
@@ -1549,6 +1710,7 @@ All previously open decisions are now resolved:
   cases (risk call-outs, narrative, Q&A, stage suggestions) approved in principle; risk call-outs +
   leadership narrative shipped as the "AI Digest" (`src/lib/ai/`, `AI_PROVIDER`-switched Gemini/Anthropic),
   plus known/agreed `riskComment`s and a roll-up all-risks dialog. Q&A + stage suggestions remain open.
+  *(Amended 2026-10-05: Q&A BUILT as Ask StoryBoard — see the decision below; stage suggestions remain open.)*
   Full amendment history in the archive. See context/features/ai-insights.md, risk-comments-rollup-digest.md.
 - **Bug report dashboards (ratified 2026-07-21).** A config-driven bug matrix + executive dashboard at
   `/bugs`: rows/columns/cells are all admin config (nothing hardcoded), a new non-sprint-scoped route,
@@ -1663,6 +1825,60 @@ All previously open decisions are now resolved:
   (`add_error_log`). §12 metrics are untouched; `error` keeps its exact meaning so no existing client
   changed. See context/features/observability-and-errors.md.
 
+- **Claude Connector — per-ticket analysis on the user's own Claude Code (ratified 2026-09-29).**
+  Naveen wanted analysis *inside* StoryBoard but powered by the company Claude Code subscription so
+  ORBIT DeepContext comes along automatically. Because DeepContext only accepts a per-user Okta
+  sign-in and a subscription login may not power a server app, the work runs on the user's machine:
+  a local connector **dials out** (long-poll; browser→localhost rejected), claims the requester's
+  own job, runs `claude -p` read-only, and posts the result. 14 AskUserQuestion decisions: saved +
+  team-visible, latest only, per-ticket only in v1 (board-level is v2), buttons on every `/` track
+  row + Needs attention + `/bugs` rows + `/rollup` risks, kind-adapted analysis (bug / delivery /
+  vulnerability / hygiene), access = can-see-the-ticket, script served by StoryBoard (npm package is
+  a TODO), offline ⇒ button disabled, Claude fetches the ticket body itself, read-only tools + $
+  budget + timeout, admin-set model list with a per-run pick. Invariants moved and declared: **50 → 57
+  ƒ Dynamic** and **13 → 14 migrations** (`add_claude_connector`). §12 untouched. See
+  context/features/claude-connector-analysis.md.
+- **Ask StoryBoard — grounded voice Q&A (ratified 2026-10-01 / 2026-10-04).** Leadership asks out
+  loud and hears a short answer in seconds. Five AskUserQuestion calls: (1) **browser speech**
+  (SpeechRecognition / speechSynthesis — no vendor, typing always works); (2) **data scope =
+  everything** (roll-up/program, team board, bugs, trend, leaderboard, ticket), each behind the gate
+  its page already applies; (3) **everywhere, context-aware** (sidebar launcher on every
+  authenticated page); (4) **ephemeral** (nothing persisted, no migration); (5) **in-app only** —
+  routing to the local Claude Connector (laptop must be awake, ~46 s) and a remote-MCP connector for
+  the Claude mobile app (needs public ingress + OAuth) were considered and set aside; mobile is an
+  installable full-screen `/ask` page. Grounding is a two-round JSON "data pack" contract on the
+  existing `lib/ai` provider (tool use without adapter changes), ≤ 2 model calls, citations
+  sanitized to the packs sent. Invariants moved and declared: **50 → 52 ƒ Dynamic** (`/api/ask`,
+  `/ask`); migrations stay **13**. §12 untouched. See context/features/ask-storyboard.md.
+  *(**[Amended 2026-10-05]** built on `main` in a separate worktree, then brought onto
+  `feature/claude-connector` uncommitted. On top of the connector's 57 / 14, the combined invariants
+  are **59 ƒ Dynamic / 14 migrations**. `visibleTeamIds` now lives only in `lib/rbac.js`, and
+  `lib/connector/access.js` imports it from there.)*
+  *(**[Amended 2026-10-05, Naveen]** Decision 5's "in-app only" now has one exception: the Claude
+  Connector is the **automatic fallback** when the server provider fails a round, never the primary
+  engine. It is tool-less, uses no new route or migration, and needs connector 1.1.0 or later. The
+  question is held only while the job runs. See ask-storyboard.md as-built 13.)*
+  *(**[Amended again 2026-10-05, Naveen]** The order is inverted: the Connector answers **first**
+  whenever it can, and Gemini (the API-key route) answers when it can't or fails the round. See
+  ask-storyboard.md as-built 14.)*
+  *(**[Amended 2026-10-05, Naveen]** Answers can be spoken in an ElevenLabs voice. That amends
+  decision 1 (browser speech) for output only and P3 (answer text goes to ElevenLabs when
+  configured). New route `/api/ask/speech` → **60 ƒ Dynamic / 14 migrations**. See ask-storyboard.md
+  as-built 15.)*
+  *(**[Amended 2026-10-05, Naveen]** When StoryBoard's data can't answer, the asker's Connector
+  takes one more round with read-only ORBIT DeepContext Jira tools (`ASK_DEEP`), scoped
+  server-side to visible teams. It never routes around an access denial. No route or migration.
+  See ask-storyboard.md as-built 16.)*
+  *(**[Amended 2026-10-06, Naveen]** Decision 4 ("ephemeral") is relaxed. The conversation is
+  kept in the BROWSER (localStorage per user, 12 h, cleared on logout); a question still being
+  answered survives closing the panel or a reload; follow-ups carry the earlier turns and their
+  Jira keys. Nothing is stored on the server. See ask-storyboard.md as-built 19.)*
+  *(**[Amended 2026-10-09, Naveen]** Ask no longer requires an AI provider: it is on when
+  `AI_PROVIDER` is set **or** admin Claude analysis is enabled (`isAskEnabled`). With no provider,
+  the Connector is the only engine, and an asker whose Connector can't answer gets a 409 telling
+  them what to fix. The AI Digest is unchanged and still needs `AI_PROVIDER`. See
+  ask-storyboard.md as-built 21.)*
+
 ---
 
 ## 17. Conventions for future development
@@ -1670,6 +1886,11 @@ All previously open decisions are now resolved:
 - **Update this doc** in the same PR whenever behavior, data model, or architecture changes; keep the
   `[BUILT]/[PARTIAL]/[PLANNED]/[GAP]` tags honest.
 - **Domain data goes to Postgres**, never localStorage. localStorage is for ephemeral UI prefs only.
+  *(**Exception, 2026-10-06 with Naveen** (ask-storyboard.md as-built 19): the Ask StoryBoard
+  conversation is kept in the asker's own browser under `sprintTracker_askChat:<email>`. It is a
+  per-user, device-local convenience copy of answers they were already shown, not shared domain
+  data. It is never read by the server, expires after 12 h unused, and is cleared on logout.
+  Anything that must be shared or durable still goes to Postgres.)*
 - **Validate at boundaries** (zod or schema validation) for every API route and Jira response.
 - **Keep Jira specifics isolated** in a single client/service module (field IDs, JQL, pagination).
 - **Metrics are pure functions** of (filters, progress, sprint) — keep `computeSprintMetrics` pure and

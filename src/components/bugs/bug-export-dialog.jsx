@@ -10,8 +10,10 @@
  * opening /bugs does not add them to the initial client bundle.
  */
 import { useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Download, FileDown, SlidersHorizontal } from "lucide-react";
-import { Dialog, DialogError } from "@/components/ui/dialog";
+import { Download, FileDown } from "lucide-react";
+import { Dialog, DialogClose, DialogError } from "@/components/ui/dialog";
+import { SectionLabel } from "@/components/ui/field";
+import { PreviewCanvas, PreviewPager } from "@/components/export/export-dialog-kit";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select } from "@/components/ui/select";
@@ -272,35 +274,24 @@ function BugExportDialog({ report, ownerName, jiraBaseUrl, view, scopeLabel, sho
   return (
     <Dialog
       open
-      title={`Executive Bug Report — ${report.name}`}
+      icon={FileDown}
+      hero="compact"
+      title={`Executive bug report — ${report.name}`}
       description={`A leadership brief for ${scopeLabel}, followed by risk-ordered detail. Jira links remain clickable.`}
       onClose={busy ? undefined : onClose}
       size="xl"
+      footerStart={
+        <PreviewPager
+          index={pageIndex}
+          total={totalPages}
+          onChange={setCurrentPage}
+          label={pageType}
+          always
+        />
+      }
       footer={
         <>
-          <div className="mr-auto flex items-center gap-1.5">
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-label="Previous page"
-              onClick={() => setCurrentPage(Math.max(0, pageIndex - 1))}
-              disabled={pageIndex === 0}
-            >
-              <ChevronLeft />
-            </Button>
-            <span className="text-xs font-semibold tabular-nums text-muted-foreground">
-              {pageType} · {pageIndex + 1} of {totalPages}
-            </span>
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-label="Next page"
-              onClick={() => setCurrentPage(Math.min(totalPages - 1, pageIndex + 1))}
-              disabled={pageIndex === totalPages - 1}
-            >
-              <ChevronRight />
-            </Button>
-          </div>
+          <DialogClose />
           <Button onClick={handleExport} disabled={busy}>
             {busy ? <Spinner /> : <Download />}
             {busy ? `Exporting ${totalPages} pages…` : "Export executive PDF"}
@@ -308,21 +299,16 @@ function BugExportDialog({ report, ownerName, jiraBaseUrl, view, scopeLabel, sho
         </>
       }
     >
-      <div className="flex flex-col gap-4">
-        <div className="grid gap-3 rounded-xl border border-border-subtle bg-muted/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center">
-          <div className="flex items-start gap-2.5">
-            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-accent text-accent-foreground">
-              <SlidersHorizontal className="size-4" aria-hidden="true" />
-            </span>
-            <div>
-              <p className="text-xs font-bold text-foreground">Report contents</p>
-              <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
-                Executive brief and team detail are included. The operational oldest-open list is optional.
-              </p>
-            </div>
+      <div className="flex flex-col gap-5">
+        <div className="grid gap-3 rounded-lg border border-border-subtle bg-subtle px-4 py-3.5 sm:grid-cols-[1fr_auto] sm:items-center">
+          <div>
+            <SectionLabel>Report contents</SectionLabel>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Executive brief and team detail are included. The operational oldest-open list is optional.
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-3 sm:justify-end">
-            <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold">
+            <label className="inline-flex cursor-pointer items-center gap-2 text-[13px] font-medium">
               <Checkbox
                 checked={includeOldest}
                 disabled={busy}
@@ -337,7 +323,8 @@ function BugExportDialog({ report, ownerName, jiraBaseUrl, view, scopeLabel, sho
                 value={oldestLimit}
                 disabled={busy || !includeOldest}
                 onChange={(event) => setOldestLimit(Number(event.target.value))}
-                className="h-8 w-20 text-xs"
+                size="sm"
+                className="w-20"
               >
                 {OLDEST_LIMITS.map((limit) => (
                   <option key={limit} value={limit}>
@@ -351,13 +338,9 @@ function BugExportDialog({ report, ownerName, jiraBaseUrl, view, scopeLabel, sho
 
         <DialogError>{error}</DialogError>
 
-        <div className="rounded-xl border border-border-subtle bg-[#e9eef3] p-2 sm:p-4">
-          <div className="mb-2 flex items-center justify-between gap-3 px-1 text-[11px] text-muted-foreground">
-            <span>Responsive preview · A4 landscape</span>
-            <span className="font-semibold text-foreground">Internal</span>
-          </div>
+        <PreviewCanvas orientation="landscape">
           <LandscapePreview>{renderPage(pages[pageIndex], pageIndex)}</LandscapePreview>
-        </div>
+        </PreviewCanvas>
       </div>
 
       <div

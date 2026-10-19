@@ -14,7 +14,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { BrandMark, BrandTagline, Wordmark } from "@/components/ui/brand";
 import { apiFetch, errorReference } from "@/lib/api-client";
 
-export function LoginForm() {
+export function LoginForm({ nextPath = "/" }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
@@ -36,7 +36,8 @@ export function LoginForm() {
         method: "POST",
         body: { email: email.trim(), token: token.trim() },
       });
-      router.push("/");
+      // nextPath is validated server-side (lib/safe-next.mjs) — same-origin paths only.
+      router.push(nextPath);
       router.refresh();
     } catch (err) {
       setError(err.message);

@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db";
 import { Role, SprintState } from "@/generated/prisma/client";
 import { aggregateRollup, combineSnapshotsByDay, computeSprintMetrics } from "@/lib/metrics.mjs";
 import { isAiConfigured } from "@/lib/ai/provider";
+import { isAskEnabled } from "@/lib/ask/availability";
 import {
   TEAM_MANAGER_ROLES,
   TEAM_WRITER_ROLES,
@@ -232,6 +233,8 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
     jiraBaseUrl: process.env.JIRA_BASE_URL?.trim().replace(/\/+$/, "") ?? null,
     // UI affordance only (ai-insights.md decision 3) — the ai-digest route re-checks per request.
     aiEnabled: isAiConfigured(),
+    // Ask StoryBoard's own gate (provider OR Claude analysis) — /api/ask re-checks per request.
+    askEnabled: await isAskEnabled(),
     hasBugReport: await hasActiveBugReport(),
     // Sidebar nav visibility only (leaderboard.md) — /leaderboard re-checks per request.
     hasLeaderboardAccess: await hasLeaderboardAccess(user),
@@ -444,6 +447,8 @@ export async function getRollupData(user, { sprintId, programId } = {}) {
     // UI affordance only (ai-insights.md decision 3 precedent) — the rollup ai-digest route
     // re-checks per request.
     aiEnabled: isAiConfigured(),
+    // Ask StoryBoard's own gate (provider OR Claude analysis) — /api/ask re-checks per request.
+    askEnabled: await isAskEnabled(),
     hasBugReport: await hasActiveBugReport(),
     // Sidebar nav visibility only (leaderboard.md) — /leaderboard re-checks per request.
     hasLeaderboardAccess: await hasLeaderboardAccess(user),

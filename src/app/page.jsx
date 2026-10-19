@@ -11,6 +11,8 @@ import { getDashboardData } from "@/lib/dashboard-data";
 import { aggregateByDeveloper } from "@/lib/metrics.mjs";
 import { getMyAllTimePoints } from "@/lib/leaderboard-data";
 import { Dashboard } from "@/components/dashboard/dashboard";
+import { AnalysisProvider } from "@/components/analysis/analysis-context";
+import { getAnalysisUiState } from "@/lib/connector/ui-state";
 
 export const dynamic = "force-dynamic";
 
@@ -45,5 +47,17 @@ export default async function DashboardPage({ searchParams }) {
     };
   }
 
-  return <Dashboard {...data} myStats={myStats} />;
+  // Claude analysis (claude-connector-analysis.md): feature flag + which board tickets already carry
+  // a saved analysis — every track row plus the Needs-attention panel.
+  const analysis = await getAnalysisUiState(
+    [...data.filters, ...(data.needsAttentionTrack ? [data.needsAttentionTrack] : [])].flatMap(
+      (filter) => filter.issues.map((issue) => issue.jiraKey),
+    ),
+  );
+
+  return (
+    <AnalysisProvider enabled={analysis.enabled} analyzedKeys={analysis.analyzedKeys}>
+      <Dashboard {...data} myStats={myStats} />
+    </AnalysisProvider>
+  );
 }

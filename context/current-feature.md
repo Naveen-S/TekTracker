@@ -1,40 +1,97 @@
 # Current Feature
 
-**Brand refresh — Jigsaw logo + "Every piece. One picture."**
-(@context/features/brand-logo-tagline.md) — StoryBoard was renamed on 2026-07-31 but still shipped
-the placeholder teal "T" icon and a one-colour wordmark. Naveen picked from the brand board PDF:
-Concept A (the Jigsaw), the tagline *"Every piece. One picture."*, and the two-tone wordmark with a
-serif tagline. Presentation-only; post-v1, not a master-plan step.
+**Ask StoryBoard — grounded voice Q&A for leadership**
+(@context/features/ask-storyboard.md) — ask a question out loud (desktop panel or the phone's
+installable `/ask` page) and hear a short answer grounded only in StoryBoard data: roll-up/program,
+team board, bugs, trend, leaderboard, ticket — each behind its existing RBAC gate. Browser speech in,
+browser speech out; the server-side `lib/ai` provider answers via a two-round JSON "data pack"
+contract. The third §16 AI use case ("Q&A over sprint data"); post-v1, not a master-plan step.
 
 ## Status
 
-**Done 2026-09-29 · verified · uncommitted.** Branch `feature/brand-jigsaw`, cut from `main` @
-`03602d7` (the migrate-on-start work is in Naveen's stash, not on this branch). Final /finish-feature
-pass: lint exit 0 · 13 migrations, up to date · cold env-free build (`.env` + `.env.production` moved
-aside) → exit 0, **50 ƒ Dynamic**, **0 warnings** (log grepped) · `next start` smoke: `/login` carries
-the tagline + exactly two `rel="icon"` links, `/icon.svg` · `/favicon.ico` · `/app-icon.png` 200,
-`/p/health` 200, `/api/auth/me` 401. **Loader reworked the same day** (Naveen: unattractive + jumped
-when the label/seconds appeared): mark-only centring with the text hung below and the timer line
-reserved (mark box measured identical in all three text states), a ghost picture + teal halo,
-dissolve-in-place choreography; re-verified — lint 0, 13 migrations up to date, env-free cold build
-exit 0 at **50 ƒ Dynamic** / 0 warnings, all four `jigsaw-*` keyframes emitted, `next start` smoke
-green. **Next:** Naveen's commit (gitleaks hook; leave the untracked
-launch-video / migrate-on-start files out) + authed real-browser acceptance, then resume
-**migrate-on-start** from the stash.
+**Done 2026-10-09 · verified · uncommitted** on `feature/claude-connector`, on top of `bc47524`
+(Dialog redesign).
 
-**Implemented:** `src/components/ui/brand.jsx` (`BrandMark`, `Wordmark`, `BrandTagline`,
-`BRAND_TAGLINE`) · Instrument Serif → `--font-tagline` · sidebar, login card, four mobile top bars,
-share header, welcome hero · bare mark on the ink sidebar · adaptive `src/app/icon.svg` favicon (replaces the deleted `icon.png`) + light-tone `favicon.ico` Safari fallback · `public/app-icon.png` keeps the tile. · **`BrandLoader`** — the jigsaw assembling itself — in the `PageLoader` veil (all 5 call sites) + the AI digest wait; button spinners stay rings.
+**Verified 2026-10-09:**
+- eslint 0 for this tree. Plain `yarn lint` trips only on the nested `.claude/worktrees/*`; see spec
+  note 20.
+- `prisma validate` passes; **14 migrations, up to date**.
+- An **env-free build in a scratch copy with zero `.env*`**: exit 0, **60 ƒ Dynamic**, manifest
+  static, **0 warnings**.
+- **22/22 runtime smoke** on that build. `/api/ask` returns 401/400/503/404 and `/api/ask/speech`
+  401/503; the connector routes, every page authed, and the talk button on with AI on and off with
+  AI off.
+- Earlier in the arc: the real connector end to end, DeepContext against Naveen's Jira list, the
+  one-tap button, and 7/7 chat-persistence browser checks (spec notes 13–19).
+- **Not verified:** a real ElevenLabs round-trip, and real phone voice on stage over HTTPS. (A Gemini
+  answer was verified 2026-10-09.)
+- **2026-10-09, Ask without a Gemini key** (spec note 21): Ask is on when `AI_PROVIDER` is set OR
+  Claude analysis is enabled. Verified 6/6 plus a live Connector-only answer in 20.6 s.
 
-**Verified:** lint clean · 13 migrations · env-free cold build → exit 0, **50 ƒ Dynamic**, 0 warnings
-· headless visual pass (login, board desktop + mobile, roll-up mobile; Tekion + Modern) · icons
-served.
+**Next:**
+- Naveen's commit (gitleaks hook), then his authed acceptance pass.
+- Restart `yarn dev` (stale dialog CSS) and re-download connector **1.1.0**.
+- Set `ELEVENLABS_*` and `AI_ASK_MODEL` for stage.
+- Decide on an Ask glossary for org terms (spec note 16).
+- Optional one-line fix: add `.claude/**` to the eslint ignores.
+
+## Goals
+
+- (a) Data packs — `src/lib/ask/packs.js`; `visibleTeamIds` in `src/lib/rbac.js`.
+- (b) Orchestration — `src/lib/ask/orchestrate.js` + pure `src/lib/ask/prompt.mjs`, schemas in
+  `src/lib/schemas/ask.js`.
+- (c) `generateJson({ model, timeoutMs })` + `getAskModel()` (`AI_ASK_MODEL`).
+- (d) `POST /api/ask` with a per-user rate limit.
+- (e) Desktop: sidebar launcher → `src/components/ask/ask-panel.jsx`.
+- (f) Mobile: `src/app/ask/page.jsx`, `src/app/manifest.js`, `appleWebApp`, the AppShell FAB,
+  `/login?next=`.
+- (g) `src/components/ask/use-speech.js`.
 
 ## Notes
 
-- **§12 metric core untouched**; no schema or route change — both invariants hold.
-- The mark's colours are fixed; only "Board" follows the theme (`primary`, or `on-ink-accent` on ink).
-- Out of scope: export PDF footers/metadata, error pages.
+- Invariants: **50 → 52 ƒ Dynamic** on `main`; on this branch, **57 → 59** (migrations stay **14**).
+  `manifest.js` must build static.
+- Gemini's JSON-schema subset has no `oneOf` — the round-1 union is a flat object + `type` enum.
+- Mic = secure context + user gesture; iOS speech synthesis must be unlocked inside the tap.
+- `visibleTeamIds` has a single definition in `lib/rbac.js`, which `lib/connector/access.js` imports.
+- **Connector fallback (as-built 13):** a provider failure hands the round to the asker's Claude
+  Connector (`ASK` job, connector 1.1.0 or later, about 23 s for one round and 41 s for two). Users
+  on connector 1.0.0 must re-download the script from Settings.
+- **Order inverted (as-built 14): Connector FIRST, Gemini second.** Gemini answers when the
+  connector is offline, outdated or busy, or fails the round (15 s pickup, 1-minute cap). Measured
+  21–27 s for one round and 33 s for two via the connector. A successful Gemini answer wasn't
+  verified on 2026-10-05: it returned 503s and timeouts all day.
+- **ElevenLabs answer voice (as-built 15):** set `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID`
+  (`ELEVENLABS_MODEL` optional, default `eleven_flash_v2_5`). Without both, Ask uses the browser
+  voice. A real round-trip is pending the key.
+- **DeepContext fallback (as-built 16):** a `grounded: false` answer gets one `ASK_DEEP` connector
+  round scoped to the program, about 60–80 s in all. Org terms ("beta blocker" = label
+  `2.0Phase2Blocker`) aren't inferable, so the user must say the label or we add a glossary.
+- **Connector 1.1.1 (connector note 19):** fixes a tight re-poll loop while Claude analysis is off,
+  which caused the stage 502s. Users should re-download the script after the next deploy; the minimum
+  for Ask stays 1.1.0.
+- **Ask needs no Gemini key (as-built 21):** `isAskEnabled()` (`lib/ask/availability.js`) gates
+  Ask; `aiEnabled` still gates only the AI Digest. With no provider, a user whose connector can't
+  answer gets a 409 `CONNECTOR_OFFLINE` naming the fix.
+- **Chat kept in the browser (as-built 19):** `chat-store.js` (localStorage
+  `sprintTracker_askChat:<email>`, 12 h, cleared by `clearAskChats()` on logout). Pending answers
+  survive closing the panel and a reload.
+
+## Also on this branch — Claude Connector (Done 2026-09-29, committed `a18d3bd`)
+
+Per-ticket "Analyse with Claude" (@context/features/claude-connector-analysis.md). Verified then:
+57 ƒ Dynamic / 14 migrations, 22 fixtures, 38/38 API smoke, and a real end-to-end run. Still open:
+- an authed real-browser pass (Needs-attention and Vulnerability tickets);
+- Naveen's run of the office DB bundle for migration 14;
+- resume **migrate-on-start** from the stash.
+
+## Also on this branch — Dialog redesign (Done 2026-10-01, committed `bc47524`)
+
+"Refined enterprise" dialogs (@context/features/dialog-redesign.md): the restyled `ui/dialog.jsx`
+primitive with the brand hero, a shared kit (`Callout`, `Field`, `RadioCard`, `Segmented`,
+`ConfirmDialog`), and all ~19 dialogs swept onto it. Presentation only, with no route or migration.
+Fast-forwarded into this branch on 2026-10-06 under the uncommitted Ask work; only `dashboard.jsx`
+and three docs overlapped, and they 3-way merged. Still open: Naveen's authed browser pass.
 
 ## Carry-forward — critical for any new feature
 
@@ -44,9 +101,26 @@ details live in [legacy-history.md](legacy-history.md); house conventions live i
 layer that sits between them.)
 
 **Repo / branch state (2026-09-04)**
-- **Baseline invariants to preserve:** **50 ƒ Dynamic** routes / **13 Prisma migrations**
-  (…`add_error_log`). Node 22, dev on **:3002**. A feature that changes either count must say so and
-  justify it. Nothing since the board-polish round had, until this feature moved both.
+- **Baseline invariants to preserve:** **60 ƒ Dynamic** routes / **14 Prisma migrations**
+  (…`add_claude_connector`, 2026-09-29). The path there: 50 / 13 through `add_error_log`, then the
+  Claude Connector (+7 routes / +1 migration), then Ask StoryBoard (+2 routes: `/api/ask` and `/ask`,
+  2026-10-05), then the ElevenLabs answer voice (+1: `/api/ask/speech`). Node 22, dev on **:3002**. A feature that changes either count must say so and justify
+  it.
+- **Claude Connector (2026-09-29):**
+  - AI analysis runs on the USER's machine, not the server. StoryBoard only queues jobs and stores
+    results. `/api/connector/*` is authenticated by a per-user `sbc_` bearer token (sha256 at rest).
+  - The connector must pass `ENABLE_CLAUDEAI_MCP_SERVERS=false` and `--disable-slash-commands`.
+    Otherwise every run drags in the user's whole plugin, skill and connector context: 122 tools and
+    about $1 per trivial call.
+  - Its tool ceiling is enforced locally, so the server can't widen it.
+- **Office DB migrations are hand-run (2026-09-29).**
+  - Every new migration gets an incremental psql bundle from the `dba-migration-bundle` skill
+    (`scripts/dba-migration-bundle.mjs`). Naveen applies it via the jumpserver **before** the image
+    rollout.
+  - **Office DB head:** 13 migrations (`…add_error_log`, bootstrap 2026-09-22).
+  - The bundle for 14 (`…add_claude_connector`) is generated and rehearsed, and is **pending
+    Naveen's run**. Once he confirms it, update this head to 14. *(Refreshed and re-rehearsed
+    2026-10-09 at `bc47524`; the migration is now committed. Same DDL and checksum.)*
 - **`main` is at `c8c2731`** ("Editable filters.") — it carries editable filters, the roll-up export
   (incl. the Velocity variant), the sync-stages P2028 fix, the bug-board arc, the unplanned-split,
   default-team-release, needs-attention-roster, program-rollup, AND the office-deployment work
@@ -65,6 +139,20 @@ layer that sits between them.)
   now has a timeout and a `cause`-chain classifier, because blocked egress used to HANG.
 - **`secure: true` cookies over plain HTTP** make login answer 200 and bounce the user back to
   `/login` with no error anywhere. `/api/diagnostics` reports the mismatch; the login route warns.
+
+**Dialogs (2026-10-01, dialog-redesign.md)**
+- New dialogs use `Dialog` with `hero` (or `hero="compact"` when the body is a large preview), a
+  `footer` (dismiss, then the primary on the right) and a
+  `footerStart` (tertiary actions: pager, copy, remove). The dismiss is always `DialogClose` or
+  `useDialog().close`, never the parent's `onClose` directly, which would skip the exit animation.
+- **Never hand-roll** a notice box (`Callout`), a label/hint stack (`Field`, `SectionLabel`), a radio
+  card (`RadioCard`), an either/or toggle (`Segmented`) or a
+  confirm (`ConfirmDialog`). This drift is exactly what the redesign removed.
+- **Buttons get a pointer cursor globally** (`globals.css` base layer: `button:not(:disabled)`,
+  `[role="button"]:not(:disabled)`), because Tailwind v4 dropped it. Don't add `cursor-pointer` to
+  individual buttons.
+- `Dialog` always portals to `document.body`, so don't wrap it in `createPortal`. Never give the panel
+  a persistent transform: the export dialogs' `fixed` offscreen print sheets live inside it.
 
 **The error contract (use it; don't route around it)**
 - **`withRoute("name", handler)` wraps every route handler.** It mints/adopts the request id, opens
@@ -157,9 +245,11 @@ layer that sits between them.)
   texture/second channel before a new hue, and validate ΔE (CIEDE2000 + Machado CVD), never eyeball.
 
 **Open post-v1 backlog (deferred, not forgotten)**
-- Export-embedded AI narrative · AI Q&A over sprint data · AI stage suggestions · a share link for
+- Export-embedded AI narrative · ~~AI Q&A over sprint data~~ (built 2026-10-05, Ask StoryBoard) · AI stage suggestions · a share link for
   `/bugs` · leaderboard rank-delta ("moved since last sprint") arrows · external APM/OTel export ·
-  `IssueProgress.createdAt` stage provenance (§14.13).
+  `IssueProgress.createdAt` stage provenance (§14.13) · **publish `@tekion/storyboard-connector` to
+  JFrog npm** (the connector is a StoryBoard-served script today) · board-level / multi-issue Claude
+  analysis (Claude Connector v2).
 
 ## History
 

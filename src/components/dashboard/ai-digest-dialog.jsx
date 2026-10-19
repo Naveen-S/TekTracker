@@ -14,7 +14,8 @@
  */
 import { useState } from "react";
 import { Copy, RefreshCw, Sparkles } from "lucide-react";
-import { Dialog, DialogError } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogError } from "@/components/ui/dialog";
+import { SectionLabel } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BrandLoader } from "@/components/ui/brand";
@@ -100,35 +101,39 @@ export function AiDigestDialog({
   return (
     <Dialog
       open
-      title="AI Digest"
+      icon={Sparkles}
+      hero
+      title="AI digest"
       onClose={busy ? undefined : onClose}
       size="lg"
+      footerStart={
+        digest &&
+        !busy && (
+          <Button variant="ghost" onClick={handleCopy}>
+            <Copy /> Copy
+          </Button>
+        )
+      }
       footer={
         <>
-          {digest && !busy && (
-            <>
-              <Button variant="secondary" onClick={handleCopy}>
-                <Copy /> Copy
-              </Button>
-              <Button variant="secondary" onClick={handleGenerate}>
-                <RefreshCw /> Regenerate
-              </Button>
-            </>
-          )}
-          {!digest && (
+          <DialogClose>Close</DialogClose>
+          {digest && !busy ? (
+            <Button variant="outline" onClick={handleGenerate}>
+              <RefreshCw /> Regenerate
+            </Button>
+          ) : (
             <Button onClick={handleGenerate} disabled={busy}>
               {busy ? <Spinner /> : <Sparkles />}
               {busy ? "Generating…" : "Generate digest"}
             </Button>
           )}
-          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
-            Close
-          </Button>
         </>
       }
     >
-      <div className="flex flex-col gap-4">
-        {!digest && !busy && <p className="text-sm leading-relaxed text-muted-foreground">{intro}</p>}
+      <div className="flex flex-col gap-5">
+        {!digest && !busy && (
+          <p className="text-center text-sm leading-relaxed text-pretty text-muted-foreground">{intro}</p>
+        )}
 
         {/* Generation runs 5–15s, so the wait gets the shape of the answer rather than a spinner:
             a headline bar, three narrative lines and two call-out rows, in the same rhythm the
@@ -157,24 +162,24 @@ export function AiDigestDialog({
 
         {digest && !busy && (
           <div className="flex flex-col gap-3">
-            <h3 className="font-display text-base font-bold">{digest.headline}</h3>
+            <h3 className="font-display text-[17px] leading-snug font-semibold tracking-tight text-balance">
+              {digest.headline}
+            </h3>
             {digest.narrative.map((paragraph, index) => (
               <p key={index} className="text-sm leading-relaxed text-secondary-foreground">
                 {paragraph}
               </p>
             ))}
             {digest.callouts.length > 0 && (
-              <div className="flex flex-col gap-1.5 border-t border-border-subtle pt-3">
-                <p className="text-[11px] font-bold tracking-wider uppercase text-muted-foreground">
-                  Risk call-outs
-                </p>
-                <ul className="flex flex-col divide-y divide-border-subtle">
+              <div className="mt-2 flex flex-col gap-2">
+                <SectionLabel>Risk call-outs</SectionLabel>
+                <ul className="flex flex-col divide-y divide-border-subtle rounded-lg border border-border-subtle px-3.5">
                   {digest.callouts.map((callout, index) => (
-                    <li key={index} className="flex items-start gap-2 py-2">
+                    <li key={index} className="flex items-start gap-2.5 py-2.5">
                       <Badge tone={callout.severity} className="shrink-0">
                         {SEVERITY_LABEL[callout.severity] ?? callout.severity}
                       </Badge>
-                      <span className="min-w-0 flex-1 pt-0.5 text-xs text-secondary-foreground">
+                      <span className="min-w-0 flex-1 pt-0.5 text-[13px] leading-relaxed text-secondary-foreground">
                         {callout.text}
                         {callout.jiraKeys.length > 0 && (
                           <span className="mt-1 flex flex-wrap gap-1">
@@ -189,7 +194,7 @@ export function AiDigestDialog({
                 </ul>
               </div>
             )}
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
               Generated {new Date(result.generatedAt).toLocaleString()} · {result.provider} ·{" "}
               {result.model} — AI-written; verify against the board before sharing.
             </p>

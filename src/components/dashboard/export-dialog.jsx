@@ -13,10 +13,12 @@
  * diverge. Both heavy libraries load on demand via dynamic import.
  */
 import { useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Download } from "lucide-react";
-import { Dialog, DialogError } from "@/components/ui/dialog";
+import { Download, FileDown } from "lucide-react";
+import { Dialog, DialogClose, DialogError } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
+import { PreviewCanvas, PreviewPager } from "@/components/export/export-dialog-kit";
 import {
   computeSprintMetrics,
   formatSprintWindow,
@@ -250,39 +252,20 @@ export function ExportDialog({
   return (
     <Dialog
       open
-      title={`Sprint Report — ${sprint.name}`}
+      icon={FileDown}
+      hero="compact"
+      title={`Sprint report — ${sprint.name}`}
       description="Pick the filters to include, check the preview, then export. Jira keys stay clickable in the PDF."
       onClose={busy ? undefined : onClose}
       size="xl"
+      footerStart={
+        <PreviewPager index={pageIndex} total={totalPages} onChange={setCurrentPage} />
+      }
       footer={
         <>
-          {totalPages > 1 && (
-            <div className="mr-auto flex items-center gap-1.5">
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label="Previous page"
-                onClick={() => setCurrentPage(Math.max(0, pageIndex - 1))}
-                disabled={pageIndex === 0}
-              >
-                <ChevronLeft />
-              </Button>
-              <span className="text-xs font-semibold tabular-nums text-muted-foreground">
-                Page {pageIndex + 1} of {totalPages}
-              </span>
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label="Next page"
-                onClick={() => setCurrentPage(Math.min(totalPages - 1, pageIndex + 1))}
-                disabled={pageIndex === totalPages - 1}
-              >
-                <ChevronRight />
-              </Button>
-            </div>
-          )}
+          <DialogClose />
           <Button
-            variant="secondary"
+            variant="outline"
             onClick={() => handleExport("image")}
             disabled={busy || nothingSelected}
           >
@@ -295,61 +278,53 @@ export function ExportDialog({
         </>
       }
     >
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-bold tracking-[0.08em] uppercase text-accent-foreground">
-              Include filters
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {filters.map((filter) => {
-                const active = selectedIds.has(filter.id);
-                const accent = filter.accentColor ?? DEFAULT_ACCENT;
-                return (
-                  <button
-                    key={filter.id}
-                    type="button"
-                    aria-pressed={active}
-                    disabled={busy}
-                    onClick={() => toggleFilter(filter.id)}
-                    className={cn(
-                      "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
-                      active ? "text-foreground" : "border-border text-muted-foreground hover:border-border-strong",
-                    )}
-                    style={
-                      active
-                        ? {
-                            borderColor: accent,
-                            backgroundColor: `color-mix(in srgb, ${accent} 10%, white)`,
-                          }
-                        : undefined
-                    }
-                  >
-                    <span
-                      className={cn("size-2 rounded-full", !active && "opacity-40")}
-                      style={{ backgroundColor: accent }}
-                      aria-hidden="true"
-                    />
-                    {filter.name}
-                  </button>
-                );
-              })}
-            </div>
-            {nothingSelected && (
-              <span className="text-xs text-danger">Select at least one filter to export.</span>
-            )}
+      <div className="flex flex-col gap-5">
+        <Field
+          label="Include filters"
+          eyebrow
+          error={nothingSelected ? "Select at least one filter to export." : undefined}
+        >
+          <div className="flex flex-wrap gap-1.5">
+            {filters.map((filter) => {
+              const active = selectedIds.has(filter.id);
+              const accent = filter.accentColor ?? DEFAULT_ACCENT;
+              return (
+                <button
+                  key={filter.id}
+                  type="button"
+                  aria-pressed={active}
+                  disabled={busy}
+                  onClick={() => toggleFilter(filter.id)}
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+                    active ? "text-foreground" : "border-border text-muted-foreground hover:border-border-strong",
+                  )}
+                  style={
+                    active
+                      ? {
+                          borderColor: accent,
+                          backgroundColor: `color-mix(in srgb, ${accent} 10%, white)`,
+                        }
+                      : undefined
+                  }
+                >
+                  <span
+                    className={cn("size-2 rounded-full", !active && "opacity-40")}
+                    style={{ backgroundColor: accent }}
+                    aria-hidden="true"
+                  />
+                  {filter.name}
+                </button>
+              );
+            })}
           </div>
-        </div>
+        </Field>
 
         <DialogError>{error}</DialogError>
 
-        <div className="rounded-xl border border-border-subtle bg-[#e9eef3] p-2 sm:p-4">
-          <div className="mb-2 flex items-center justify-between gap-3 px-1 text-[11px] text-muted-foreground">
-            <span>Responsive preview · A4 portrait</span>
-            <span className="font-semibold text-foreground">Internal</span>
-          </div>
+        <PreviewCanvas orientation="portrait">
           <PortraitPreview>{renderPage(page, pageIndex)}</PortraitPreview>
-        </div>
+        </PreviewCanvas>
       </div>
 
       {/* Offscreen A4 print sheets — what html2canvas-pro captures. Rendered (not display:none) so

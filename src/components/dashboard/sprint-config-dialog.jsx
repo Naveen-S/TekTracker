@@ -6,11 +6,13 @@
  */
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Dialog, DialogError } from "@/components/ui/dialog";
+import { CalendarRange } from "lucide-react";
+import { Dialog, DialogClose, DialogError } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
+import { Field } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api-client";
 
@@ -71,24 +73,23 @@ export function SprintConfigDialog({ mode, sprint, selectedTeamId, onClose, onSe
   return (
     <Dialog
       open
-      title={mode === "create" ? "Create Sprint (Gate)" : "Configure Sprint"}
+      icon={CalendarRange}
+      hero
+      title={mode === "create" ? "Create sprint (gate)" : "Configure sprint"}
       description="Sprints are global — one shared cadence for every team, running dev cycle → QA/UAT → release."
       onClose={saving ? undefined : onClose}
       footer={
         <>
-          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
-            Cancel
-          </Button>
+          <DialogClose />
           <Button type="submit" form="sprint-config-form" disabled={saving}>
             {saving && <Spinner />}
-            {saving ? "Saving…" : mode === "create" ? "Create Sprint" : "Save changes"}
+            {saving ? "Saving…" : mode === "create" ? "Create sprint" : "Save changes"}
           </Button>
         </>
       }
     >
-      <form id="sprint-config-form" className="flex flex-col gap-4" onSubmit={handleSubmit}>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="sprint-name">Name</Label>
+      <form id="sprint-config-form" className="flex flex-col gap-5" onSubmit={handleSubmit}>
+        <Field label="Name" htmlFor="sprint-name">
           <Input
             id="sprint-name"
             value={name}
@@ -98,10 +99,9 @@ export function SprintConfigDialog({ mode, sprint, selectedTeamId, onClose, onSe
             disabled={saving}
             autoFocus={mode === "create"}
           />
-        </div>
+        </Field>
         <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="sprint-start">Development start</Label>
+          <Field label="Development start" htmlFor="sprint-start">
             <Input
               id="sprint-start"
               type="date"
@@ -110,9 +110,8 @@ export function SprintConfigDialog({ mode, sprint, selectedTeamId, onClose, onSe
               required
               disabled={saving}
             />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="sprint-end">Development end</Label>
+          </Field>
+          <Field label="Development end" htmlFor="sprint-end">
             <Input
               id="sprint-end"
               type="date"
@@ -121,11 +120,10 @@ export function SprintConfigDialog({ mode, sprint, selectedTeamId, onClose, onSe
               required
               disabled={saving}
             />
-          </div>
+          </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="sprint-release">Release date (optional)</Label>
+          <Field label="Release date (optional)" htmlFor="sprint-release">
             <Input
               id="sprint-release"
               type="date"
@@ -133,9 +131,8 @@ export function SprintConfigDialog({ mode, sprint, selectedTeamId, onClose, onSe
               onChange={(event) => setRelease(event.target.value)}
               disabled={saving}
             />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="sprint-state">State</Label>
+          </Field>
+          <Field label="State" htmlFor="sprint-state">
             <Select
               id="sprint-state"
               value={state}
@@ -146,10 +143,13 @@ export function SprintConfigDialog({ mode, sprint, selectedTeamId, onClose, onSe
               <option value="ACTIVE">Active</option>
               <option value="CLOSED">Closed</option>
             </Select>
-          </div>
+          </Field>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="sprint-fix-versions">Fix version(s)</Label>
+        <Field
+          label="Fix version(s)"
+          htmlFor="sprint-fix-versions"
+          hint="Comma-separated Jira Fix Version names this gate spans — they scope One-Click Sprint Start's generated filters."
+        >
           <Input
             id="sprint-fix-versions"
             value={fixVersionsText}
@@ -157,15 +157,11 @@ export function SprintConfigDialog({ mode, sprint, selectedTeamId, onClose, onSe
             placeholder="e.g. Release-2026.07.1.0, Release-2026.07.1.1"
             disabled={saving}
           />
-          <p className="text-xs text-muted-foreground">
-            Comma-separated Jira Fix Version name(s) this Gate spans — scopes One-Click Sprint
-            Start&rsquo;s generated filters.
-          </p>
-        </div>
-        <p className="rounded-md border border-border-subtle bg-muted/40 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+        </Field>
+        <Callout tone="neutral">
           Renaming or re-dating affects every team. Closing a sprint is the supported alternative
           to deleting it.
-        </p>
+        </Callout>
         <DialogError>{error}</DialogError>
       </form>
     </Dialog>

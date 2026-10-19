@@ -9,13 +9,15 @@
  * (plain-http dev) still has a manual path (decision 10).
  */
 import { useCallback, useEffect, useState } from "react";
-import { Copy, Trash2 } from "lucide-react";
-import { Dialog, DialogError } from "@/components/ui/dialog";
+import { Copy, Link2, Trash2 } from "lucide-react";
+import { Dialog, DialogClose, DialogError } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
+import { Field, SectionLabel } from "@/components/ui/field";
+import { RadioCard, RadioCardGroup } from "@/components/ui/radio-card";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api-client";
 
@@ -108,127 +110,127 @@ export function ShareDialog({ base, filters, density, onClose, showToast }) {
   return (
     <Dialog
       open
-      title="Share View"
+      icon={Link2}
+      hero
+      title="Share view"
       description={`Shares all ${filters.length} filter${filters.length === 1 ? "" : "s"} on this board, read-only. Anyone with the link can view it — no sign-in needed.`}
       onClose={busy ? undefined : onClose}
       footer={
-        <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
-          Close
-        </Button>
+        <>
+          <DialogClose>Close</DialogClose>
+          <Button onClick={handleCreate} disabled={busy || filters.length === 0}>
+            {busy && <Spinner />}
+            {busy ? "Working…" : "Create link"}
+          </Button>
+        </>
       }
     >
-      <div className="flex flex-col gap-4">
-        <fieldset className="flex flex-col gap-1.5">
-          <Label>Link type</Label>
-          <div className="grid grid-cols-2 gap-1.5">
+      <div className="flex flex-col gap-5">
+        <Field label="Link type">
+          <RadioCardGroup aria-label="Link type">
             {[
               { live: true, name: "Live", detail: "Always shows the latest board" },
               { live: false, name: "Frozen", detail: "A snapshot of the board right now" },
             ].map((option) => (
-              <label
+              <RadioCard
                 key={option.name}
-                className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${isLive === option.live ? "border-ring bg-accent" : "hover:border-border-strong"}`}
-              >
-                <input
-                  type="radio"
-                  name="shareType"
-                  checked={isLive === option.live}
-                  onChange={() => setIsLive(option.live)}
-                  disabled={busy}
-                />
-                <span>
-                  {option.name}
-                  <span className="block text-xs text-muted-foreground">{option.detail}</span>
-                </span>
-              </label>
+                name="shareType"
+                value={option.name}
+                checked={isLive === option.live}
+                onChange={() => setIsLive(option.live)}
+                disabled={busy}
+                title={option.name}
+                description={option.detail}
+              />
             ))}
-          </div>
-        </fieldset>
+          </RadioCardGroup>
+        </Field>
 
-        <div className="flex items-end justify-between gap-2">
-          <div className="flex flex-1 flex-col gap-1.5">
-            <Label htmlFor="share-expiry">Expiry</Label>
-            <Select
-              id="share-expiry"
-              value={expiry}
-              onChange={(event) => setExpiry(event.target.value)}
-              disabled={busy}
-            >
-              {EXPIRY_PRESETS.map((preset) => (
-                <option key={preset.value} value={preset.value}>
-                  {preset.label}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <Button onClick={handleCreate} disabled={busy || filters.length === 0}>
-            {busy && <Spinner />}
-            {busy ? "Working…" : "Create share link"}
-          </Button>
-        </div>
+        <Field label="Expiry" htmlFor="share-expiry">
+          <Select
+            id="share-expiry"
+            value={expiry}
+            onChange={(event) => setExpiry(event.target.value)}
+            disabled={busy}
+          >
+            {EXPIRY_PRESETS.map((preset) => (
+              <option key={preset.value} value={preset.value}>
+                {preset.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
 
         {createdUrl && (
-          <div className="flex items-center gap-2 rounded-md border border-success-strong/40 bg-success-soft p-2">
-            <Input
-              readOnly
-              value={createdUrl}
-              className="flex-1 bg-card font-mono text-xs"
-              onFocus={(event) => event.target.select()}
-            />
-            <Button size="sm" variant="secondary" onClick={() => copyToClipboard(createdUrl)}>
-              <Copy /> Copy
-            </Button>
-          </div>
+          <Callout tone="success" title="Link created">
+            <div className="mt-2 flex items-center gap-2">
+              <Input
+                readOnly
+                size="sm"
+                value={createdUrl}
+                className="flex-1 bg-card font-mono text-xs text-foreground"
+                onFocus={(event) => event.target.select()}
+              />
+              <Button size="sm" variant="outline" onClick={() => copyToClipboard(createdUrl)}>
+                <Copy /> Copy
+              </Button>
+            </div>
+          </Callout>
         )}
 
         <DialogError>{error}</DialogError>
 
-        <div className="flex flex-col gap-1.5 border-t border-border-subtle pt-3">
-          <Label>Existing links for this sprint</Label>
+        <div className="flex flex-col gap-2.5">
+          <SectionLabel>Existing links for this sprint</SectionLabel>
           {shares === null ? (
-            <ul className="flex flex-col gap-1.5" aria-label="Loading share links">
+            <ul
+              className="divide-y divide-border-subtle rounded-lg border border-border-subtle"
+              aria-label="Loading share links"
+            >
               {[0, 1].map((row) => (
-                <li key={row} className="rounded-md border border-border-subtle px-2.5 py-1.5">
+                <li key={row} className="px-3.5 py-2.5">
                   <Skeleton className="h-3 w-40" />
                   <Skeleton className="mt-1.5 h-2.5 w-56 max-w-full" />
                 </li>
               ))}
             </ul>
           ) : shares.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No share links yet.</p>
+            <p className="rounded-lg border border-dashed border-border px-3.5 py-3 text-center text-xs text-muted-foreground">
+              No share links yet.
+            </p>
           ) : (
-            <ul className="flex max-h-48 flex-col gap-1.5 overflow-y-auto">
+            <ul className="max-h-52 divide-y divide-border-subtle overflow-y-auto rounded-lg border border-border-subtle">
               {shares.map((share) => (
-                <li
-                  key={share.id}
-                  className="flex items-center justify-between gap-2 rounded-md border border-border-subtle px-2.5 py-1.5"
-                >
+                <li key={share.id} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
                   <div className="min-w-0 text-xs">
-                    <p className="truncate font-semibold">
+                    <p className="truncate text-[13px] font-medium text-foreground">
                       {share.filterNames.length > 0
                         ? share.filterNames.join(", ")
                         : `${share.filterCount} filter${share.filterCount === 1 ? "" : "s"}`}
                     </p>
-                    <p className="text-muted-foreground">
+                    <p className="mt-0.5 text-muted-foreground">
                       {share.isLive ? "Live" : "Frozen"} · created {formatDay(share.createdAt)} by{" "}
                       {share.createdBy} ·{" "}
                       {share.expiresAt ? `expires ${formatDay(share.expiresAt)}` : "never expires"}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="flex shrink-0 items-center gap-0.5">
                     <Button
-                      size="sm"
+                      size="icon"
                       variant="ghost"
+                      className="size-8"
                       title="Copy link"
+                      aria-label="Copy link"
                       onClick={() => copyToClipboard(`${window.location.origin}${share.url}`)}
                     >
                       <Copy />
                     </Button>
                     <Button
-                      size="sm"
-                      variant="ghost"
+                      size="icon"
+                      variant="ghostDestructive"
+                      className="size-8"
                       title="Revoke link"
-                      className="text-danger-strong hover:text-danger-strong"
+                      aria-label="Revoke link"
                       disabled={busy}
                       onClick={() => handleRevoke(share.id)}
                     >

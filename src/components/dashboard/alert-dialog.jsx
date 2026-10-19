@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Dialog } from "@/components/ui/dialog";
+import { Dialog, DialogClose } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { errorReference, errorDiagnostics } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -19,7 +19,8 @@ export function AlertDialog({ alert, onClose }) {
   if (!alert) return null;
 
   const reference = alert.error ? errorReference(alert.error) : null;
-  const tone = alert.tone === "error" ? "error" : alert.tone === "warn" ? "warn" : "success";
+  // A neutral notice gets the info tile — only an explicit success earns the green check.
+  const tone = ["error", "warn", "success"].includes(alert.tone) ? alert.tone : "info";
 
   const copy = async () => {
     try {
@@ -36,22 +37,23 @@ export function AlertDialog({ alert, onClose }) {
       open
       title={alert.title}
       tone={tone}
+      hero
       onClose={onClose}
       size="sm"
-      footer={
-        <div className="flex w-full items-center justify-end gap-2">
-          {reference && (
-            <Button variant="outline" onClick={copy}>
-              {copied ? "Copied" : "Copy diagnostics"}
-            </Button>
-          )}
-          <Button onClick={onClose}>OK</Button>
-        </div>
+      footerStart={
+        reference && (
+          <Button variant="ghost" onClick={copy}>
+            {copied ? "Copied" : "Copy diagnostics"}
+          </Button>
+        )
       }
+      footer={<DialogClose variant="default">OK</DialogClose>}
     >
       <p
         className={cn(
           "whitespace-pre-wrap text-sm leading-relaxed",
+          // A one-line message centres under the hero; a multi-line sync summary reads left-aligned.
+          !String(alert.body ?? "").includes("\n") && "text-center text-pretty",
           tone === "error" ? "text-danger-strong" : "text-foreground",
         )}
       >
@@ -59,7 +61,7 @@ export function AlertDialog({ alert, onClose }) {
       </p>
 
       {reference && (
-        <p className="mt-3 border-t pt-3 font-mono text-[11px] break-all text-muted-foreground">
+        <p className="mt-3 rounded-md bg-subtle px-2.5 py-1.5 font-mono text-[11px] break-all text-muted-foreground">
           {reference}
         </p>
       )}

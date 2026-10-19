@@ -15,7 +15,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Layers, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -109,34 +109,19 @@ function ProgramRow({ program, run, busy }) {
       )}
 
       {confirmingDelete && (
-        <Dialog
-          open
+        <ConfirmDialog
           title={`Delete ${program.name}?`}
           description="This cannot be undone."
-          tone="error"
-          size="sm"
+          confirmLabel="Delete program"
           onClose={() => setConfirmingDelete(false)}
-          footer={
-            <>
-              <Button variant="secondary" onClick={() => setConfirmingDelete(false)}>
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  setConfirmingDelete(false);
-                  run(
-                    () => apiFetch(`/api/programs/${program.id}`, { method: "DELETE" }),
-                    `Deleted ${program.name}`,
-                  );
-                }}
-              >
-                Delete program
-              </Button>
-            </>
+          onConfirm={() =>
+            run(
+              () => apiFetch(`/api/programs/${program.id}`, { method: "DELETE" }),
+              `Deleted ${program.name}`,
+            )
           }
         >
-          <p className="text-sm leading-relaxed">
+          <p>
             {teamCount > 0 ? (
               <>
                 Deleting <strong>{program.name}</strong> un-assigns its {teamCount} team
@@ -150,7 +135,7 @@ function ProgramRow({ program, run, busy }) {
               </>
             )}
           </p>
-        </Dialog>
+        </ConfirmDialog>
       )}
     </li>
   );

@@ -18,6 +18,8 @@ import {
   BugTrendPanel,
 } from "@/components/bugs/bug-charts";
 import { BugBreachPanel, BugReferenceLinks, BugTicketTable } from "@/components/bugs/bug-lists";
+import { AnalysisProvider } from "@/components/analysis/analysis-context";
+import { getAnalysisUiState } from "@/lib/connector/ui-state";
 
 /**
  * The `/bugs` dashboard body, shared by `/bugs` and `/bugs/[slug]` (gm-bug-report.md (f)).
@@ -63,6 +65,7 @@ export async function BugsPage({ slug, user }) {
 
   const { report, reports, configured, issues, jiraBaseUrl, externalScopeId, scopeOptions, views } = data;
   const hasData = configured && issues.length > 0;
+  const analysis = await getAnalysisUiState(issues.map((issue) => issue.jiraKey));
 
   const buildHref = (scope, rowKey, bandKey) =>
     `${jiraBaseUrl}/issues/?jql=${encodeURIComponent(data.cellJql(scope, rowKey, bandKey))}`;
@@ -124,87 +127,89 @@ export async function BugsPage({ slug, user }) {
   }
 
   return (
-    <main className="flex w-full flex-1 flex-col gap-5 p-4 md:p-6">
-      <BugScopeProvider scopeOptions={scopeOptions} externalScopeId={externalScopeId} defaultScope="all">
-        <HeroShell className="flex flex-col gap-5 px-5 py-6 md:px-8 md:py-7">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-0">
-              <HeroEyebrow>Bug report</HeroEyebrow>
-              <HeroTitle>{report.name}</HeroTitle>
-              {report.description && <HeroCopy className="mt-2">{report.description}</HeroCopy>}
-              {/* Provenance as discrete facts rather than one run-on "a · b · c" sentence: who owns
-                  these numbers and how fresh they are are two different questions. */}
-              <ul className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-white/55">
-                {report.ownerName && (
+    <AnalysisProvider enabled={analysis.enabled} analyzedKeys={analysis.analyzedKeys}>
+      <main className="flex w-full flex-1 flex-col gap-5 p-4 md:p-6">
+        <BugScopeProvider scopeOptions={scopeOptions} externalScopeId={externalScopeId} defaultScope="all">
+          <HeroShell className="flex flex-col gap-5 px-5 py-6 md:px-8 md:py-7">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0">
+                <HeroEyebrow>Bug report</HeroEyebrow>
+                <HeroTitle>{report.name}</HeroTitle>
+                {report.description && <HeroCopy className="mt-2">{report.description}</HeroCopy>}
+                {/* Provenance as discrete facts rather than one run-on "a · b · c" sentence: who owns
+                    these numbers and how fresh they are are two different questions. */}
+                <ul className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-white/55">
+                  {report.ownerName && (
+                    <li className="flex items-center gap-1.5">
+                      <UserRound className="size-3.5 shrink-0 opacity-70" aria-hidden="true" />
+                      {report.ownerName}
+                    </li>
+                  )}
                   <li className="flex items-center gap-1.5">
-                    <UserRound className="size-3.5 shrink-0 opacity-70" aria-hidden="true" />
-                    {report.ownerName}
+                    <Clock className="size-3.5 shrink-0 opacity-70" aria-hidden="true" />
+                    Updated {relativeTime(report.lastRefreshedAt, asOf)}
+                    {report.lastRefreshedByEmail ? ` by ${report.lastRefreshedByEmail}` : ""}
                   </li>
+                </ul>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {hasData && (
+                  <BugExport
+                    exportViews={exportViews}
+                    report={report}
+                    jiraBaseUrl={jiraBaseUrl}
+                    ownerName={report.ownerName ?? user.displayName ?? user.email}
+                  />
                 )}
-                <li className="flex items-center gap-1.5">
-                  <Clock className="size-3.5 shrink-0 opacity-70" aria-hidden="true" />
-                  Updated {relativeTime(report.lastRefreshedAt, asOf)}
-                  {report.lastRefreshedByEmail ? ` by ${report.lastRefreshedByEmail}` : ""}
-                </li>
-              </ul>
+                <BugsActions report={report} reports={reports} canRefresh={configured} />
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {hasData && (
-                <BugExport
-                  exportViews={exportViews}
-                  report={report}
-                  jiraBaseUrl={jiraBaseUrl}
-                  ownerName={report.ownerName ?? user.displayName ?? user.email}
-                />
-              )}
-              <BugsActions report={report} reports={reports} canRefresh={configured} />
-            </div>
-          </div>
-          {hasData && (
-            <div className="flex flex-col gap-4">
-              <BugScopeToggle />
-              <BugScopeSlot views={pressureViews} />
+            {hasData && (
+              <div className="flex flex-col gap-4">
+                <BugScopeToggle />
+                <BugScopeSlot views={pressureViews} />
+              </div>
+            )}
+          </HeroShell>
+
+          {report.lastRefreshError && (
+            <div className="flex items-start gap-2.5 rounded-lg border border-danger/30 bg-danger-soft/50 px-4 py-3">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-danger-strong" />
+              <div className="text-sm">
+                <p className="font-semibold text-danger-strong">Last refresh failed — showing the last good data</p>
+                <p className="mt-0.5 text-xs text-danger-strong/80">{report.lastRefreshError}</p>
+              </div>
             </div>
           )}
-        </HeroShell>
 
-        {report.lastRefreshError && (
-          <div className="flex items-start gap-2.5 rounded-lg border border-danger/30 bg-danger-soft/50 px-4 py-3">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-danger-strong" />
-            <div className="text-sm">
-              <p className="font-semibold text-danger-strong">Last refresh failed — showing the last good data</p>
-              <p className="mt-0.5 text-xs text-danger-strong/80">{report.lastRefreshError}</p>
-            </div>
-          </div>
-        )}
+          {!configured ? (
+            <EmptyState
+              title="This report has no scopes yet"
+              body="Add at least one scope (a Jira saved-filter id or JQL) and the priority bands in Admin, then refresh."
+            />
+          ) : issues.length === 0 ? (
+            <EmptyState
+              title="No data yet — run a refresh"
+              body="The report is configured but has never pulled from Jira. Use Refresh above, or wait for the nightly job."
+            />
+          ) : (
+            <>
+              <BugScopeSlot views={bodyViews} />
+              <BugReferenceLinks report={report} jiraBaseUrl={jiraBaseUrl} />
+            </>
+          )}
 
-        {!configured ? (
-          <EmptyState
-            title="This report has no scopes yet"
-            body="Add at least one scope (a Jira saved-filter id or JQL) and the priority bands in Admin, then refresh."
-          />
-        ) : issues.length === 0 ? (
-          <EmptyState
-            title="No data yet — run a refresh"
-            body="The report is configured but has never pulled from Jira. Use Refresh above, or wait for the nightly job."
-          />
-        ) : (
-          <>
-            <BugScopeSlot views={bodyViews} />
-            <BugReferenceLinks report={report} jiraBaseUrl={jiraBaseUrl} />
-          </>
-        )}
-
-        {/* Under Modern the sidebar owns cross-page nav, so this footer link would be redundant. */}
-        <p className="border-t pt-4 text-xs lg:hidden">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="size-3.5" /> Back to the sprint board
-          </Link>
-        </p>
-      </BugScopeProvider>
-    </main>
+          {/* Under Modern the sidebar owns cross-page nav, so this footer link would be redundant. */}
+          <p className="border-t pt-4 text-xs lg:hidden">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="size-3.5" /> Back to the sprint board
+            </Link>
+          </p>
+        </BugScopeProvider>
+      </main>
+    </AnalysisProvider>
   );
 }

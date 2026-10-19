@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { IssueKey } from "@/components/dashboard/risk-callouts-panel";
 import { formatPoints } from "@/lib/metrics.mjs";
+import { AnalyseButton } from "@/components/analysis/analyse-button";
 
 /**
  * "Needs attention" hygiene panel (needs-attention-roster.md) — the always-on track of a team's own
@@ -147,8 +148,15 @@ export function NeedsAttentionPanel({ track, jiraBaseUrl, canManage = false }) {
                 <Badge tone={gap.tone} className="justify-self-start">
                   {gap.label}
                 </Badge>
-                <span className="justify-self-start pt-0.5">
+                <span className="flex items-center gap-0.5 justify-self-start">
                   <IssueKey jiraKey={issue.jiraKey} jiraBaseUrl={jiraBaseUrl} />
+                  <AnalyseButton
+                    jiraKey={issue.jiraKey}
+                    source="SPRINT"
+                    title={issue.title}
+                    jiraBaseUrl={jiraBaseUrl}
+                    className="size-5"
+                  />
                 </span>
                 <span className="min-w-0 pt-0.5">
                   <span className="block min-w-0 truncate text-xs text-secondary-foreground">

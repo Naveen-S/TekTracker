@@ -15,8 +15,7 @@ import { buildTrendSeries, snapshotVelocity } from "@/lib/metrics.mjs";
 import { useLocalPref } from "@/lib/use-local-pref";
 import { PageLoader } from "@/components/ui/spinner";
 import { AppShell } from "@/components/ui/app-shell";
-import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Toast, useToast } from "@/components/ui/toast";
 import { TopBar } from "./top-bar";
 import { Hero } from "./hero";
@@ -37,6 +36,7 @@ import { ShareDialog } from "./share-dialog";
 import { ExportDialog } from "./export-dialog";
 import { AlertDialog, alertFromError } from "./alert-dialog";
 import { EmptyState } from "./empty-state";
+import { clearAskChats } from "@/components/ask/chat-store";
 
 const COLLAPSED_KEY = "sprintTracker_filtersPanelCollapsed";
 
@@ -99,6 +99,7 @@ export function Dashboard({
   metrics,
   jiraBaseUrl,
   aiEnabled,
+  askEnabled,
   hasBugReport,
   hasLeaderboardAccess,
   myStats,
@@ -216,7 +217,6 @@ export function Dashboard({
   const confirmSyncTrackStages = () => {
     if (!base || !confirmStages) return;
     const { filterId } = confirmStages;
-    setConfirmStages(null);
     setSyncing(true);
     startMutation(async () => {
       try {
@@ -355,6 +355,7 @@ export function Dashboard({
 
   const handleLogout = async () => {
     try {
+      clearAskChats(); // the Ask conversation stays on this device until logout (chat-store.js)
       await apiFetch("/api/auth/logout", { method: "POST" });
     } finally {
       router.push("/login");
@@ -391,7 +392,22 @@ export function Dashboard({
     : null;
 
   return (
-    <AppShell user={user} hasBugReport={hasBugReport} hasLeaderboardAccess={hasLeaderboardAccess}>
+    <AppShell
+      user={user}
+      hasBugReport={hasBugReport}
+      hasLeaderboardAccess={hasLeaderboardAccess}
+      askEnabled={askEnabled}
+      askContext={
+        selectedTeam
+          ? {
+              page: "board",
+              teamId: selectedTeam.id,
+              ...(selectedSprint ? { sprintId: selectedSprint.id } : {}),
+              label: selectedSprint ? `${selectedTeam.name} · ${selectedSprint.name}` : selectedTeam.name,
+            }
+          : { page: "other", label: "Your StoryBoard" }
+      }
+    >
       <div className="flex min-h-screen flex-col">
       <TopBar
         user={user}
@@ -523,47 +539,32 @@ export function Dashboard({
       <Toast toast={toast} />
       <AlertDialog alert={alert} onClose={() => setAlert(null)} />
       {confirmStages && (
-        <Dialog
-          open
+        <ConfirmDialog
           title={`Sync stages — ${confirmStages.filterName}?`}
-          tone={confirmStages.manualEdits > 0 ? "error" : undefined}
-          size="sm"
+          tone={confirmStages.manualEdits > 0 ? "danger" : "info"}
+          confirmLabel="Sync stages"
           onClose={() => setConfirmStages(null)}
-          footer={
-            <>
-              <Button variant="secondary" onClick={() => setConfirmStages(null)}>
-                Cancel
-              </Button>
-              <Button
-                variant={confirmStages.manualEdits > 0 ? "destructive" : "default"}
-                onClick={confirmSyncTrackStages}
-              >
-                Sync stages
-              </Button>
-            </>
-          }
+          onConfirm={confirmSyncTrackStages}
         >
-          <div className="space-y-2 text-sm leading-relaxed">
-            <p>
-              Pull the latest Jira status for all{" "}
-              <strong className="font-semibold text-foreground">
-                {confirmStages.total} item{confirmStages.total === 1 ? "" : "s"}
-              </strong>{" "}
-              in{" "}
-              <strong className="font-semibold text-foreground">{confirmStages.filterName}</strong>{" "}
-              and set their delivery stages from it.
+          <p>
+            Pull the latest Jira status for all{" "}
+            <strong className="font-semibold text-foreground">
+              {confirmStages.total} item{confirmStages.total === 1 ? "" : "s"}
+            </strong>{" "}
+            in{" "}
+            <strong className="font-semibold text-foreground">{confirmStages.filterName}</strong>{" "}
+            and set their delivery stages from it.
+          </p>
+          {confirmStages.manualEdits > 0 && (
+            <p className="font-medium text-danger-strong">
+              {confirmStages.manualEdits} of them{" "}
+              {confirmStages.manualEdits === 1
+                ? "has a manual stage edit"
+                : "have manual stage edits"}{" "}
+              that will be overwritten.
             </p>
-            {confirmStages.manualEdits > 0 && (
-              <p className="font-medium text-danger-strong">
-                {confirmStages.manualEdits} of them{" "}
-                {confirmStages.manualEdits === 1
-                  ? "has a manual stage edit"
-                  : "have manual stage edits"}{" "}
-                that will be overwritten.
-              </p>
-            )}
-          </div>
-        </Dialog>
+          )}
+        </ConfirmDialog>
       )}
       {showAddFilter && base && (
         <FilterDialog

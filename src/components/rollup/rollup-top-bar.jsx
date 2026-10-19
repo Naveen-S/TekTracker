@@ -15,6 +15,7 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { AvatarChip } from "@/components/ui/avatar-chip";
 import { PageLoader } from "@/components/ui/spinner";
 import { apiFetch } from "@/lib/api-client";
+import { clearAskChats } from "@/components/ask/chat-store";
 
 export function RollupTopBar({
   user,
@@ -41,6 +42,7 @@ export function RollupTopBar({
 
   const handleLogout = async () => {
     try {
+      clearAskChats(); // the Ask conversation stays on this device until logout (chat-store.js)
       await apiFetch("/api/auth/logout", { method: "POST" });
     } finally {
       router.push("/login");

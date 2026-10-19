@@ -8,9 +8,9 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CalendarRange, Layers, Target, Users, X } from "lucide-react";
+import { AlertTriangle, CalendarRange, Layers, Sparkles, Target, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -25,6 +25,7 @@ import {
   HeroTitle,
 } from "@/components/ui/hero-shell";
 import { apiFetch } from "@/lib/api-client";
+import { AnalysisSettingsConfig } from "@/components/admin/analysis-settings-config";
 import { BugReportConfig } from "@/components/admin/bug-report-config";
 import { JiraComponentsConfig } from "@/components/admin/jira-components-config";
 import { ProgramsConfig } from "@/components/admin/programs-config";
@@ -129,9 +130,8 @@ function TeamCard({ team, run, busy, onEdit }) {
             Edit
           </Button>
           <Button
-            variant="ghost"
+            variant="ghostDestructive"
             size="sm"
-            className="text-danger-strong hover:bg-danger-soft hover:text-danger-strong"
             disabled={busy}
             onClick={() => setConfirmingDelete(true)}
           >
@@ -141,35 +141,20 @@ function TeamCard({ team, run, busy, onEdit }) {
       </div>
 
       {confirmingDelete && (
-        <Dialog
-          open
+        <ConfirmDialog
           title={`Delete team ${team.key}?`}
           description="This cannot be undone."
-          tone="error"
-          size="sm"
+          confirmLabel="Delete team"
           onClose={() => setConfirmingDelete(false)}
-          footer={
-            <>
-              <Button variant="secondary" onClick={() => setConfirmingDelete(false)}>
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  setConfirmingDelete(false);
-                  run(`Delete ${team.key}`, () => apiFetch(`/api/teams/${team.id}`, { method: "DELETE" }));
-                }}
-              >
-                Delete team
-              </Button>
-            </>
+          onConfirm={() =>
+            run(`Delete ${team.key}`, () => apiFetch(`/api/teams/${team.id}`, { method: "DELETE" }))
           }
         >
-          <p className="text-sm leading-relaxed">
+          <p>
             Deleting <strong>{team.name}</strong> also removes its filters, cached issues,
             memberships, and all stage progress.
           </p>
-        </Dialog>
+        </ConfirmDialog>
       )}
 
       <ul className="mt-3 flex flex-col gap-1.5">
@@ -254,6 +239,7 @@ export function AdminPanel({
   bugStatusVocabulary = [],
   bugPriorityVocabulary = [],
   recentErrors = [],
+  analysisSettings = null,
 }) {
   const router = useRouter();
   // busy spans the API call AND the router.refresh() re-render, so forms stay disabled until
@@ -567,6 +553,17 @@ export function AdminPanel({
           busy={busy}
         />
       </SectionCard>
+
+      {analysisSettings && (
+        <SectionCard
+          title="Claude analysis"
+          subtitle="Per-ticket “Analyse with Claude”, run on each user’s own Claude Code via the StoryBoard Connector. Results are saved for everyone who can see the ticket."
+          icon={Sparkles}
+          tone="brand"
+        >
+          <AnalysisSettingsConfig settings={analysisSettings} run={run} busy={busy} />
+        </SectionCard>
+      )}
 
       <SectionCard
         title="Recent errors"

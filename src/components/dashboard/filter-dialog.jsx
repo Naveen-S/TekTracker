@@ -10,11 +10,15 @@
  * `filter` null ⇒ create; otherwise every control seeds from that row and the caller PATCHes.
  */
 import { useState } from "react";
-import { Dialog, DialogError } from "@/components/ui/dialog";
+import { ListFilter } from "lucide-react";
+import { Dialog, DialogClose, DialogError } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
+import { Field } from "@/components/ui/field";
+import { RadioCard, RadioCardGroup } from "@/components/ui/radio-card";
+import { Segmented } from "@/components/ui/segmented";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { WORKFLOWS } from "@/lib/workflows.mjs";
 import { ACCENT_PALETTE, accentColorForIndex } from "@/lib/accent-palette.mjs";
@@ -54,7 +58,9 @@ export function FilterDialog({ filter = null, onSubmit, onClose, busy, existingC
   return (
     <Dialog
       open
-      title={editing ? "Edit Jira Source" : "Add Jira Source"}
+      icon={ListFilter}
+      hero
+      title={editing ? "Edit Jira source" : "Add Jira source"}
       description={
         editing
           ? "Rename this track, repoint it at a different Jira filter or JQL, or change how it is tracked."
@@ -63,9 +69,7 @@ export function FilterDialog({ filter = null, onSubmit, onClose, busy, existingC
       onClose={busy ? undefined : onClose}
       footer={
         <>
-          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
+          <DialogClose />
           <Button type="submit" form="filter-form" disabled={busy}>
             {busy && <Spinner />}
             {busy
@@ -74,77 +78,51 @@ export function FilterDialog({ filter = null, onSubmit, onClose, busy, existingC
                 : "Adding + syncing…"
               : editing
                 ? "Save changes"
-                : "Add Source"}
+                : "Add source"}
           </Button>
         </>
       }
     >
-      <form id="filter-form" className="flex flex-col gap-4" onSubmit={handleSubmit}>
-        <fieldset className="flex flex-col gap-1.5">
-          <Label>Workflow Type</Label>
-          <div className="grid grid-cols-2 gap-1.5">
+      <form id="filter-form" className="flex flex-col gap-5" onSubmit={handleSubmit}>
+        <Field label="Workflow" hint={WORKFLOWS[workflowType].stages.join(" → ")}>
+          <RadioCardGroup aria-label="Workflow">
             {WORKFLOW_OPTIONS.map((type) => (
-              <label
+              <RadioCard
                 key={type}
-                className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${workflowType === type ? "border-ring bg-accent" : "hover:border-border-strong"}`}
-              >
-                <input
-                  type="radio"
-                  name="workflowType"
-                  value={type}
-                  checked={workflowType === type}
-                  onChange={() => setWorkflowType(type)}
-                  disabled={busy}
-                />
-                <span>
-                  {WORKFLOWS[type].name}
-                  <span className="block text-xs text-muted-foreground">
-                    {WORKFLOWS[type].stages.length} stages
-                  </span>
-                </span>
-              </label>
+                name="workflowType"
+                value={type}
+                checked={workflowType === type}
+                onChange={() => setWorkflowType(type)}
+                disabled={busy}
+                title={WORKFLOWS[type].name}
+                description={`${WORKFLOWS[type].stages.length} stages`}
+              />
             ))}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {WORKFLOWS[workflowType].stages.join(" → ")}
-          </p>
-          {shrinks && (
-            <p className="rounded-md border border-warn/35 bg-warn-soft px-2.5 py-1.5 text-xs text-warn-strong">
-              Stage checklists are re-shaped on the next sync — {WORKFLOWS[filter.workflowType].name}{" "}
-              ({fromStages} stages) → {WORKFLOWS[workflowType].name} ({toStages} stages) drops every
-              check past stage {toStages}.
-            </p>
-          )}
-        </fieldset>
+          </RadioCardGroup>
+        </Field>
+        {shrinks && (
+          <Callout tone="warn" className="-mt-2">
+            Stage checklists are re-shaped on the next sync — {WORKFLOWS[filter.workflowType].name}{" "}
+            ({fromStages} stages) → {WORKFLOWS[workflowType].name} ({toStages} stages) drops every
+            check past stage {toStages}.
+          </Callout>
+        )}
 
-        <fieldset className="flex flex-col gap-1.5">
-          <Label>Source Type</Label>
-          <div className="flex gap-4 text-sm">
-            <label className="flex cursor-pointer items-center gap-2">
-              <input
-                type="radio"
-                name="sourceType"
-                checked={sourceType === "JIRA_FILTER"}
-                onChange={() => setSourceType("JIRA_FILTER")}
-                disabled={busy}
-              />
-              Filter ID
-            </label>
-            <label className="flex cursor-pointer items-center gap-2">
-              <input
-                type="radio"
-                name="sourceType"
-                checked={sourceType === "JQL"}
-                onChange={() => setSourceType("JQL")}
-                disabled={busy}
-              />
-              JQL Query
-            </label>
-          </div>
-        </fieldset>
+        <Field label="Source">
+          <Segmented
+            aria-label="Source"
+            value={sourceType}
+            onChange={setSourceType}
+            disabled={busy}
+            className="self-start"
+            options={[
+              { value: "JIRA_FILTER", label: "Filter ID" },
+              { value: "JQL", label: "JQL query" },
+            ]}
+          />
+        </Field>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="filter-name">Filter Name</Label>
+        <Field label="Name" htmlFor="filter-name">
           <Input
             id="filter-name"
             value={name}
@@ -153,39 +131,39 @@ export function FilterDialog({ filter = null, onSubmit, onClose, busy, existingC
             disabled={busy}
             autoFocus
           />
-        </div>
+        </Field>
 
         {sourceType === "JIRA_FILTER" ? (
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="filter-id">Jira Filter ID</Label>
+          <Field
+            label="Jira filter ID"
+            htmlFor="filter-id"
+            hint="The numeric id from your Jira filter URL — its current JQL is used at every sync."
+          >
             <Input
               id="filter-id"
               value={jiraFilterId}
               onChange={(event) => setJiraFilterId(event.target.value)}
               placeholder="e.g. 65834"
+              inputMode="numeric"
               disabled={busy}
             />
-            <p className="text-xs text-muted-foreground">
-              The numeric id from your Jira filter URL — its current JQL is used at every sync
-            </p>
-          </div>
+          </Field>
         ) : (
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="filter-jql">JQL Query</Label>
+          <Field label="JQL query" htmlFor="filter-jql">
             <Textarea
               id="filter-jql"
               rows={4}
               value={jql}
               onChange={(event) => setJql(event.target.value)}
               placeholder="e.g. project = GM AND status != Done"
+              className="font-mono text-[13px]"
               disabled={busy}
             />
-          </div>
+          </Field>
         )}
 
-        <fieldset className="flex flex-col gap-1.5">
-          <Label>Accent Colour</Label>
-          <div className="flex items-center gap-2">
+        <Field label="Accent colour">
+          <div className="flex items-center gap-2.5">
             {ACCENT_PALETTE.map((color) => (
               <button
                 key={color}
@@ -195,16 +173,14 @@ export function FilterDialog({ filter = null, onSubmit, onClose, busy, existingC
                 aria-label={`Use accent colour ${color}`}
                 aria-pressed={accentColor === color}
                 className={cn(
-                  "size-6 cursor-pointer rounded-full transition-transform hover:scale-110",
-                  accentColor === color
-                    ? "ring-2 ring-ring ring-offset-2 ring-offset-background"
-                    : "opacity-70",
+                  "size-6 cursor-pointer rounded-full ring-1 ring-ink/10 ring-inset transition-transform duration-150 outline-offset-2 hover:scale-110 focus-visible:outline-2 focus-visible:outline-ring",
+                  accentColor === color && "outline-2 outline-foreground/70",
                 )}
                 style={{ backgroundColor: color }}
               />
             ))}
           </div>
-        </fieldset>
+        </Field>
 
         <DialogError>{error}</DialogError>
       </form>

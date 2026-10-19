@@ -12,12 +12,14 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { AvatarChip } from "@/components/ui/avatar-chip";
 import { apiFetch } from "@/lib/api-client";
+import { clearAskChats } from "@/components/ask/chat-store";
 
 export function BugsTopBar({ user }) {
   const router = useRouter();
 
   const handleLogout = async () => {
     try {
+      clearAskChats(); // the Ask conversation stays on this device until logout (chat-store.js)
       await apiFetch("/api/auth/logout", { method: "POST" });
     } finally {
       router.push("/login");

@@ -2415,3 +2415,189 @@ context/features/editable-filters.md.
   `/icon.svg` + `/favicon.ico` 200, `/api/auth/me` 401, no `error`-level log lines. Doc-sync: §5
   Brand row describes the ghost + halo and the fixed veil layout; §11 build log gained the
   2026-09-29 loader-rework row. **Done.** **Next:** Naveen's commit + a real-sync eyeball.
+- 2026-09-29 — **Brand refresh committed** (`565f290` "Brand changes", on `feature/brand-jigsaw`,
+  pushed to `tekion`; not yet merged to `main`).
+- 2026-09-29 — **Planning session: Claude Connector** — drafted
+  `context/features/claude-connector-analysis.md` (14 decisions ratified with Naveen via
+  AskUserQuestion). Spike against Claude Code 2.1.284 proved headless `claude -p` loads the Orbit
+  plugin's DeepContext with the existing Okta sign-in, `--json-schema` → `structured_output`,
+  `--max-budget-usd` enforced; context bloat (122 tools, ~$1/trivial call) cut to 38 tools / $0.24 by
+  disabling claude.ai connectors + skills. Branch `feature/claude-connector` cut from
+  `feature/brand-jigsaw` @ `565f290`.
+- 2026-09-29 — **Implemented the Claude Connector** (`context/features/claude-connector-analysis.md`).
+  - **What it does:** a per-ticket "Analyse with Claude" button inside StoryBoard, powered by the
+    user's own Claude Code (company subscription) and their signed-in ORBIT DeepContext. A local
+    connector (`public/storyboard-connector.mjs`) long-polls StoryBoard, runs `claude -p` headless
+    with read-only DeepContext tools only, and posts a zod-gated result. The result is saved,
+    latest-only, for everyone who can see the ticket.
+  - **Schema:** migration `add_claude_connector` (13 → **14**) adds `ConnectorToken`, `AnalysisJob` +
+    `AnalysisJobStatus`, `IssueAnalysis` and `ClaudeAnalysisSettings`, and the seed creates the
+    settings singleton.
+  - **Server:** 6 routes plus the `/settings` page (50 → **57** ƒ Dynamic); `lib/connector/*`, pure
+    `lib/ai/issue-analysis.mjs`, `lib/schemas/analysis.js`, 4 error codes and a cron prune.
+  - **UI:** `AnalyseButton`/dialog/provider on board track rows, Needs attention, risk call-outs
+    (board + roll-up + All-risks dialog) and `/bugs` breach + oldest rows; a Settings card; an admin
+    section; and an open-dialog stack in `ui/dialog.jsx`.
+  - **As-built:**
+    - A 15 s long-poll instead of a 3 s poll, with a 30 s online window.
+    - `sanitizeAnalysis(result, kind)` drops off-kind sections. The first live run filled hygiene on
+      a plain bug.
+    - Vulnerability wins over hygiene.
+    - Page-level `getAnalysisUiState` instead of growing the data loaders.
+  - **Verified:**
+    - lint 0; 14 migrations up to date
+    - cold env-free build exit 0, 57 ƒ Dynamic, 0 warnings
+    - 22 pure fixtures; 38/38 API smoke checks, with teardown leaving 0 rows
+    - `next start` smoke
+    - **real end-to-end**: headless Chrome → Analyse on `/bugs` ENG-205877 → the real connector →
+      Claude Code (sonnet) with DeepContext → a grounded analysis saved in 46 s for $0.35 notional
+  - The dev DB was reset afterwards (feature disabled, 0 rows). Doc-sync covered project-overview §5,
+    §9 + ERD, §11, §13.7 and §16. **Done.**
+  - **Next:** Naveen's commit, then an authed browser pass, then resume migrate-on-start.
+- 2026-10-01 — **Implemented the dialog redesign** (`context/features/dialog-redesign.md`).
+  - **Why:** Naveen disliked the dialogs. He chose the "Refined enterprise" direction and a full
+    sweep via AskUserQuestion.
+  - **Primitive:** `ui/dialog.jsx` gets:
+    - a quiet scrim, a `rounded-xl` panel and a semibold 16px title
+    - an optional `icon` tile, plus `info` and `danger` tones
+    - a white footer with a `footerStart` slot
+    - header/footer dividers that appear only on scroll
+    - `DialogClose` / `useDialog`, so every footer dismiss animates out
+    - an always-on portal
+    - `data-state` keyframes, and a reduced-motion fix: exit used to fade in
+  - **Kit:** `Callout`, `Field` / `SectionLabel`, `RadioCard`, `Segmented`, `ToggleChip` and
+    `ConfirmDialog`, plus `Button` `ghostDestructive`, `size="sm"` on `Input`/`Select`, a
+    `--preview-canvas` token, and the `export-dialog-kit` pager/canvas.
+  - **Sweep:** all ~19 dialogs, including six confirms moved to `ConfirmDialog`.
+  - **Verified:**
+    - lint 0
+    - cold env-free build: 57 ƒ Dynamic, 0 warnings
+    - 14 dialog surfaces screenshotted in Tekion and Modern at 1440px and 390px, 0 page errors
+    - 15/15 behaviour checks
+    - real PDF/PNG downloads
+  - No schema or route change. **Done.**
+  - **Next:** Naveen's authed browser pass, then his commit.
+- 2026-10-01 — **Dialog redesign, round 2: the brand "moment" hero** (dialog-redesign.md, decision 3).
+  - **Why:** Naveen shared a playful reference and asked which style suits the app. He chose the
+    hybrid: an ink `hero-panel` band with a tone glow, a Jigsaw watermark, a wave, and a medallion
+    over the seam.
+  - **Where:** `Dialog` `hero` prop, used by the confirms, alert, sprint start, share and AI digest.
+    Forms and exports keep the refined header.
+  - **Verified:** lint 0; env-free build at 57 ƒ Dynamic, 0 warnings; screenshots with 0 page errors.
+- 2026-10-01 — **Include pills restored.** Naveen asked to keep the export dialogs' original pills,
+  so `ToggleChip` was reverted at both call sites and deleted (dialog-redesign.md, as-built note 4).
+  Lint 0.
+- 2026-10-01 — **All risks dialog moved to the hero** (`warn` tone, dialog-redesign.md as-built note
+  5), at Naveen's request. Lint 0; screenshots in Tekion at 1440px and Modern at 390px, 0 page errors.
+- 2026-10-01 — **Configure sprint moved to the hero** (as-built note 6), and "(optional)" went back
+  into the Release date label. Lint 0; screenshots in Tekion at 1440px and Modern at 390px, 0 page
+  errors.
+- 2026-10-01 — **Hero on every dialog** (dialog-redesign.md, as-built note 7). The Jira source, risk
+  comment, team config and Claude analysis dialogs take the full hero; the three exports take the new
+  `hero="compact"` (short band, left medallion, title beside it). Lint 0; env-free build at 57 ƒ
+  Dynamic, 0 warnings; screenshots in both themes, 0 page errors.
+- 2026-10-01 — **Dialog lifted off the page** (as-built note 8): a darker, blurrier, desaturated
+  scrim; a `ring-white/12` rim; a `--shadow-dialog` token (drop + primary halo); a band top highlight.
+  Lint 0; env-free build at 57 ƒ Dynamic, 0 warnings; production screenshots in both themes, 0 page
+  errors.
+- 2026-10-01 — **Pointer cursor on every button** (Naveen). Tailwind v4 dropped v3's button cursor,
+  so a base-layer rule restores it app-wide and the dialog close buttons' one-off `cursor-pointer`
+  was removed. Verified on a `next start` build: enabled buttons show `pointer`, disabled ones
+  `default`. Lint 0; env-free build at 57 ƒ Dynamic, 0 warnings.
+- 2026-10-05 — Picked @context/features/ask-storyboard.md as the current feature (grounded voice Q&A for leadership — desktop panel + installable mobile `/ask`).
+- 2026-10-05 — **Done:** Ask StoryBoard (@context/features/ask-storyboard.md) — grounded voice/text Q&A over RBAC-checked data packs (`lib/ask/`, two-round JSON contract, ≤ 2 model calls, citations sanitized), sidebar launcher + ⌘K slide-over, mobile FAB, installable `/ask` + web manifest, `/login?next=`, `RateLimitError` (429). Verified: lint 0 · cold env-free build 52 ƒ Dynamic / 0 warnings · 13 pure fixtures · 19/19 smoke · real Gemini (flash-lite 6–13 s; two grounding misses fixed in the packs) · headless visual. **Next:** Naveen's commit + real-device voice acceptance.
+- 2026-10-05 — **Ask StoryBoard brought onto `feature/claude-connector`** (Naveen's call). The
+  uncommitted `../sprint_tracker-ask` work was 3-way applied and 7 conflicts were merged, keeping both
+  sides. `visibleTeamIds` was deduped into `lib/rbac.js`. Combined invariants: **59 ƒ Dynamic / 14
+  migrations**. The worktree and branch were left untouched.
+- 2026-10-05 — **Ask StoryBoard → Claude Connector fallback** (ask-storyboard.md as-built 13). The
+  trigger was a live Gemini 503 in the Ask panel.
+  - **Decision:** Naveen chose the connector as the ONLY fallback, switching over automatically.
+  - **Built:**
+    - Any `AiProviderError` hands the round to the asker's connector as an `ASK` job (no new route,
+      no migration).
+    - The client polls with `resume`.
+    - Connector 1.1.0 runs ASK jobs tool-less on Haiku with thinking off.
+  - **Verified:**
+    - lint 0; cold env-free build 59 ƒ Dynamic with 0 warnings.
+    - End to end on `next start` with a forced Gemini failure and the real connector: 23 s for one
+      round, 41 s for two; the offline and outdated hints; and the UI in headless Chrome.
+    - The dev DB was restored afterwards (temp user deleted, 0 ASK rows).
+- 2026-10-05 — **Ask routing inverted: Claude Connector first, Gemini second** (Naveen;
+  ask-storyboard.md as-built 14).
+  - **Code:**
+    - `lib/ask/connector.js`: replaces `connector-fallback.js` and adds `checkConnector`,
+      `queueAskJob` and `awaitAskJob`, which reports failures instead of throwing.
+    - A failed or stuck connector round is answered by Gemini.
+    - Jobs carry `packs` and `asOf`, so a resume skips rebuilding them.
+    - The ASK cap is now 1 minute.
+  - **Verified** on the dev server with the real connector:
+    - connector answers in 21–27 s for one round and 33 s for two;
+    - a dead connector hands over to Gemini after 15 s;
+    - an offline connector goes straight to Gemini with the hint.
+  - **Not verified:** a successful Gemini answer, because Gemini returned 503s and timeouts all day.
+  - The dev DB was restored afterwards.
+- 2026-10-05 — **Ask answers in an ElevenLabs voice** (Naveen; ask-storyboard.md as-built 15).
+  - **Code:** `lib/tts/elevenlabs.js`, a new `POST /api/ask/speech` (60 ƒ Dynamic), and
+    `<audio>` playback with an iOS unlock and a browser-voice fallback.
+  - **Config:** dormant until `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` are set.
+  - **Verified:** lint 0, plus the 401/503 smoke. The real voice round-trip is pending the key.
+- 2026-10-05 — **Ask → ORBIT DeepContext when StoryBoard can't answer** (Naveen; ask-storyboard.md
+  as-built 16).
+  - **Code:** `ASK_DEEP` connector round, `lib/ask/deep.mjs` and `deep-scope.js`, denial marker,
+    `clampAskReply`, and a tighter grounded rule.
+  - **Verified on the dev server:**
+    - the pipeline takes 60–81 s;
+    - the honest runs picked the wrong label (`Prod_Beta`) without org knowledge;
+    - the voice follow-up naming the label matched Naveen's Jira list (10, plus 1 in OEM Review).
+  - Build exit 0 with 60 ƒ Dynamic and 0 warnings; the dev DB was restored afterwards.
+- 2026-10-06 — **One-tap floating talk button** (ask-storyboard.md as-built 17). It now shows on
+  every screen size, and a single tap opens Ask already listening (`flushSync` plus `startVoice`
+  inside the tap, for iOS). Verified in headless Chrome at desktop and phone sizes.
+- 2026-10-06 — **Dialog redesign brought under Ask:** fast-forwarded `feature/claude-connector` to
+  `bc47524` under the uncommitted Ask work, and moved the Ask phone-setup dialog onto the hero
+  (ask-storyboard.md as-built 18). Lint 0; build at 60 ƒ Dynamic with 0 warnings; production
+  screenshots at 1440 px and 390 px.
+- 2026-10-06 — **Ask conversation kept in the browser, with context-carrying follow-ups**
+  (ask-storyboard.md as-built 19).
+  - **Code:** `chat-store.js` (localStorage per user, 12 h, cleared on logout), a page-level answer
+    loop that resumes after a reload, and Jira keys added to the follow-up transcript.
+  - **Verified:** 7 browser checks on `next start` with a stubbed `/api/ask`, lint 0, build at
+    60 ƒ Dynamic with 0 warnings.
+- 2026-10-09 — **Finished Ask StoryBoard** (`/finish-feature`; ask-storyboard.md Status + as-built
+  20). The full arc sits uncommitted on `feature/claude-connector` @ `bc47524`:
+  - Connector-first routing with Gemini second.
+  - The `ASK_DEEP` DeepContext round.
+  - The ElevenLabs answer voice.
+  - The one-tap talk button.
+  - The browser-kept conversation.
+  - **Verified:**
+    - eslint 0 for the tree; `prisma validate` passes, with 14 migrations up to date;
+    - the env-free build in a scratch copy with zero `.env*` (`node_modules` as an APFS clone,
+      because Turbopack rejects a symlink): exit 0, 60 ƒ Dynamic, 0 warnings;
+    - 22/22 runtime smoke on `next start`.
+  - **Doc-sync:**
+    - project-overview Last reviewed 2026-10-09;
+    - the §9 + `schema.prisma` `AnalysisJob.kind`/`source` comments (ASK / ASK_DEEP; comments only,
+      so no migration), the ERD and an amendment to the cluster rationale;
+    - three §11 build-log rows;
+    - §13.7 amended and a new §13.8 (ElevenLabs egress);
+    - a §17 localStorage exception for the Ask chat.
+  - **Noted, not fixed:** plain `yarn lint` exits 1 on the nested `.claude/worktrees/*` checkouts.
+    And §9 vs `schema.prisma` have older comment and model-order drift around
+    `BugReport*`/`ErrorLog`, structurally identical.
+  - **Done.**
+  - **Next:** Naveen's commit, then acceptance on stage.
+- 2026-10-09 — **Ask works without a Gemini key** (Naveen; ask-storyboard.md as-built 21).
+  - **Code:** `isAskEnabled()` = `AI_PROVIDER` OR Claude analysis; an `askEnabled` prop separate from
+    the Digest's `aiEnabled`; provider reads made lazy; `noEngineError` (409 `CONNECTOR_OFFLINE`)
+    with a reason-specific fix.
+  - **Verified** on `next start` with no provider vs with a provider:
+    - 6/6 checks;
+    - a real connector answered with no Gemini key, in 20.6 s for one round and 39 s for two;
+    - **Gemini answered** on the provider server, the first success on this branch.
+  - Lint 0; env-free build exit 0 at 60 ƒ Dynamic with 0 warnings. The dev DB was restored.
+- 2026-10-09 — **Connector busy-loop fixed (connector 1.1.1)** (claude-connector-analysis.md note 19).
+  With analysis off, the claim route answered instantly, so the connector re-polled in a tight loop.
+  That caused the stage 502s. The server now holds the poll; the connector pauses after a fast empty
+  answer. Measured 141,516 → 3 polls in 20 s. Lint 0; env-free build 60 ƒ / 0 warnings.

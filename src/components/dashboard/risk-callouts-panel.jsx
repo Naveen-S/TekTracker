@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, MessageSquarePlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatDateUTC, formatPoints } from "@/lib/metrics.mjs";
+import { AnalyseButton } from "@/components/analysis/analyse-button";
 
 /**
  * Risk call-outs (trend-burndown iteration, per Naveen 2026-07-19) — the deterministic
@@ -170,8 +171,15 @@ export function RiskCalloutsPanel({ issues = [], series, jiraBaseUrl, onEditComm
                 ) : (
                   <span aria-hidden="true" />
                 ))}
-              <span className="justify-self-start pt-0.5">
+              <span className="flex items-center gap-0.5 justify-self-start">
                 <IssueKey jiraKey={issue.jiraKey} jiraBaseUrl={jiraBaseUrl} />
+                <AnalyseButton
+                  jiraKey={issue.jiraKey}
+                  source="SPRINT"
+                  title={issue.title}
+                  jiraBaseUrl={jiraBaseUrl}
+                  className="size-5"
+                />
               </span>
               <span className="min-w-0 pt-0.5">
                 <span className="flex min-w-0 items-center gap-1.5">

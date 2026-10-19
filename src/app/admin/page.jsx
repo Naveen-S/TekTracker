@@ -9,6 +9,8 @@ import { prisma } from "@/lib/db";
 import { AdminPanel } from "@/components/admin/admin-panel";
 import { getBugReportData } from "@/lib/bug-report-data";
 import { AppShell } from "@/components/ui/app-shell";
+import { getAnalysisSettings } from "@/lib/connector/settings";
+import { isAskEnabled } from "@/lib/ask/availability";
 
 export const dynamic = "force-dynamic";
 
@@ -78,12 +80,15 @@ export default async function AdminPage() {
   // Bug-report config (gm-bug-report.md (h)). The vocabularies come from the cached issues, so the
   // status/priority pickers offer what the data actually contains instead of free text.
   const bugData = await getBugReportData(undefined, new Date());
+  const analysisSettings = await getAnalysisSettings();
 
   return (
     <AppShell
       user={user}
       hasBugReport={(bugData?.reports?.length ?? 0) > 0}
       hasLeaderboardAccess
+      askEnabled={await isAskEnabled()}
+      askContext={{ page: "other", label: "Your teams" }}
     >
       <AdminPanel
         teams={teams}
@@ -96,6 +101,7 @@ export default async function AdminPage() {
         bugStatusVocabulary={bugData?.statusVocabulary ?? []}
         bugPriorityVocabulary={bugData?.priorityVocabulary ?? []}
         recentErrors={recentErrors}
+        analysisSettings={analysisSettings}
       />
     </AppShell>
   );

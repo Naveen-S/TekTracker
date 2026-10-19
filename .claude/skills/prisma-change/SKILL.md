@@ -33,6 +33,9 @@ description: Prisma 7 schema-change workflow — edit schema.prisma and project-
    idempotent — re-runs must not dupe; global mapping rows are delete-then-`createMany` because of
    Postgres NULL-unique) and run `yarn db:seed`.
 7. Doc-sync §9 (schema block + ER diagram + rationale bullet if behavior changed), then /verify.
+8. **Production is a hand-run office DB.** Every new migration needs the `dba-migration-bundle` skill
+   (an incremental psql bundle Naveen applies via the jumpserver **before** the image rollout) —
+   `migrate dev` here only ever touches Neon (dev).
 
 ## Prisma 7 gotchas (differ from training data)
 

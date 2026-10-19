@@ -14,7 +14,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Boxes, ChevronDown, ChevronRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -74,39 +74,24 @@ function ComponentRow({ component, run, busy }) {
       </div>
 
       {confirmingDeleteComponent && (
-        <Dialog
-          open
+        <ConfirmDialog
           title={`Delete ${component.name}?`}
           description="This cannot be undone."
-          tone="error"
-          size="sm"
+          confirmLabel="Delete component"
           onClose={() => setConfirmingDeleteComponent(false)}
-          footer={
-            <>
-              <Button variant="secondary" onClick={() => setConfirmingDeleteComponent(false)}>
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  setConfirmingDeleteComponent(false);
-                  run(
-                    () => apiFetch(`/api/jira-components/${component.id}`, { method: "DELETE" }),
-                    `Deleted ${component.name}`,
-                  );
-                }}
-              >
-                Delete component
-              </Button>
-            </>
+          onConfirm={() =>
+            run(
+              () => apiFetch(`/api/jira-components/${component.id}`, { method: "DELETE" }),
+              `Deleted ${component.name}`,
+            )
           }
         >
-          <p className="text-sm leading-relaxed">
+          <p>
             Deleting <strong>{component.name}</strong> also removes all{" "}
             {component.subComponents.length} of its sub-components, releasing any team&rsquo;s
             claim on them.
           </p>
-        </Dialog>
+        </ConfirmDialog>
       )}
 
       {expanded && (
@@ -140,37 +125,22 @@ function ComponentRow({ component, run, busy }) {
             </ul>
           )}
           {confirmingDeleteSub && (
-            <Dialog
-              open
+            <ConfirmDialog
               title={`Delete ${confirmingDeleteSub.name}?`}
               description={
                 confirmingDeleteSub.team
                   ? `This releases ${confirmingDeleteSub.team.name}'s claim on it. Cannot be undone.`
                   : "This cannot be undone."
               }
-              tone="error"
-              size="sm"
+              confirmLabel="Delete sub-component"
               onClose={() => setConfirmingDeleteSub(null)}
-              footer={
-                <>
-                  <Button variant="secondary" onClick={() => setConfirmingDeleteSub(null)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() => {
-                      const sub = confirmingDeleteSub;
-                      setConfirmingDeleteSub(null);
-                      run(
-                        () => apiFetch(`/api/jira-sub-components/${sub.id}`, { method: "DELETE" }),
-                        `Deleted ${sub.name}`,
-                      );
-                    }}
-                  >
-                    Delete sub-component
-                  </Button>
-                </>
-              }
+              onConfirm={() => {
+                const sub = confirmingDeleteSub;
+                run(
+                  () => apiFetch(`/api/jira-sub-components/${sub.id}`, { method: "DELETE" }),
+                  `Deleted ${sub.name}`,
+                );
+              }}
             />
           )}
           <form className="mt-3 flex gap-2" onSubmit={addSubComponent}>

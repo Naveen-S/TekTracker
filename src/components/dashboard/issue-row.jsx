@@ -15,6 +15,7 @@ import {
 } from "@/lib/metrics.mjs";
 import { WORKFLOWS } from "@/lib/workflows.mjs";
 import { cn } from "@/lib/utils";
+import { AnalyseButton } from "@/components/analysis/analyse-button";
 
 /* Legacy getHealthStatus triplets (src/workflows.js :107-175): text 500 / border 600 / bg 50. */
 const HEALTH_PILL = {
@@ -66,21 +67,30 @@ export function IssueRow({
         style={{ borderLeft: `3px solid ${accent}` }}
       >
         <div className="flex items-center justify-between gap-2">
-          {jiraUrl ? (
-            <a
-              href={jiraUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-sm bg-accent px-1.5 py-0.5 font-mono text-[11px] font-semibold text-accent-foreground hover:underline"
-              title="Open in Jira"
-            >
-              {issue.jiraKey}
-            </a>
-          ) : (
-            <span className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-[11px] font-semibold">
-              {issue.jiraKey}
-            </span>
-          )}
+          <span className="flex items-center gap-0.5">
+            {jiraUrl ? (
+              <a
+                href={jiraUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-sm bg-accent px-1.5 py-0.5 font-mono text-[11px] font-semibold text-accent-foreground hover:underline"
+                title="Open in Jira"
+              >
+                {issue.jiraKey}
+              </a>
+            ) : (
+              <span className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-[11px] font-semibold">
+                {issue.jiraKey}
+              </span>
+            )}
+            <AnalyseButton
+              jiraKey={issue.jiraKey}
+              source="SPRINT"
+              title={issue.title}
+              jiraBaseUrl={jiraBaseUrl}
+              className="size-5"
+            />
+          </span>
           <span
             className={cn(
               "min-w-11 rounded-md px-1.5 py-0.5 text-center text-[11px] font-bold",

@@ -9,8 +9,8 @@
  * no Sync here) — no edit affordance is passed to the panel.
  */
 import { useState } from "react";
-import { Dialog } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { ShieldAlert } from "lucide-react";
+import { Dialog, DialogClose } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import {
   IssueKey,
@@ -18,6 +18,7 @@ import {
   sortRiskyIssues,
 } from "@/components/dashboard/risk-callouts-panel";
 import { formatPoints } from "@/lib/metrics.mjs";
+import { AnalyseButton } from "@/components/analysis/analyse-button";
 
 export function RollupRiskSection({ issues, series, jiraBaseUrl }) {
   const [open, setOpen] = useState(false);
@@ -35,21 +36,20 @@ export function RollupRiskSection({ issues, series, jiraBaseUrl }) {
       {open && (
         <Dialog
           open
+          icon={ShieldAlert}
+          tone="warn"
+          hero
           title={`All risks (${risky.length})`}
           description="Every risky issue across the teams you can see, worst first. Comments marked Known are agreed and managed."
           onClose={() => setOpen(false)}
           size="lg"
-          footer={
-            <Button variant="secondary" onClick={() => setOpen(false)}>
-              Close
-            </Button>
-          }
+          footer={<DialogClose>Close</DialogClose>}
         >
           <ul className="flex flex-col divide-y divide-border-subtle">
             {risky.map((issue) => (
               <li
                 key={`${issue.teamKey ?? ""}:${issue.filterId}:${issue.jiraKey}`}
-                className="flex flex-col gap-1 py-2.5 first:pt-0"
+                className="flex flex-col gap-1 py-3 first:pt-1"
               >
                 <div className="flex flex-wrap items-center gap-1.5">
                   <Badge tone={issue.health.tone} className="shrink-0">
@@ -61,6 +61,13 @@ export function RollupRiskSection({ issues, series, jiraBaseUrl }) {
                     </Badge>
                   )}
                   <IssueKey jiraKey={issue.jiraKey} jiraBaseUrl={jiraBaseUrl} />
+                  <AnalyseButton
+                    jiraKey={issue.jiraKey}
+                    source="SPRINT"
+                    title={issue.title}
+                    jiraBaseUrl={jiraBaseUrl}
+                    className="size-5"
+                  />
                   <span className="min-w-0 flex-1 truncate text-sm text-secondary-foreground">
                     {issue.title}
                   </span>

@@ -12,7 +12,9 @@
  * (src/components/dashboard/risk-callouts-panel.jsx `sortRiskyIssues`): Blocked → Behind →
  * At Risk, points desc. */
 const STATUS_RANK = { Blocked: 0, Behind: 1, "At Risk": 2 };
-const sortRisky = (issues) =>
+// Exported (ask-storyboard.md) so Ask StoryBoard ranks risks in the same order as the digest and
+// the on-screen panel — one ordering, never a copy that drifts.
+export const sortRisky = (issues) =>
   issues
     .filter((issue) => STATUS_RANK[issue.health.status] !== undefined)
     .sort(
@@ -47,7 +49,7 @@ const isoDate = (value) => new Date(value).toISOString().slice(0, 10);
  * }} args
  */
 /** Shared velocity → payload shaping (team + roll-up digests must render it identically). */
-function velocityPayload(velocity) {
+export function velocityPayload(velocity) {
   if (!velocity) return null;
   return {
     ptsPerWeek: velocity.velocity,
@@ -60,7 +62,7 @@ function velocityPayload(velocity) {
 }
 
 /** Shared trend/projection → payload shaping (team + roll-up digests). */
-function trendPayload(series) {
+export function trendPayload(series) {
   const lastPoint = series?.points?.[series.points.length - 1] ?? null;
   const projection = series?.projection ?? null;
   if (!lastPoint || !projection) return null;
@@ -78,7 +80,7 @@ function trendPayload(series) {
  * `known: true` cues the system prompts' "report as managed, not a new alarm" instruction.
  * `includeTeamKey` is set for the roll-up builder, whose issues span multiple teams.
  */
-function riskIssuePayload(issue, { includeTeamKey = false } = {}) {
+export function riskIssuePayload(issue, { includeTeamKey = false } = {}) {
   return {
     ...(includeTeamKey ? { teamKey: issue.teamKey } : {}),
     jiraKey: issue.jiraKey,

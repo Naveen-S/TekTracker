@@ -36,6 +36,10 @@ export const metadata = {
   title: "StoryBoard",
   description:
     "Every piece. One picture. One fast, comprehensive view of an entire sprint — from roadmap to backlog. Engineering internal tool @ Tekion Corp.",
+  // Installable on a phone (ask-storyboard.md (f)): iOS reads these instead of the manifest for
+  // "Add to Home Screen" — full-screen launch and a short title under the icon. The icon itself is
+  // the `apple-icon.png` file convention (the tiled app icon), so it can't disturb the favicon set.
+  appleWebApp: { capable: true, title: "StoryBoard", statusBarStyle: "default" },
 };
 
 // No-FOUC theme boot (modern-theme.md): apply the saved theme class to <html>

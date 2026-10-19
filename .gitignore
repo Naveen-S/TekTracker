@@ -30,6 +30,8 @@
 # Claude Code project dir: only skills/ is tracked
 .claude/*
 !.claude/skills/
+Claude outputs/
+launch-video/
 
 # debug
 npm-debug.log*

@@ -15,7 +15,7 @@
 import { useState } from "react";
 import { Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api-client";
@@ -173,35 +173,18 @@ export function SprintCapacityConfig({ teams, sprints, capacityRows, run, busy }
       </div>
 
       {confirmingOverwrite && (
-        <Dialog
-          open
+        <ConfirmDialog
           title="Overwrite this sprint's capacity?"
           description="This cannot be undone."
-          tone="error"
-          size="sm"
+          confirmLabel="Overwrite"
           onClose={() => setConfirmingOverwrite(false)}
-          footer={
-            <>
-              <Button variant="secondary" onClick={() => setConfirmingOverwrite(false)}>
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  setConfirmingOverwrite(false);
-                  duplicate();
-                }}
-              >
-                Overwrite
-              </Button>
-            </>
-          }
+          onConfirm={duplicate}
         >
-          <p className="text-sm leading-relaxed">
+          <p>
             This sprint already has committed-capacity numbers configured. Copying will replace
             them with the selected sprint&apos;s numbers.
           </p>
-        </Dialog>
+        </ConfirmDialog>
       )}
 
       {selectedSprintId ? (
