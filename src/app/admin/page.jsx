@@ -11,6 +11,7 @@ import { getBugReportData } from "@/lib/bug-report-data";
 import { AppShell } from "@/components/ui/app-shell";
 import { getAnalysisSettings } from "@/lib/connector/settings";
 import { isAskEnabled } from "@/lib/ask/availability";
+import { getSecuritySettings } from "@/lib/security/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +82,23 @@ export default async function AdminPage() {
   // status/priority pickers offer what the data actually contains instead of free text.
   const bugData = await getBugReportData(undefined, new Date());
   const analysisSettings = await getAnalysisSettings();
+  // security-vulnerability-tracker.md (d) — the "Security tracker" admin card. The parsed
+  // vocabulary is refresh state, not config, so it is not sent to the client.
+  const [securitySettings, securityPrograms, securityReleases] = await Promise.all([
+    getSecuritySettings(),
+    prisma.securityProgram.findMany({ orderBy: [{ sortOrder: "asc" }, { key: "asc" }] }),
+    prisma.securityRelease.findMany({ orderBy: { month: "asc" } }),
+  ]);
+  const { vocab: _vocab, ...securitySettingsForClient } = securitySettings;
+  const securityConfig = {
+    settings: securitySettingsForClient,
+    programs: securityPrograms,
+    releases: securityReleases.map((release) => ({
+      month: release.month,
+      shipDate: release.shipDate.toISOString().slice(0, 10),
+      note: release.note ?? "",
+    })),
+  };
 
   return (
     <AppShell
@@ -102,6 +120,7 @@ export default async function AdminPage() {
         bugPriorityVocabulary={bugData?.priorityVocabulary ?? []}
         recentErrors={recentErrors}
         analysisSettings={analysisSettings}
+        securityConfig={securityConfig}
       />
     </AppShell>
   );

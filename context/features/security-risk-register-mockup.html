@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Risk Register Mockup</title>
+<style>
+:root{
+  --bg:#f7f7f5; --surface:#ffffff; --surface-2:#f1f1ee; --border:#e2e2dd;
+  --text:#1c1c1a; --muted:#6b6b66; --accent:#2f5bd3;
+  --high-bg:#fde3e1; --high-fg:#a3241b; --high-cell:#f6b8b2;
+  --med-bg:#fdf0d5; --med-fg:#8a5a00; --med-cell:#f7d690;
+  --low-bg:#e3ecfb; --low-fg:#2a4f99; --low-cell:#c5d6f5;
+  --clear-bg:#eef1ee; --clear-fg:#5d6b5f; --clear-cell:#f3f5f3;
+  --worse:#a3241b; --better:#22703a;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#151514; --surface:#1e1e1c; --surface-2:#262624; --border:#34342f;
+    --text:#ecece8; --muted:#a2a29b; --accent:#8aa8ff;
+    --high-bg:#4a1f1c; --high-fg:#ffb3ab; --high-cell:#6b2a24;
+    --med-bg:#43341a; --med-fg:#f3cf86; --med-cell:#5e4718;
+    --low-bg:#1f2c45; --low-fg:#a9c2f5; --low-cell:#24375c;
+    --clear-bg:#232723; --clear-fg:#9aa69b; --clear-cell:#1f221f;
+    --worse:#ff9c92; --better:#86d49c;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#151514; --surface:#1e1e1c; --surface-2:#262624; --border:#34342f;
+  --text:#ecece8; --muted:#a2a29b; --accent:#8aa8ff;
+  --high-bg:#4a1f1c; --high-fg:#ffb3ab; --high-cell:#6b2a24;
+  --med-bg:#43341a; --med-fg:#f3cf86; --med-cell:#5e4718;
+  --low-bg:#1f2c45; --low-fg:#a9c2f5; --low-cell:#24375c;
+  --clear-bg:#232723; --clear-fg:#9aa69b; --clear-cell:#1f221f;
+  --worse:#ff9c92; --better:#86d49c;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:1120px;margin:0 auto;padding:24px 16px 48px}
+header h1{font-size:20px;margin:0 0 4px}
+header p{margin:0;color:var(--muted)}
+.bar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:20px 0 16px}
+.tabs{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface)}
+.tabs button{border:0;background:none;color:var(--text);padding:8px 14px;font:inherit;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--text);color:var(--bg)}
+select,label.chk{font:inherit;color:var(--text)}
+select{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 10px}
+label.chk{display:inline-flex;gap:6px;align-items:center;color:var(--muted);font-size:13px}
+.spacer{flex:1}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px}
+.panel h2{font-size:15px;margin:0 0 12px;display:flex;gap:8px;align-items:center}
+.chip{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.02em;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.sev-High{background:var(--high-bg);color:var(--high-fg)}
+.sev-Medium{background:var(--med-bg);color:var(--med-fg)}
+.sev-Low{background:var(--low-bg);color:var(--low-fg)}
+.sev-Clear{background:var(--clear-bg);color:var(--clear-fg)}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* headlines */
+.headlines{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+.headline{border:1px solid var(--border);border-left:4px solid var(--high-fg);border-radius:8px;padding:10px 12px;background:var(--surface-2)}
+.headline .k{font-size:11px;color:var(--muted);margin-bottom:4px}
+
+/* heatmap */
+.hm-scroll{overflow-x:auto}
+table.hm{border-collapse:separate;border-spacing:3px;width:100%;min-width:760px}
+.hm th{font-size:11px;font-weight:600;color:var(--muted);text-align:center;padding:4px;vertical-align:bottom}
+.hm th.row{text-align:left;color:var(--text);font-size:13px;white-space:nowrap;padding-right:10px}
+.hm th.row .open{display:block;font-weight:400;color:var(--muted);font-size:11px}
+.hm td{text-align:center;border-radius:6px;padding:0}
+.hm td a{display:block;padding:8px 4px;color:inherit;text-decoration:none;border-radius:6px}
+.hm td a:hover,.hm td a:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.hm td .n{font-size:15px;font-weight:600;display:block}
+.hm td .s{font-size:10px;display:block;opacity:.85}
+.cell-High{background:var(--high-cell);color:var(--high-fg)}
+.cell-Medium{background:var(--med-cell);color:var(--med-fg)}
+.cell-Low{background:var(--low-cell);color:var(--low-fg)}
+.cell-Clear{background:var(--clear-cell);color:var(--clear-fg)}
+.hm tr.tot th,.hm tr.tot td{border-top:1px solid var(--border)}
+.hm tr.tot td{font-weight:600;padding:8px 4px;color:var(--muted)}
+.stack{display:none}
+.stack .item{border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px}
+.stack .item .top{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:6px}
+.stack .item .chips{display:flex;flex-wrap:wrap;gap:6px}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;font-size:12px;color:var(--muted);align-items:center}
+
+/* program view */
+.context{border:1px solid var(--border);border-left:4px solid var(--accent);background:var(--surface-2);border-radius:8px;padding:10px 12px;margin-bottom:14px}
+.context b{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:2px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
+.card{border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--surface)}
+.card .hd{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.card .hd .id{color:var(--muted);font-size:12px;margin-left:auto}
+.card .count{font-size:24px;font-weight:700;display:flex;align-items:baseline;gap:8px}
+.card .delta{font-size:13px;font-weight:500}
+.worse{color:var(--worse)} .better{color:var(--better)} .flat{color:var(--muted)}
+.card .clears{font-size:13px;color:var(--muted);margin:4px 0 10px}
+.card .clears b{color:var(--text);font-weight:600}
+table.tix{width:100%;border-collapse:collapse;font-size:12px}
+.tix th{text-align:left;font-weight:600;color:var(--muted);padding:4px 6px 4px 0;border-bottom:1px solid var(--border)}
+.tix td{padding:5px 6px 5px 0;border-bottom:1px solid var(--border);white-space:nowrap}
+.tix td.who{white-space:normal}
+.card .ft{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:10px;font-size:13px}
+.empty{padding:20px;text-align:center;color:var(--muted)}
+.note{font-size:12px;color:var(--muted);margin-top:14px}
+
+@media (max-width:760px){
+  .headlines{grid-template-columns:1fr}
+  .hm-scroll{display:none}
+  .stack{display:block}
+  .cards{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Risks &amp; blockers — risk register</h1>
+    <p>Mockup for <code>security-vulnerability-tracker.md</code>. Eight computed checks per program, scored High / Medium / Low / Clear. Data is illustrative.</p>
+  </header>
+
+  <div class="bar">
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-view="all">All programs</button>
+      <button role="tab" aria-selected="false" data-view="one">Single program</button>
+    </div>
+    <select id="prog" aria-label="Program" hidden></select>
+    <span class="spacer"></span>
+    <label class="chk"><input type="checkbox" id="snap" checked> 7+ days of snapshots</label>
+    <label class="chk"><input type="checkbox" id="admin"> View as admin</label>
+  </div>
+
+  <section id="view-all"></section>
+  <section id="view-one" hidden></section>
+
+  <p class="note">Every count links to its Jira query (hover a link to see the JQL). Thresholds are editable in <code>/admin</code>. Week-over-week deltas show “—” until StoryBoard has 7 days of its own snapshots.</p>
+</div>
+
+<script>
+const SEV_ORDER = {High:0, Medium:1, Low:2, Clear:3};
+const SIGNALS = [
+  {id:'S1', key:'noPlan',     label:'No plan',             short:'No plan',      clears:'Slot items into the next two releases', jql:'fixVersion in (currentRelease(), nextRelease()) IS EMPTY', wb:true},
+  {id:'S2', key:'pastSla',    label:'Past SLA (P0/P1)',    short:'Past SLA',     clears:'Ship, or re-slot with an agreed date', jql:'priority in (P0,P1) AND age > sla'},
+  {id:'S3', key:'dueSoon',    label:'Crossing SLA ≤ 14 d', short:'SLA ≤ 14 d',   clears:'Pull into the current release', jql:'priority in (P0,P1) AND slaDue <= 14d'},
+  {id:'S4', key:'overdue',    label:'Overdue',             short:'Overdue',      clears:'Close, or re-slot into the current/next release', jql:'fixVersion in releasedVersions() AND statusCategory != Done', wb:true},
+  {id:'S5', key:'noFix',      label:'No fix version',      short:'No fix ver.',  clears:'Assign a release', jql:'fixVersion !~ "Release-*"', wb:true},
+  {id:'S6', key:'untriaged',  label:'Untriaged',           short:'Untriaged',    clears:'Triage in the workbench', jql:'labels not in (DRP_SECURITY_*)', wb:true},
+  {id:'S7', key:'unassigned', label:'Unassigned',          short:'Unassigned',   clears:'Assign an owner', jql:'assignee IS EMPTY'},
+  {id:'S8', key:'stale',      label:'Stale (30 d)',        short:'Stale',        clears:'Status check with the owner', jql:'updated <= -30d'},
+];
+
+// [count, severity, countWeekAgo]
+const PROGRAMS = [
+  {name:'DR_GM', prefix:'GM', open:312, note:'DR1.0 items resolve when DR1.0 is deprecated — agreed with leadership; tracked, not escalated.',
+   s:{S1:[0,'Clear',0],S2:[51,'High',79],S3:[18,'Medium',15],S4:[14,'High',17],S5:[41,'High',44],S6:[6,'Medium',9],S7:[3,'Low',3],S8:[22,'Low',19]}},
+  {name:'AEPlatform', prefix:'AEP', open:140,
+   s:{S1:[0,'Clear',0],S2:[12,'High',9],S3:[9,'Medium',11],S4:[22,'High',16],S5:[9,'Medium',12],S6:[0,'Clear',2],S7:[5,'Medium',4],S8:[31,'Low',27]}},
+  {name:'DR_Ford', prefix:'ENG', open:8,
+   s:{S1:[1,'High',1],S2:[0,'Clear',0],S3:[2,'Medium',1],S4:[0,'Clear',0],S5:[8,'High',8],S6:[0,'Clear',0],S7:[2,'Low',2],S8:[5,'Low',3]}},
+  {name:'DR_Honda', prefix:'AHM', open:96,
+   s:{S1:[0,'Clear',0],S2:[4,'Medium',6],S3:[7,'Medium',5],S4:[3,'Medium',3],S5:[6,'Medium',10],S6:[11,'Medium',4],S7:[0,'Clear',1],S8:[9,'Low',12]}},
+  {name:'Honda_Fleet', prefix:'AHM', open:24,
+   s:{S1:[0,'Clear',0],S2:[0,'Clear',0],S3:[1,'Medium',0],S4:[0,'Clear',0],S5:[0,'Clear',0],S6:[0,'Clear',0],S7:[0,'Clear',0],S8:[4,'Low',4]}},
+  {name:'Digital Retailing', prefix:'DGRT', open:37,
+   s:{S1:[0,'Clear',0],S2:[0,'Clear',0],S3:[0,'Clear',0],S4:[0,'Clear',0],S5:[0,'Clear',0],S6:[0,'Clear',0],S7:[2,'Low',2],S8:[6,'Low',8]}},
+];
+
+const HEADLINES = [
+  {p:'DR_GM', sig:'S2', text:'DR_GM — 51 P1s past SLA (79 → 51)'},
+  {p:'DR_Ford', sig:'S1', text:'DR_Ford — 8 open, nothing planned in the next two releases'},
+  {p:'AEPlatform', sig:'S4', text:'AEPlatform — 22 overdue, up from 16 last week'},
+];
+
+const overall = p => SIGNALS.map(s=>p.s[s.id][1]).sort((a,b)=>SEV_ORDER[a]-SEV_ORDER[b])[0];
+const sorted = [...PROGRAMS].sort((a,b)=>SEV_ORDER[overall(a)]-SEV_ORDER[overall(b)] || b.open-a.open);
+const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const jqlFor = (p,s) => `program = "${p.name}" AND ${s.jql}`;
+const jiraLink = (p,s,inner,cls='') => `<a href="#" class="${cls}" title="${esc(jqlFor(p,s))}" onclick="return false">${inner}</a>`;
+const chip = sev => `<span class="chip sev-${sev}">${sev}</span>`;
+
+let state = {view:'all', prog:sorted[0].name, snap:true, admin:false};
+try { const saved = JSON.parse(localStorage.getItem('rr-state')||'null'); if (saved) state = {...state, ...saved}; } catch(e){}
+const save = () => { try { localStorage.setItem('rr-state', JSON.stringify(state)); } catch(e){} };
+
+function renderAll(){
+  const el = document.getElementById('view-all');
+  const heads = HEADLINES.map(h=>{
+    const p = PROGRAMS.find(x=>x.name===h.p), s = SIGNALS.find(x=>x.id===h.sig);
+    return `<div class="headline"><div class="k">${chip('High')} ${s.id} · ${esc(s.label)}</div>${jiraLink(p,s,esc(h.text))}</div>`;
+  }).join('');
+
+  const headRow = `<tr><th></th>${SIGNALS.map(s=>`<th>${s.id}<br>${esc(s.short)}</th>`).join('')}</tr>`;
+  const rows = sorted.map(p=>{
+    const lvl = overall(p);
+    return `<tr><th class="row">${esc(p.name)} ${chip(lvl)}<span class="open">${p.open} open</span></th>${
+      SIGNALS.map(s=>{const [n,sev]=p.s[s.id];
+        return `<td class="cell-${sev}">${jiraLink(p,s,`<span class="n">${n}</span><span class="s">${sev}</span>`)}</td>`;}).join('')}</tr>`;
+  }).join('');
+  const tot = `<tr class="tot"><th class="row">Total</th>${SIGNALS.map(s=>`<td>${PROGRAMS.reduce((a,p)=>a+p.s[s.id][0],0)}</td>`).join('')}</tr>`;
+
+  const stack = sorted.map(p=>{
+    const hits = SIGNALS.filter(s=>['High','Medium'].includes(p.s[s.id][1]))
+      .sort((a,b)=>SEV_ORDER[p.s[a.id][1]]-SEV_ORDER[p.s[b.id][1]]);
+    return `<div class="item"><div class="top"><strong>${esc(p.name)}</strong>${chip(overall(p))}</div>
+      <div class="chips">${hits.length ? hits.map(s=>jiraLink(p,s,`${s.id} ${esc(s.short)} · ${p.s[s.id][0]}`,`chip sev-${p.s[s.id][1]}`)).join('') : '<span class="chip sev-Clear">No High or Medium risks</span>'}</div></div>`;
+  }).join('');
+
+  el.innerHTML = `<div class="headlines">${heads}</div>
+  <div class="panel"><h2>All programs · worst first</h2>
+    <div class="hm-scroll"><table class="hm"><thead>${headRow}</thead><tbody>${rows}${tot}</tbody></table></div>
+    <div class="stack">${stack}</div>
+    <div class="legend">Severity: ${['High','Medium','Low','Clear'].map(chip).join('')} · each cell opens its Jira list</div>
+  </div>`;
+}
+
+// deterministic mock tickets
+function rng(seed){let x=seed;return()=>((x=(x*1103515245+12345)&0x7fffffff)/0x7fffffff);}
+const PEOPLE=['A. Rao','M. Chen','S. Iyer','J. Patel','K. Nair','L. Gomez','R. Singh','T. Okafor'];
+function topTickets(p,s,n){
+  const r = rng([...p.name+s.id].reduce((a,c)=>a+c.charCodeAt(0)*31,7));
+  const out=[];
+  for(let i=0;i<Math.min(5,n);i++){
+    const pri = (s.id==='S2'||s.id==='S3') ? (r()<.25?'P0':'P1') : ['P0','P1','P1','P2','P2','P3'][Math.floor(r()*6)];
+    const age = s.id==='S8' ? 30+Math.floor(r()*120) : 5+Math.floor(r()*160);
+    const fix = (s.id==='S5'||s.id==='S1') ? '—' : s.id==='S4' ? 'Release-2026.09' : ['Release-2026.10','Release-2026.11','Release-2026.12'][Math.floor(r()*3)];
+    const who = s.id==='S7' ? 'Unassigned' : PEOPLE[Math.floor(r()*PEOPLE.length)];
+    out.push({key:`${p.prefix}-${1000+Math.floor(r()*8999)}`,pri,age,fix,who});
+  }
+  const rank={P0:0,P1:1,P2:2,P3:3};
+  return out.sort((a,b)=>rank[a.pri]-rank[b.pri]||b.age-a.age);
+}
+
+function deltaHtml(now,prev){
+  if(!state.snap) return `<span class="delta flat">— vs last week</span>`;
+  const d = now-prev;
+  if(d===0) return `<span class="delta flat">= no change vs last week</span>`;
+  return d>0 ? `<span class="delta worse">▲${d} vs last week</span>` : `<span class="delta better">▼${-d} vs last week</span>`;
+}
+
+function renderOne(){
+  const el = document.getElementById('view-one');
+  const p = PROGRAMS.find(x=>x.name===state.prog) || sorted[0];
+  const live = SIGNALS.filter(s=>p.s[s.id][1]!=='Clear')
+    .sort((a,b)=>SEV_ORDER[p.s[a.id][1]]-SEV_ORDER[p.s[b.id][1]] || p.s[b.id][0]-p.s[a.id][0]);
+  const ctx = p.note ? `<div class="context"><b>Context</b>${esc(p.note)}</div>` : '';
+  const cards = live.map(s=>{
+    const [n,sev,prev]=p.s[s.id];
+    const tix = topTickets(p,s,n).map(t=>`<tr><td><a href="#" onclick="return false">${t.key}</a></td><td>${t.pri}</td><td>${t.age} d</td><td>${t.fix}</td><td class="who">${t.who}</td></tr>`).join('');
+    const wb = state.admin && s.wb ? `<a href="#" onclick="return false">Open in workbench ↗</a>` : '';
+    return `<article class="card">
+      <div class="hd">${chip(sev)}<strong>${esc(s.label)}</strong><span class="id">${s.id}</span></div>
+      <div class="count">${n} ${deltaHtml(n,prev)}</div>
+      <div class="clears"><b>Clears it:</b> ${esc(s.clears)}</div>
+      <table class="tix"><thead><tr><th>Key</th><th>Pri</th><th>Age</th><th>Fix version</th><th>Assignee</th></tr></thead><tbody>${tix}</tbody></table>
+      <div class="ft">${jiraLink(p,s,`View all ${n} in Jira →`)}${wb}</div>
+    </article>`;
+  }).join('');
+  el.innerHTML = `<div class="panel"><h2>${esc(p.name)} ${chip(overall(p))} <span style="font-weight:400;color:var(--muted);font-size:13px">${p.open} open</span></h2>
+    ${ctx}${live.length ? `<div class="cards">${cards}</div>` : `<div class="empty">No open risks.</div>`}</div>`;
+}
+
+function render(){
+  document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected', b.dataset.view===state.view));
+  document.getElementById('view-all').hidden = state.view!=='all';
+  document.getElementById('view-one').hidden = state.view!=='one';
+  document.getElementById('prog').hidden = state.view!=='one';
+  document.getElementById('prog').value = state.prog;
+  document.getElementById('snap').checked = state.snap;
+  document.getElementById('admin').checked = state.admin;
+  renderAll(); renderOne(); save();
+}
+
+const sel = document.getElementById('prog');
+sel.innerHTML = sorted.map(p=>`<option>${esc(p.name)}</option>`).join('');
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{state.view=b.dataset.view;render();});
+sel.onchange=e=>{state.prog=e.target.value;render();};
+document.getElementById('snap').onchange=e=>{state.snap=e.target.checked;render();};
+document.getElementById('admin').onchange=e=>{state.admin=e.target.checked;render();};
+document.getElementById('view-all').addEventListener('click',e=>{
+  const row=e.target.closest('th.row'); if(!row) return;
+  const name=PROGRAMS.find(p=>row.textContent.startsWith(p.name)); if(name){state.view='one';state.prog=name.name;render();}
+});
+render();
+</script>
+</body>
+</html>

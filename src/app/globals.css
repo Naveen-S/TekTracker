@@ -566,6 +566,71 @@
   }
 }
 
+/* Security tracker palette (security-vulnerability-tracker.md — Naveen 2026-10-20: "make it colorful
+   as the artifact"). The artifact's own values, namespaced `sec-*` so ONLY /security uses them and
+   the rest of StoryBoard keeps its validated chart palette (--chart-cat-*, --age-*). Series colours
+   are fixed by meaning (fixed = blue, new = pink, backlog = orange), never cycled. */
+@theme {
+  --color-sec-blue: #3a86ff;
+  --color-sec-purple: #8338ec;
+  --color-sec-pink: #ff006e;
+  --color-sec-pink-soft: #ffc2dd;
+  --color-sec-orange: #fb5607;
+  --color-sec-amber: #ffbe0b;
+  --color-sec-teal: #0e8c7f;
+  --color-sec-ink: #241e33;
+  --color-sec-body: #332c47;
+  --color-sec-muted: #6e6787;
+  --color-sec-faint: #b4accf;
+  --color-sec-line: #e5dff5;
+  --color-sec-lavender: #ede7fd;
+  --color-sec-lavender-soft: #f5f2fd;
+  --color-sec-paper: #fbfaff;
+  --color-sec-peach: #fff6f0;
+  --color-sec-pink-tint: #ffe0ee;
+  --color-sec-amber-tint: #fff3d1;
+  --color-sec-blue-tint: #e3eeff;
+  --color-sec-pink-text: #d6005c;
+  --color-sec-orange-text: #d64a00;
+  --color-sec-amber-text: #a87500;
+  --color-sec-blue-text: #1d5fcc;
+  --color-sec-amber-deep: #ff9e00;
+  /* The artifact's doughnut palette, steps 6–11 (steps 1–5 are blue/purple/pink/orange/amber). */
+  --color-sec-blue-light: #7fb2ff;
+  --color-sec-purple-light: #b182f5;
+  --color-sec-pink-light: #ff66a8;
+  --color-sec-orange-light: #fda06b;
+  --color-sec-amber-light: #ffd966;
+  --color-sec-others: #d9d3ec;
+  --color-sec-gold-line: #f4dfa0;
+  --color-sec-gold-text: #b78500;
+  --color-sec-label: #9a8fad;
+  --shadow-sec-gold: 0 3px 12px rgb(255 190 11 / 0.18);
+  /* Links, LIVE pills, hover and focus accents. Purple in the Artifact look; the theme primary in the
+     StoryBoard look (below), so it re-hues with Tekion ↔ Modern. */
+  --color-sec-accent: #8338ec;
+}
+
+/* /security "look" toggle (Naveen 2026-10-20: "middle path, with a toggle to go back").
+   DEFAULT = the StoryBoard look: the app's own neutrals, borders and theme accent, so the page sits
+   in the app; the DATA colours (charts, donut, KPI stripes, coverage, severity) stay the artifact's
+   in both looks. `sec-artifact:` utilities restore the artifact frame (light gradient page, white
+   header, emoji titles). The attribute lives on <SecurityLook> and is a per-browser UI pref. */
+@custom-variant sec-artifact (&:where([data-sec-look="artifact"], [data-sec-look="artifact"] *));
+
+[data-sec-look="app"] {
+  --color-sec-ink: var(--foreground);
+  --color-sec-body: var(--foreground);
+  --color-sec-muted: var(--muted-foreground);
+  --color-sec-label: var(--muted-foreground);
+  --color-sec-line: var(--border);
+  --color-sec-lavender: var(--muted);
+  --color-sec-lavender-soft: var(--bg-subtle);
+  --color-sec-paper: var(--background);
+  --color-sec-peach: var(--background);
+  --color-sec-accent: var(--primary);
+}
+
 /* The signature ink hero surface: dual teal radial glows over brand ink
    (legacy .hero-panel, src/styles.css :381-396). */
 @utility hero-panel {

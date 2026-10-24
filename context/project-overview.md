@@ -6,7 +6,7 @@
 > **[BUILT]**, **[PARTIAL]**, **[PLANNED]**, or **[GAP]** so the as-built state is never confused
 > with the target state.
 >
-> Last reviewed: 2026-10-09 · Owner: Naveen · Audience: engineers + Claude Code.
+> Last reviewed: 2026-10-21 · Owner: Naveen · Audience: engineers + Claude Code.
 >
 > **Rename note (2026-07-31):** the product was renamed to **StoryBoard** (was "Sprint Tracker",
 > earlier codename "Tek Tracker" / "TekTracker"). The rename is display/branding only — no schema,
@@ -146,6 +146,7 @@ Key relationships:
 | Ask StoryBoard — grounded voice Q&A | **[BUILT]** | Ask a question out loud (or type it) and hear a 1–3 sentence answer grounded ONLY in StoryBoard data the viewer can see: roll-up/program, one team's board, bug reports, trend vs earlier sprints, leaderboard, one ticket. Browser speech in and out (no vendor); the server-side `lib/ai` provider answers through RBAC-checked **data packs** (`lib/ask/`) and a two-round JSON contract (answer, or request ≤ 3 more packs) — at most two model calls, cited Jira keys/sources sanitized to what was sent, `AI_ASK_MODEL` for a fast tier, 30 questions / 10 min / user. Sidebar launcher + ⌘/Ctrl+K on every page (context-aware), a one-tap "talk" floating button on every screen size (opens Ask already listening), and an installable full-screen **`/ask`** page (web manifest + "Ask" shortcut, Siri/Assistant recipe). The conversation is kept in the browser only (localStorage per user, 12 h, cleared on logout), so closing the panel, changing page or reloading keeps it, and follow-ups keep their context — nothing is stored server-side. Each question goes to the asker's own **Claude Connector first** (tool-less Haiku, ~7–9 s per Claude run). The server provider (Gemini) answers when the connector is offline, outdated or busy, or fails the round. Needs connector 1.1.0 or later. Ask is on when **either** engine is set up: `AI_PROVIDER` **or** admin Claude analysis (no Gemini key needed; without one, an asker whose connector can't answer is told how to fix it). The AI Digest still needs `AI_PROVIDER`. Answers can be spoken in a custom **ElevenLabs voice** (`POST /api/ask/speech`; set `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID`). The browser voice is the fallback, and the only voice when those are unset. When StoryBoard's data can't answer (and nothing was access-denied), the asker's Connector searches Jira through read-only **ORBIT DeepContext**, scoped to the program/teams in view. See context/features/ask-storyboard.md. |
 | Brand: Jigsaw logo + tagline | **[BUILT]** | Concept-A "Jigsaw" mark (inline SVG, `components/ui/brand.jsx`) replaces the placeholder "T" — bare on the ink sidebar, tiled only for the unreferenced 256 px app icon — in the sidebar, login card, mobile top bars, share header and welcome hero; two-tone wordmark ("Board" in the theme primary / on-ink accent) + the tagline *"Every piece. One picture."* in Instrument Serif italic. favicon = an adaptive `icon.svg` (ink piece flips white under `prefers-color-scheme: dark`; replaces `icon.png`) + a light-tone `favicon.ico` fallback for Safari; `public/app-icon.png` keeps the tiled app icon. A **`BrandLoader`** (the mark assembling itself over a faint ghost of the finished picture; white piece lands last, a teal halo blooms on the veil) is the indicator for the long-wait tier — the `PageLoader` veil + the AI digest wait; button spinners stay rings. **[Amended 2026-09-29]** the veil centres only the mark and hangs its label + elapsed-time line below it, so text appearing mid-wait never moves it. Presentation-only. See context/features/brand-logo-tagline.md. |
 | Claude Connector — per-ticket "Analyse with Claude" | **[BUILT]** | A sparkle on every `/` board track row (Roadmap, Tech Debt incl. Vulnerability, External, Internal), the Needs-attention panel, `/bugs` ticket rows and `/rollup` risks opens a per-ticket analysis: root cause (or implementation areas), similar past tickets, triage & sizing — plus a security section for Vulnerability tickets and a missing sub-component/fix-version suggestion for Needs-attention ones. It runs on the **user's own Claude Code** (company subscription + signed-in ORBIT DeepContext) through a local **StoryBoard Connector** (`public/storyboard-connector.mjs`, paired from `/settings`) that long-polls StoryBoard, runs `claude -p` headless with read-only DeepContext tools only, and posts a zod-gated result. Saved latest-only for everyone who can see the ticket; admin sets allowed models, effort, per-run budget and timeout. Separate from the server-side AI Digest. See context/features/claude-connector-analysis.md. |
+| Security vulnerability tracker (`/security`) | **[BUILT in part]** | Read-only, all-programs P0–P4 remediation dashboard (DR_GM, AEPlatform, DR_Honda, Fleet_Honda, DigitalRetailing, DR_Ford + an "All programs" rollup), ported from the read side of the claude.ai "Programs Team Vulnerability Tracker" artifact so everyone sees the same server-computed numbers. Nightly + admin-refreshed mirror of raw Jira facts and the Confluence vocabulary, classified at read time: KPIs, remediated %, coverage, status by priority, vulnerability mix, progress first with a hoverable fixed/new/backlog chart, release plans, fix-once campaigns, effort, the 1.0/2.0 split, and a computed **risk register** collapsed at the bottom (S1–S8 heatmap + headlines in the rollup, ranked cards with week-over-week deltas per program), in the artifact's own colours, with a **StoryBoard | Artifact look toggle** (StoryBoard frame by default, so it re-hues with Tekion/Modern); every number links to Jira. Admin config in `/admin`. **Triage and every Jira write stay in the artifact** (a later writes spec); parity with the artifact is pending Naveen's same-morning check. See context/features/security-vulnerability-tracker.md. |
 
 ---
 
@@ -386,6 +387,7 @@ model Program {
   updatedAt   DateTime @updatedAt
 
   teams       Team[]
+  securityPrograms SecurityProgram[]
 }
 
 /// A scrum team. ED roll-ups are just "the set of teams a user is an ED/TPM member of".
@@ -976,6 +978,140 @@ model ClaudeAnalysisSettings {
   timeoutMinutes Int
   updatedAt      DateTime @updatedAt
 }
+
+// ─────────────────────────────────────────────────────────────
+// Security vulnerability tracker (security-vulnerability-tracker.md, 2026-10-20)
+// ─────────────────────────────────────────────────────────────
+
+/// Admin configuration for /security — a singleton row (id = "default"), seeded create-only and read
+/// with code defaults when absent (the ClaudeAnalysisSettings precedent). Also carries the parsed
+/// Confluence vocabulary and the last refresh's provenance, because the tracker is ONE org artifact.
+model SecurityTrackerSettings {
+  id                      String    @id @default("default")
+  openPipelineJql         String                        // e.g. "filter = 32995"
+  priorityJql             String                        // e.g. "priority IN (1, 2, 3, 4, 5)"
+  vulnLabelsPageId        String
+  trackLabelsPageId       String
+  serviceTrackPageId      String
+  monthLabelPrefix        String                        // "DRP_SECURITY_" → DRP_SECURITY_MMM_YYYY = triaged
+  slaDays                 Json                          // { "P0": 1, "P1": 60, "P2": 180, "P3": 273 } — absent = no SLA
+  dueSoonDays             Int
+  placeholderEstimateDays Int[]                         // [45, 110] — flagged, excluded from the realistic total
+  storyPointsField        String
+  sprintField             String
+  subComponentField       String
+  workbenchUrl            String?                       // admin-only hand-off to the artifact (P6)
+  riskThresholds          Json                          // S1–S8 thresholds (risks.mjs)
+  vocab                   Json?                         // parsed Confluence vocabulary; null ⇒ code snapshot
+  vocabFetchedAt          DateTime?
+  vocabError              String?
+  lastRefreshedAt         DateTime?
+  lastRefreshedByEmail    String?
+  lastRefreshError        String?
+  updatedAt               DateTime  @updatedAt
+}
+
+/// One security program (a Jira component, e.g. "DR_GM"). NOT a Program subtype: security components
+/// don't map 1:1 to StoryBoard programs, so `programId` is an optional link only (SetNull).
+/// "All programs" is derived at read time, never stored.
+model SecurityProgram {
+  id              String   @id @default(cuid())
+  key             String   @unique                   // "DR_GM" — also the snapshot programKey
+  name            String
+  component       String                             // Jira component value in the open pipeline
+  sortOrder       Int      @default(0)
+  isActive        Boolean  @default(true)
+  progressJql     String                             // Done-INCLUSIVE universe for remediated %
+  excludeLabel    String?                            // "NON_DR_GM" — another team's work, excluded everywhere
+  trackBreached   Boolean  @default(false)           // *_BREACHED labels are a DR_GM convention
+  usesTrackLabels Boolean  @default(false)           // track labels + service→track are DR_GM-only
+  legacyLabel     String?                            // "GMDRP_1.0_IGNORED" → the 1.0 vs 2.0 split
+  note            String?                            // admin context line on the risk register
+  programId       String?
+  program         Program? @relation(fields: [programId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([programId])
+}
+
+/// Replace-on-refresh mirror of every vulnerability in the open pipeline or any program's progress
+/// universe. RAW JIRA FACTS ONLY: program membership, SLA, coverage, overdue, track, CVE/package are
+/// computed at READ time (security/classify.mjs), so an /admin edit re-renders with no refresh.
+/// `inOpenPipeline` / `progressProgramKeys` record WHICH QUERY returned the row — also raw facts.
+model SecurityIssue {
+  id                      String    @id @default(cuid())
+  jiraKey                 String    @unique
+  projectKey              String
+  summary                 String
+  issueType               String
+  status                  String
+  statusCategory          String                     // Jira statusCategory key: new | indeterminate | done
+  resolution              String?
+  priority                String?
+  assigneeName            String?
+  components              String[]
+  subComponent            String?
+  labels                  String[]
+  fixVersions             String[]
+  sprintName              String?                    // active sprint, else the latest
+  sprintState             String?
+  storyPoints             Float?
+  originalEstimateSec     Int?
+  jiraCreatedAt           DateTime
+  jiraUpdatedAt           DateTime?
+  resolvedAt              DateTime?
+  statusCategoryChangedAt DateTime?                  // done date when no resolution date was set
+  inOpenPipeline          Boolean   @default(false)
+  progressProgramKeys     String[]                   // programs whose progressJql returned this issue
+  lastSyncedAt            DateTime  @default(now())
+
+  @@index([inOpenPipeline])
+}
+
+/// Daily per-program numbers (plus the "__all__" rollup row), as they read that day. Feeds the risk
+/// register's week-over-week deltas and the PR 2 email deltas. No FK: history must survive a
+/// program's deletion (the ErrorLog / BugReportSnapshot reasoning).
+model SecuritySnapshot {
+  id                 String   @id @default(cuid())
+  programKey         String                           // SecurityProgram.key | "__all__"
+  programLabel       String
+  capturedOn         DateTime                         // UTC midnight — one row per program per day
+  total              Int                              // progress universe (N)
+  done               Int
+  dismissed          Int
+  inProgress         Int
+  open               Int
+  pipeline           Int                              // open pipeline (open + in progress)
+  overdue            Int
+  noFixVersion       Int
+  plannedCurrent     Int
+  plannedNext        Int
+  noStoryPoints      Int
+  noPlan             Int                              // S1 as 0/1
+  pastSla            Int
+  dueSoon            Int
+  untriaged          Int
+  unassigned         Int
+  stale              Int
+  closed7d           Int
+  movedToSecVal7d    Int
+  currentReleaseName String
+
+  @@unique([programKey, capturedOn])
+  @@index([capturedOn])
+}
+
+/// The GMDRP release calendar — one ship date per month. Months past the last row reuse its day
+/// and are flagged "est." at read time (never stored).
+model SecurityRelease {
+  id        String   @id @default(cuid())
+  month     String   @unique                          // "2026-11"
+  shipDate  DateTime                                  // the calendar day (UTC midnight); ships 23:59:59 IST
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
 ```
 
 ### Entity-relationship diagram
@@ -993,6 +1129,7 @@ erDiagram
     USER ||--o{ SHARED_VIEW : "created"
 
     PROGRAM |o--o{ TEAM : "groups"
+    PROGRAM |o--o{ SECURITY_PROGRAM : "optionally links"
 
     TEAM ||--o{ TEAM_MEMBERSHIP : "has"
     TEAM ||--o{ FILTER_TEMPLATE : "owns"
@@ -1213,6 +1350,43 @@ erDiagram
         float maxBudgetUsd
         int timeoutMinutes
     }
+    SECURITY_TRACKER_SETTINGS {
+        string id PK "singleton 'default'"
+        string openPipelineJql
+        json slaDays
+        json riskThresholds
+        json vocab
+    }
+    SECURITY_PROGRAM {
+        string id PK
+        string key UK
+        string component
+        string progressJql
+        string excludeLabel
+        string programId FK "null = unlinked"
+    }
+    SECURITY_ISSUE {
+        string id PK
+        string jiraKey UK
+        string status
+        string_arr labels
+        string_arr fixVersions
+        bool inOpenPipeline
+        string_arr progressProgramKeys
+    }
+    SECURITY_SNAPSHOT {
+        string id PK
+        string programKey "key | __all__ (no FK)"
+        datetime capturedOn
+        int pipeline
+        int done
+        int pastSla
+    }
+    SECURITY_RELEASE {
+        string id PK
+        string month UK
+        datetime shipDate
+    }
     ERROR_LOG {
         string id PK
         string requestId
@@ -1229,6 +1403,11 @@ erDiagram
 > **Note — `ClaudeAnalysisSettings` is a singleton** (admin config, no relations) and
 > **`IssueAnalysis` is keyed by `jiraKey` alone** — joined to `Issue`/`BugReportIssue` by key at read
 > time with no FK, like `Issue ↔ IssueProgress` (claude-connector-analysis.md).
+>
+> **Note — the security tracker cluster (2026-10-20) is unlinked except `SecurityProgram.programId`**
+> (optional, SetNull). `SecurityIssue` is a raw-fact mirror joined to programs at READ time;
+> `SecuritySnapshot.programKey` has no FK so history survives a program's removal;
+> `SecurityTrackerSettings` is a singleton (security-vulnerability-tracker.md).
 >
 > **Note — `ErrorLog` has no relationships at all**, which is why it floats free in the diagram
 > above: it records failures *about* entities that may not exist (a deleted team, a user who never
@@ -1335,6 +1514,16 @@ erDiagram
   question) is wiped when they finish, and the waiting request deletes the row. No schema change:
   `kind`/`source` were already free strings.
 
+- **The Security tracker cluster (added 2026-10-20) is the second non-sprint read path**, on the
+  `/bugs` precedent: an admin config singleton (`SecurityTrackerSettings`, also holding the parsed
+  Confluence vocabulary and refresh provenance), `SecurityProgram` (one Jira component each; an
+  optional link to a StoryBoard `Program`, never a subtype), a replace-on-refresh `SecurityIssue`
+  mirror of **raw Jira facts only** (program membership, SLA, coverage, overdue, track, CVE/package
+  are all read-time in `lib/security/*.mjs`), a daily `SecuritySnapshot` per program + `__all__`
+  (FK-less, for week-over-week risk deltas) and the `SecurityRelease` calendar. `inOpenPipeline`
+  and `progressProgramKeys` record which query returned a row (raw facts too). Read-only against
+  Jira. See context/features/security-vulnerability-tracker.md.
+
 ---
 
 ## 10. Tech stack
@@ -1419,6 +1608,8 @@ UI/UX *direction* is the spec above; this table is the *history* of what shipped
 | 2026-10-05 | Ask answer provenance: "Asking your Claude…" / "Not in StoryBoard — searching Jira with DeepContext…" status line, "Answered by your Claude" and "From ORBIT DeepContext (Jira)" labels, optional ElevenLabs answer voice | ask-storyboard.md |
 | 2026-10-06 | One-tap floating "talk" button on every screen size (opens Ask already listening); phone-setup dialog moved onto the redesign's hero | ask-storyboard.md |
 | 2026-10-06 | Ask conversation kept across panel close, page changes and reloads (in the browser; "Start a new conversation" clears it) | ask-storyboard.md |
+| 2026-10-20 | `/security` vulnerability tracker — program picker, KPI row, risk register (heatmap + headlines / ranked cards), progress, coverage, triage + campaigns; sidebar "Security"; admin "Security tracker" card | security-vulnerability-tracker.md |
+| 2026-10-21 | `/security` review rounds — progress first (hoverable fixed/new/backlog chart) + "Path to zero" card, vulnerability donut, risk register collapsed at the bottom, triage queue removed, artifact palette, polish pass, StoryBoard \| Artifact look toggle | security-vulnerability-tracker.md (as-built 14–18) |
 
 ---
 
@@ -1878,6 +2069,18 @@ All previously open decisions are now resolved:
   the Connector is the only engine, and an asker whose Connector can't answer gets a 409 telling
   them what to fix. The AI Digest is unchanged and still needs `AI_PROVIDER`. See
   ask-storyboard.md as-built 21.)*
+
+- **Security vulnerability tracker v1, read-only (ratified 2026-10-20).** `/security` ports the
+  read side of the claude.ai "Programs Team Vulnerability Tracker" artifact; the artifact stays the
+  triage workbench and every Jira write stays there (a later writes spec). Six artifact panels are
+  dropped (weekly trend, SLA status, AEC bucket, VAPT, timeline, Slack) and Risks & blockers is
+  redesigned as a computed S1–S8 risk register. Clarifications C1–C10 (Naveen, 2026-10-20): any
+  signed-in user sees it; global admins refresh on demand as the `CRON_SYNC_USER_EMAIL` service
+  identity; `NON_DR_GM` is excluded everywhere (deliberately unlike the artifact); the spec's five
+  coverage buckets; read-only triage suggestions are ported; "delivered" = the last 3 complete
+  calendar months. Invariants moved and declared: **60 → 65 ƒ Dynamic**, **14 → 15 migrations**
+  (`add_security_tracker`). §12 and §13 untouched (no write surface, no new credential). See
+  context/features/security-vulnerability-tracker.md.
 
 ---
 

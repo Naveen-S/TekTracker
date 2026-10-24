@@ -25,7 +25,11 @@ import { pruneAnalysisJobs } from "@/lib/connector/jobs";
 import { syncTeamSprint } from "@/lib/sync/engine";
 import { getJiraAuthForUser, fetchMyself } from "@/lib/jira/client";
 import { computeSprintMetrics, snapshotValues } from "@/lib/metrics.mjs";
-import { refreshBugReport, resolveRefreshAuth } from "@/lib/bug-report/refresh";
+import { refreshBugReport } from "@/lib/bug-report/refresh";
+import { resolveRefreshAuth } from "@/lib/jira/refresh-auth";
+import { refreshSecurityTracker, writeSecuritySnapshots } from "@/lib/security/refresh";
+import { loadSecurityConfig } from "@/lib/security/settings";
+import { ERROR_CODES } from "@/lib/errors";
 import { SprintState } from "@/generated/prisma/client";
 
 /** Normalize an instant to its UTC midnight — one canonical `capturedOn` per day (decision 6). */
@@ -177,6 +181,7 @@ export async function runDailyJob({ capturedOn } = {}) {
     }
 
     const bugReports = await runBugReports(day);
+    const security = await runSecurity(capturedOn ?? new Date());
     const prunedErrors = await pruneErrorLog();
     const prunedAnalysisJobs = await pruneAnalysisJobs();
 
@@ -191,6 +196,7 @@ export async function runDailyJob({ capturedOn } = {}) {
       teamFailures,
       bugReports: bugReports.length,
       bugReportFailures: bugReports.filter((report) => report.error).length,
+      securityFailed: Boolean(security?.error),
       prunedErrors,
       prunedAnalysisJobs,
     });
@@ -203,6 +209,7 @@ export async function runDailyJob({ capturedOn } = {}) {
         : { skipped: refresh.skipped },
       sprints: sprintSummaries,
       bugReports,
+      security,
     };
   });
 }
@@ -251,4 +258,39 @@ async function runBugReports(capturedOn) {
     }
   }
   return summaries;
+}
+
+/**
+ * Security tracker step (security-vulnerability-tracker.md (b)): vocabulary → mirror → snapshots,
+ * run after the sprint and bug-report work so it can never cost them anything. A failed refresh
+ * keeps the previous mirror and is recorded; today's snapshot is still written from that mirror
+ * (a data point from a stale mirror beats a hole in the week-over-week deltas — decision 4's
+ * reasoning for sprint snapshots).
+ */
+async function runSecurity(asOf) {
+  const active = await prisma.securityProgram.count({ where: { isActive: true } });
+  if (active === 0) return null;
+  try {
+    const { auth, email } = await resolveRefreshAuth(null);
+    const result = await refreshSecurityTracker({ auth, refreshedByEmail: email, asOf });
+    return { issues: result.issues, pipeline: result.pipeline, snapshotRows: result.snapshotRows, warnings: result.warnings.length };
+  } catch (error) {
+    logger.error("cron.security_failed", { err: error });
+    await recordError({
+      error,
+      code: error.code ?? ERROR_CODES.SECURITY_REFRESH_FAILED,
+      status: error.status ?? 500,
+      source: "cron",
+      route: "cron.daily.security",
+    });
+    try {
+      const config = await loadSecurityConfig();
+      const issues = await prisma.securityIssue.findMany();
+      const snapshot = await writeSecuritySnapshots({ config, issues, asOf });
+      return { error: error.message, snapshotRows: snapshot.written, fromStaleMirror: true };
+    } catch (snapshotError) {
+      logger.error("cron.security_snapshot_failed", { err: snapshotError });
+      return { error: error.message, snapshotRows: 0 };
+    }
+  }
 }

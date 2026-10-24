@@ -4,7 +4,9 @@
  * Writes the rows a fresh DB needs before any team data exists:
  *   1. a bootstrap ADMIN `User` (`isAdmin: true`), identified by `SEED_ADMIN_EMAIL`;
  *   2. the global default `StatusStageMapping` rows (`teamId = null`) — the hybrid model's
- *      Jira-status → stage seeding (§6).
+ *      Jira-status → stage seeding (§6);
+ *   3. the Claude analysis settings singleton;
+ *   4. the security tracker settings, programs and release calendar (create-only).
  * The "three workflows' metadata" lives in code (`src/lib/workflows.js`), not the DB.
  *
  * Idempotent: re-running produces no duplicates. The admin is upserted by email; the global mappings
@@ -24,6 +26,12 @@ import {
   ANALYSIS_SETTINGS_DEFAULTS,
   ANALYSIS_SETTINGS_ID,
 } from "../src/lib/connector/defaults.mjs";
+import {
+  DEFAULT_RELEASE_CALENDAR,
+  DEFAULT_SECURITY_PROGRAMS,
+  SECURITY_SETTINGS_ID,
+  settingsCreatePayload,
+} from "../src/lib/security/defaults.mjs";
 
 // ── Global StatusStageMapping defaults (teamId = null) ───────────────────────────────────────────
 // Map each raw Jira status to the HIGHEST lifecycle stage it implies (seeding auto-checks 0..n per
@@ -159,12 +167,32 @@ async function main() {
       create: { id: ANALYSIS_SETTINGS_ID, ...ANALYSIS_SETTINGS_DEFAULTS },
     });
 
+    // 4. Security tracker (security-vulnerability-tracker.md (f)): settings singleton, the six
+    //    programs and the 2026 release calendar. All CREATE-ONLY — an admin's edits are never reset.
+    await prisma.securityTrackerSettings.upsert({
+      where: { id: SECURITY_SETTINGS_ID },
+      update: {},
+      create: settingsCreatePayload(),
+    });
+    for (const program of DEFAULT_SECURITY_PROGRAMS) {
+      await prisma.securityProgram.upsert({ where: { key: program.key }, update: {}, create: program });
+    }
+    for (const [month, day] of DEFAULT_RELEASE_CALENDAR) {
+      await prisma.securityRelease.upsert({
+        where: { month },
+        update: {},
+        create: { month, shipDate: new Date(`${month}-${String(day).padStart(2, "0")}T00:00:00Z`) },
+      });
+    }
+
     console.log(
       `Bootstrap seed complete:\n` +
         `  • admin user: ${admin.email} (isAdmin=${admin.isAdmin})\n` +
         `  • global StatusStageMapping rows: ${written} ` +
         `(${SEEDABLE_WORKFLOW_TYPES.join(", ")}; CUSTOM skipped)\n` +
-        `  • Claude analysis settings: enabled=${analysisSettings.enabled}`,
+        `  • Claude analysis settings: enabled=${analysisSettings.enabled}\n` +
+        `  • security tracker: settings + ${DEFAULT_SECURITY_PROGRAMS.length} programs + ` +
+        `${DEFAULT_RELEASE_CALENDAR.length} release months (create-only)`,
     );
   } finally {
     await prisma.$disconnect();

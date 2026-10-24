@@ -2,7 +2,8 @@
 
 /**
  * The `/bugs` top bar — mirrors RollupTopBar (logo, product block, nav, avatar, logout) minus the
- * sprint selector: a bug report is not sprint-scoped (gm-bug-report.md decision 2).
+ * sprint selector: a bug report is not sprint-scoped (gm-bug-report.md decision 2). `/security`
+ * reuses it with its own `subtitle` (also not sprint-scoped).
  */
 import Image from "next/image";
 import { Wordmark } from "@/components/ui/brand";
@@ -14,7 +15,7 @@ import { AvatarChip } from "@/components/ui/avatar-chip";
 import { apiFetch } from "@/lib/api-client";
 import { clearAskChats } from "@/components/ask/chat-store";
 
-export function BugsTopBar({ user }) {
+export function BugsTopBar({ user, subtitle = "Bug report" }) {
   const router = useRouter();
 
   const handleLogout = async () => {
@@ -34,7 +35,7 @@ export function BugsTopBar({ user }) {
         <span className="hidden h-5.5 w-px bg-border sm:block" aria-hidden="true" />
         <div className="hidden leading-tight sm:block">
           <Wordmark className="block text-sm" />
-          <p className="text-[11px] text-muted-foreground">Bug report</p>
+          <p className="text-[11px] text-muted-foreground">{subtitle}</p>
         </div>
       </div>
 

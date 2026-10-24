@@ -20,6 +20,7 @@ import {
   PanelLeft,
   PanelLeftClose,
   Settings,
+  ShieldCheck,
   Trophy,
   UserCog,
 } from "lucide-react";
@@ -51,6 +52,8 @@ export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess, onAsk = n
     ...(hasBugReport
       ? [{ href: "/bugs", label: "Bug report", icon: Bug, active: pathname.startsWith("/bugs") }]
       : []),
+    // Org-level and read-only, so every signed-in user (security-vulnerability-tracker.md P1).
+    { href: "/security", label: "Security", icon: ShieldCheck, active: pathname.startsWith("/security") },
     // Personal settings — the Claude Connector pairing (claude-connector-analysis.md), for everyone.
     { href: "/settings", label: "Settings", icon: UserCog, active: pathname.startsWith("/settings") },
     ...(user?.isAdmin

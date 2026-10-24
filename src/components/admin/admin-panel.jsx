@@ -8,7 +8,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CalendarRange, Layers, Sparkles, Target, Users, X } from "lucide-react";
+import { AlertTriangle, CalendarRange, Layers, ShieldCheck, Sparkles, Target, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,7 @@ import { BugReportConfig } from "@/components/admin/bug-report-config";
 import { JiraComponentsConfig } from "@/components/admin/jira-components-config";
 import { ProgramsConfig } from "@/components/admin/programs-config";
 import { RecentErrors } from "@/components/admin/recent-errors";
+import { SecurityConfig } from "@/components/admin/security-config";
 import { SprintCapacityConfig } from "@/components/admin/sprint-capacity-config";
 import { TeamConfigDialog } from "@/components/admin/team-config-dialog";
 import { SprintConfigDialog } from "@/components/dashboard/sprint-config-dialog";
@@ -240,6 +241,7 @@ export function AdminPanel({
   bugPriorityVocabulary = [],
   recentErrors = [],
   analysisSettings = null,
+  securityConfig = null,
 }) {
   const router = useRouter();
   // busy spans the API call AND the router.refresh() re-render, so forms stay disabled until
@@ -562,6 +564,18 @@ export function AdminPanel({
           tone="brand"
         >
           <AnalysisSettingsConfig settings={analysisSettings} run={run} busy={busy} />
+        </SectionCard>
+      )}
+
+      {securityConfig && (
+        <SectionCard
+          title="Security tracker"
+          subtitle="Programs, the vocabulary pages, SLA, risk thresholds and the release calendar behind /security. Read-time: a save re-renders /security with no Jira refresh."
+          icon={ShieldCheck}
+          tone="danger"
+          count={securityConfig.programs.length}
+        >
+          <SecurityConfig config={securityConfig} linkPrograms={programs} run={run} busy={busy} />
         </SectionCard>
       )}
 

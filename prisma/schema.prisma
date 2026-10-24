@@ -96,6 +96,7 @@ model Program {
   updatedAt   DateTime @updatedAt
 
   teams       Team[]
+  securityPrograms SecurityProgram[]
 }
 
 /// A scrum team. ED roll-ups are just "the set of teams a user is an ED/TPM member of".
@@ -710,4 +711,138 @@ model ClaudeAnalysisSettings {
   maxBudgetUsd   Float
   timeoutMinutes Int
   updatedAt      DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────
+// Security vulnerability tracker (security-vulnerability-tracker.md, 2026-10-20)
+// ─────────────────────────────────────────────────────────────
+
+/// Admin configuration for /security — a singleton row (id = "default"), seeded create-only and read
+/// with code defaults when absent (the ClaudeAnalysisSettings precedent). Also carries the parsed
+/// Confluence vocabulary and the last refresh's provenance, because the tracker is ONE org artifact.
+model SecurityTrackerSettings {
+  id                      String    @id @default("default")
+  openPipelineJql         String                        // e.g. "filter = 32995"
+  priorityJql             String                        // e.g. "priority IN (1, 2, 3, 4, 5)"
+  vulnLabelsPageId        String
+  trackLabelsPageId       String
+  serviceTrackPageId      String
+  monthLabelPrefix        String                        // "DRP_SECURITY_" → DRP_SECURITY_MMM_YYYY = triaged
+  slaDays                 Json                          // { "P0": 1, "P1": 60, "P2": 180, "P3": 273 } — absent = no SLA
+  dueSoonDays             Int
+  placeholderEstimateDays Int[]                         // [45, 110] — flagged, excluded from the realistic total
+  storyPointsField        String
+  sprintField             String
+  subComponentField       String
+  workbenchUrl            String?                       // admin-only hand-off to the artifact (P6)
+  riskThresholds          Json                          // S1–S8 thresholds (risks.mjs)
+  vocab                   Json?                         // parsed Confluence vocabulary; null ⇒ code snapshot
+  vocabFetchedAt          DateTime?
+  vocabError              String?
+  lastRefreshedAt         DateTime?
+  lastRefreshedByEmail    String?
+  lastRefreshError        String?
+  updatedAt               DateTime  @updatedAt
+}
+
+/// One security program (a Jira component, e.g. "DR_GM"). NOT a Program subtype: security components
+/// don't map 1:1 to StoryBoard programs, so `programId` is an optional link only (SetNull).
+/// "All programs" is derived at read time, never stored.
+model SecurityProgram {
+  id              String   @id @default(cuid())
+  key             String   @unique                   // "DR_GM" — also the snapshot programKey
+  name            String
+  component       String                             // Jira component value in the open pipeline
+  sortOrder       Int      @default(0)
+  isActive        Boolean  @default(true)
+  progressJql     String                             // Done-INCLUSIVE universe for remediated %
+  excludeLabel    String?                            // "NON_DR_GM" — another team's work, excluded everywhere
+  trackBreached   Boolean  @default(false)           // *_BREACHED labels are a DR_GM convention
+  usesTrackLabels Boolean  @default(false)           // track labels + service→track are DR_GM-only
+  legacyLabel     String?                            // "GMDRP_1.0_IGNORED" → the 1.0 vs 2.0 split
+  note            String?                            // admin context line on the risk register
+  programId       String?
+  program         Program? @relation(fields: [programId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([programId])
+}
+
+/// Replace-on-refresh mirror of every vulnerability in the open pipeline or any program's progress
+/// universe. RAW JIRA FACTS ONLY: program membership, SLA, coverage, overdue, track, CVE/package are
+/// computed at READ time (security/classify.mjs), so an /admin edit re-renders with no refresh.
+/// `inOpenPipeline` / `progressProgramKeys` record WHICH QUERY returned the row — also raw facts.
+model SecurityIssue {
+  id                      String    @id @default(cuid())
+  jiraKey                 String    @unique
+  projectKey              String
+  summary                 String
+  issueType               String
+  status                  String
+  statusCategory          String                     // Jira statusCategory key: new | indeterminate | done
+  resolution              String?
+  priority                String?
+  assigneeName            String?
+  components              String[]
+  subComponent            String?
+  labels                  String[]
+  fixVersions             String[]
+  sprintName              String?                    // active sprint, else the latest
+  sprintState             String?
+  storyPoints             Float?
+  originalEstimateSec     Int?
+  jiraCreatedAt           DateTime
+  jiraUpdatedAt           DateTime?
+  resolvedAt              DateTime?
+  statusCategoryChangedAt DateTime?                  // done date when no resolution date was set
+  inOpenPipeline          Boolean   @default(false)
+  progressProgramKeys     String[]                   // programs whose progressJql returned this issue
+  lastSyncedAt            DateTime  @default(now())
+
+  @@index([inOpenPipeline])
+}
+
+/// Daily per-program numbers (plus the "__all__" rollup row), as they read that day. Feeds the risk
+/// register's week-over-week deltas and the PR 2 email deltas. No FK: history must survive a
+/// program's deletion (the ErrorLog / BugReportSnapshot reasoning).
+model SecuritySnapshot {
+  id                 String   @id @default(cuid())
+  programKey         String                           // SecurityProgram.key | "__all__"
+  programLabel       String
+  capturedOn         DateTime                         // UTC midnight — one row per program per day
+  total              Int                              // progress universe (N)
+  done               Int
+  dismissed          Int
+  inProgress         Int
+  open               Int
+  pipeline           Int                              // open pipeline (open + in progress)
+  overdue            Int
+  noFixVersion       Int
+  plannedCurrent     Int
+  plannedNext        Int
+  noStoryPoints      Int
+  noPlan             Int                              // S1 as 0/1
+  pastSla            Int
+  dueSoon            Int
+  untriaged          Int
+  unassigned         Int
+  stale              Int
+  closed7d           Int
+  movedToSecVal7d    Int
+  currentReleaseName String
+
+  @@unique([programKey, capturedOn])
+  @@index([capturedOn])
+}
+
+/// The GMDRP release calendar — one ship date per month. Months past the last row reuse its day
+/// and are flagged "est." at read time (never stored).
+model SecurityRelease {
+  id        String   @id @default(cuid())
+  month     String   @unique                          // "2026-11"
+  shipDate  DateTime                                  // the calendar day (UTC midnight); ships 23:59:59 IST
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

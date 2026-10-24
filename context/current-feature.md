@@ -1,97 +1,81 @@
 # Current Feature
 
-**Ask StoryBoard — grounded voice Q&A for leadership**
-(@context/features/ask-storyboard.md) — ask a question out loud (desktop panel or the phone's
-installable `/ask` page) and hear a short answer grounded only in StoryBoard data: roll-up/program,
-team board, bugs, trend, leaderboard, ticket — each behind its existing RBAC gate. Browser speech in,
-browser speech out; the server-side `lib/ai` provider answers via a two-round JSON "data pack"
-contract. The third §16 AI use case ("Q&A over sprint data"); post-v1, not a master-plan step.
+**Security Vulnerability Tracker v1 — read-only all-programs remediation dashboard (`/security`)**
+(@context/features/security-vulnerability-tracker.md). Ports the read side of the claude.ai
+artifact "Programs Team Vulnerability Tracker" (v32) into StoryBoard, so leadership sees one set
+of server-computed numbers instead of per-viewer connector math. All six programs (DR_GM,
+AEPlatform, DR_Honda, Fleet_Honda, DigitalRetailing, DR_Ford) plus an "All programs" rollup.
+**No Jira writes:** triage and apply stay in the artifact. Picked next because the weekly
+security email links to an artifact that most viewers see as "Unavailable".
 
 ## Status
 
-**Done 2026-10-09 · verified · uncommitted** on `feature/claude-connector`, on top of `bc47524`
-(Dialog redesign).
+**Done 2026-10-21 — PR 1 (spec items a–f) · verified · uncommitted** on
+`feature/security-tracker-dashboard` (cut from `main` @ `6ace5c0`). Clarifications C1–C10 and
+as-built notes 1–13 are in the spec.
 
-**Verified 2026-10-09:**
-- eslint 0 for this tree. Plain `yarn lint` trips only on the nested `.claude/worktrees/*`; see spec
-  note 20.
-- `prisma validate` passes; **14 migrations, up to date**.
-- An **env-free build in a scratch copy with zero `.env*`**: exit 0, **60 ƒ Dynamic**, manifest
-  static, **0 warnings**.
-- **22/22 runtime smoke** on that build. `/api/ask` returns 401/400/503/404 and `/api/ask/speech`
-  401/503; the connector routes, every page authed, and the talk button on with AI on and off with
-  AI off.
-- Earlier in the arc: the real connector end to end, DeepContext against Naveen's Jira list, the
-  one-tap button, and 7/7 chat-persistence browser checks (spec notes 13–19).
-- **Not verified:** a real ElevenLabs round-trip, and real phone voice on stage over HTTPS. (A Gemini
-  answer was verified 2026-10-09.)
-- **2026-10-09, Ask without a Gemini key** (spec note 21): Ask is on when `AI_PROVIDER` is set OR
-  Claude analysis is enabled. Verified 6/6 plus a live Connector-only answer in 20.6 s.
+**Verified 2026-10-20:**
+- 16 pure fixture groups pass; `vocab.mjs` passes against the three live Confluence pages.
+- **Live refresh:** 1,451 issues, 7 snapshots. **DR_GM 772/959 and portfolio 1,074/1,382 match the
+  18 Oct reference exactly.**
+- **18/18** page + API smoke; a fetch-recorded nightly run hit Atlassian with **only GET + POST
+  `/search/jql`**.
+- Headless 1440 / 390 px with 0 overflow; cold env-free build exit 0, **65 ƒ Dynamic**, 0 warnings;
+  **15 migrations** up to date; lint 0 for the project tree.
+
+**Review rounds 2026-10-20/21** (spec as-built 14–18):
+- progress first, with a hoverable chart, and Path to zero beside it on wide screens;
+- the vulnerability donut;
+- the risk register collapsed at the bottom; the triage queue removed;
+- the artifact palette, a polish pass, and a StoryBoard | Artifact look toggle.
+
+**Final verification 2026-10-21:** 20/20 smoke; lint 0; 15 migrations up to date; env-free build
+65 ƒ / 0 warnings; headless 390 / 1440 / 2240 px, both looks and themes, 0 overflow and 0 errors.
 
 **Next:**
-- Naveen's commit (gitleaks hook), then his authed acceptance pass.
-- Restart `yarn dev` (stale dialog CSS) and re-download connector **1.1.0**.
-- Set `ELEVENLABS_*` and `AI_ASK_MODEL` for stage.
-- Decide on an Ask glossary for org terms (spec note 16).
-- Optional one-line fix: add `.claude/**` to the eslint ignores.
+- Naveen runs the office DB bundle for migration 15 (`00` → `01` → `02` → `02b`) **before** the image
+  rolls out (generated + rehearsed 2026-10-20; see the spec Status).
+- Naveen's commit (gitleaks hook), authed browser pass, and the same-morning parity check against
+  the artifact (expect C5/C6 differences: DR_GM pipeline 176 vs the artifact's ~183).
+- Set `workbenchUrl` in Admin → Security tracker.
+- Then the **Modern = artifact theme** (`feature/modern-artifact-theme`, branched from this branch
+  once it is committed). Decided 2026-10-21: light artifact headers on every page, theme-level
+  depth, and the theme replaces /security's look toggle.
+- Then PR 2 (`feature/security-tracker-updates`, copy-only leadership updates).
 
 ## Goals
 
-- (a) Data packs — `src/lib/ask/packs.js`; `visibleTeamIds` in `src/lib/rbac.js`.
-- (b) Orchestration — `src/lib/ask/orchestrate.js` + pure `src/lib/ask/prompt.mjs`, schemas in
-  `src/lib/schemas/ask.js`.
-- (c) `generateJson({ model, timeoutMs })` + `getAskModel()` (`AI_ASK_MODEL`).
-- (d) `POST /api/ask` with a per-user rate limit.
-- (e) Desktop: sidebar launcher → `src/components/ask/ask-panel.jsx`.
-- (f) Mobile: `src/app/ask/page.jsx`, `src/app/manifest.js`, `appleWebApp`, the AppShell FAB,
-  `/login?next=`.
-- (g) `src/components/ask/use-speech.js`.
+- (a) Schema: migration `add_security_tracker` (14 → **15**) adds `SecurityTrackerSettings`
+  (singleton), `SecurityProgram`, `SecurityIssue` (raw-fact mirror, + `statusCategoryChangedAt`),
+  `SecuritySnapshot` (per program + `__all__`) and `SecurityRelease`. Keep it in sync with §9 and
+  the ERD.
+- (b) Pure libs: `src/lib/security/{classify,aggregate,risks,vocab}.mjs`. Server code:
+  `src/lib/jira/confluence.js`, `src/lib/security/{refresh,vocab-refresh,data}.js`, and the
+  security step in `src/lib/cron/daily.js`. `resolveRefreshAuth` moves into a shared helper.
+- (c) Routes: `src/app/security/page.jsx`, plus `api/security/{refresh,settings,programs,
+  programs/[programId]}`, all wrapped in `withRoute`.
+- (d) UI: `src/components/security/*`, with the risk register built from
+  `context/features/security-risk-register-mockup.html`. Admin card:
+  `src/components/admin/security-config.jsx` (lean forms, C4). Sidebar entry "Security".
+- (e) `ERROR_CODES`: `SECURITY_REFRESH_FAILED` and `SECURITY_VOCAB_UNAVAILABLE`. No new env vars.
+- (f) Seed: the settings singleton, six programs and the 2026 release calendar, all create-only.
 
 ## Notes
 
-- Invariants: **50 → 52 ƒ Dynamic** on `main`; on this branch, **57 → 59** (migrations stay **14**).
-  `manifest.js` must build static.
-- Gemini's JSON-schema subset has no `oneOf` — the round-1 union is a flat object + `type` enum.
-- Mic = secure context + user gesture; iOS speech synthesis must be unlocked inside the tap.
-- `visibleTeamIds` has a single definition in `lib/rbac.js`, which `lib/connector/access.js` imports.
-- **Connector fallback (as-built 13):** a provider failure hands the round to the asker's Claude
-  Connector (`ASK` job, connector 1.1.0 or later, about 23 s for one round and 41 s for two). Users
-  on connector 1.0.0 must re-download the script from Settings.
-- **Order inverted (as-built 14): Connector FIRST, Gemini second.** Gemini answers when the
-  connector is offline, outdated or busy, or fails the round (15 s pickup, 1-minute cap). Measured
-  21–27 s for one round and 33 s for two via the connector. A successful Gemini answer wasn't
-  verified on 2026-10-05: it returned 503s and timeouts all day.
-- **ElevenLabs answer voice (as-built 15):** set `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID`
-  (`ELEVENLABS_MODEL` optional, default `eleven_flash_v2_5`). Without both, Ask uses the browser
-  voice. A real round-trip is pending the key.
-- **DeepContext fallback (as-built 16):** a `grounded: false` answer gets one `ASK_DEEP` connector
-  round scoped to the program, about 60–80 s in all. Org terms ("beta blocker" = label
-  `2.0Phase2Blocker`) aren't inferable, so the user must say the label or we add a glossary.
-- **Connector 1.1.1 (connector note 19):** fixes a tight re-poll loop while Claude analysis is off,
-  which caused the stage 502s. Users should re-download the script after the next deploy; the minimum
-  for Ask stays 1.1.0.
-- **Ask needs no Gemini key (as-built 21):** `isAskEnabled()` (`lib/ask/availability.js`) gates
-  Ask; `aiEnabled` still gates only the AI Digest. With no provider, a user whose connector can't
-  answer gets a 409 `CONNECTOR_OFFLINE` naming the fix.
-- **Chat kept in the browser (as-built 19):** `chat-store.js` (localStorage
-  `sprintTracker_askChat:<email>`, 12 h, cleared by `clearAskChats()` on logout). Pending answers
-  survive closing the panel and a reload.
-
-## Also on this branch — Claude Connector (Done 2026-09-29, committed `a18d3bd`)
-
-Per-ticket "Analyse with Claude" (@context/features/claude-connector-analysis.md). Verified then:
-57 ƒ Dynamic / 14 migrations, 22 fixtures, 38/38 API smoke, and a real end-to-end run. Still open:
-- an authed real-browser pass (Needs-attention and Vulnerability tickets);
-- Naveen's run of the office DB bundle for migration 14;
-- resume **migrate-on-start** from the stash.
-
-## Also on this branch — Dialog redesign (Done 2026-10-01, committed `bc47524`)
-
-"Refined enterprise" dialogs (@context/features/dialog-redesign.md): the restyled `ui/dialog.jsx`
-primitive with the brand hero, a shared kit (`Callout`, `Field`, `RadioCard`, `Segmented`,
-`ConfirmDialog`), and all ~19 dialogs swept onto it. Presentation only, with no route or migration.
-Fast-forwarded into this branch on 2026-10-06 under the uncommitted Ask work; only `dashboard.jsx`
-and three docs overlapped, and they 3-way merged. Still open: Naveen's authed browser pass.
+- **Read-only, enforced:** only GET plus the existing POST `/search/jql` may reach Atlassian.
+  Before each PR, grep the diff for `PUT`, `/comment`, `/transitions` and `editIssue`.
+- **Deliberate parity divergences from the artifact:**
+  - C5: NON_DR_GM is excluded everywhere, so the DR_GM pipeline will read below 182.
+  - C6: 5 coverage buckets, and `noFixVersion` includes `*_BREACHED` items.
+  - Write both up in as-built notes; the parity check is Naveen's.
+- **`labels != X` drops unlabelled issues:** always write `(labels IS EMPTY OR labels != X)`.
+- `searchIssues({ maxIssues: 5000 })` for security queries only. `SEARCH_MAX_ISSUES = 2000` stays.
+- Atlassian calls are serial. A failed refresh keeps the previous mirror and records
+  `lastRefreshError`.
+- Next 16: `params` is async. Prisma 7: run `prisma generate` after `migrate dev`. Tailwind v4: no
+  inline styles. The page must work at phone width.
+- **Invariants to record:** 15 migrations. The ƒ Dynamic count = the `main` baseline plus the new
+  route files and `/security`; count it on `main` before adding routes.
 
 ## Carry-forward — critical for any new feature
 
@@ -101,10 +85,11 @@ details live in [legacy-history.md](legacy-history.md); house conventions live i
 layer that sits between them.)
 
 **Repo / branch state (2026-09-04)**
-- **Baseline invariants to preserve:** **60 ƒ Dynamic** routes / **14 Prisma migrations**
-  (…`add_claude_connector`, 2026-09-29). The path there: 50 / 13 through `add_error_log`, then the
+- **Baseline invariants to preserve:** **65 ƒ Dynamic** routes / **15 Prisma migrations**
+  (…`add_security_tracker`, 2026-10-20). The path there: 50 / 13 through `add_error_log`, then the
   Claude Connector (+7 routes / +1 migration), then Ask StoryBoard (+2 routes: `/api/ask` and `/ask`,
-  2026-10-05), then the ElevenLabs answer voice (+1: `/api/ask/speech`). Node 22, dev on **:3002**. A feature that changes either count must say so and justify
+  2026-10-05), then the ElevenLabs answer voice (+1: `/api/ask/speech`) — 60 / 14 on `main` @
+  `6ace5c0` — then the security tracker (+5: `/security` + four `/api/security/*`, +1 migration). Node 22, dev on **:3002**. A feature that changes either count must say so and justify
   it.
 - **Claude Connector (2026-09-29):**
   - AI analysis runs on the USER's machine, not the server. StoryBoard only queues jobs and stores
@@ -117,10 +102,11 @@ layer that sits between them.)
   - Every new migration gets an incremental psql bundle from the `dba-migration-bundle` skill
     (`scripts/dba-migration-bundle.mjs`). Naveen applies it via the jumpserver **before** the image
     rollout.
-  - **Office DB head:** 13 migrations (`…add_error_log`, bootstrap 2026-09-22).
-  - The bundle for 14 (`…add_claude_connector`) is generated and rehearsed, and is **pending
-    Naveen's run**. Once he confirms it, update this head to 14. *(Refreshed and re-rehearsed
-    2026-10-09 at `bc47524`; the migration is now committed. Same DDL and checksum.)*
+  - **Office DB head:** 14 migrations (`…add_claude_connector`), confirmed by Naveen 2026-10-20.
+  - The bundle for 15 (`…add_security_tracker`, + `02b-seed.sql`) is generated and rehearsed
+    (2026-10-20) and **pending Naveen's run**. Once he confirms it, update this head to 15.
+  - The bundle for 14 (`…add_claude_connector`) has been **run by Naveen** (confirmed 2026-10-20).
+    *(It was refreshed and re-rehearsed 2026-10-09 at `bc47524`, with the same DDL and checksum.)*
 - **`main` is at `c8c2731`** ("Editable filters.") — it carries editable filters, the roll-up export
   (incl. the Velocity variant), the sync-stages P2028 fix, the bug-board arc, the unplanned-split,
   default-team-release, needs-attention-roster, program-rollup, AND the office-deployment work

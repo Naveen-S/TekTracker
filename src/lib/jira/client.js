@@ -184,7 +184,7 @@ export function classifyFetchFailure(error, { url, doing, timeoutMs }) {
  * @param {object} [extra] additional safe details (e.g. the JQL that was rejected).
  * @returns {Promise<AppError>}
  */
-async function toJiraError(res, doing, extra = {}) {
+export async function toJiraError(res, doing, extra = {}) {
   const endpoint = (() => {
     try {
       return new URL(res.url).pathname;
@@ -245,7 +245,7 @@ async function toJiraError(res, doing, extra = {}) {
  *   body?: object, timeoutMs?: number }} args
  * @returns {Promise<Response>}
  */
-async function jiraFetch({ url, doing, email, token, method = "GET", body, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+export async function jiraFetch({ url, doing, email, token, method = "GET", body, timeoutMs = DEFAULT_TIMEOUT_MS }) {
   const startedAt = Date.now();
   let res;
   try {

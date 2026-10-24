@@ -2601,3 +2601,55 @@ context/features/editable-filters.md.
   With analysis off, the claim route answered instantly, so the connector re-polled in a tight loop.
   That caused the stage 502s. The server now holds the poll; the connector pauses after a fast empty
   answer. Measured 141,516 → 3 polls in 20 s. Lint 0; env-free build 60 ƒ / 0 warnings.
+- 2026-10-20 — Picked context/features/security-vulnerability-tracker.md as the current feature
+  (read-only `/security` vulnerability dashboard, PR 1; clarifications C1–C10 with Naveen).
+- 2026-10-20 — **Implemented the Security Vulnerability Tracker v1, PR 1** (security-vulnerability-tracker.md).
+  - **Code:**
+    - migration `add_security_tracker` (5 models);
+    - pure `src/lib/security/{defaults,classify,vocab,jql,risks,triage,aggregate}.mjs`;
+    - `settings.js`, `vocab-refresh.js`, `refresh.js`, `data.js`;
+    - `lib/jira/{confluence,refresh-auth}.js`, plus a cron security step;
+    - four `/api/security/*` route files and `/security`;
+    - `components/security/*` (risk register from the mockup) and an admin "Security tracker" card;
+    - sidebar "Security"; create-only seed.
+  - **Verified:**
+    - 16 pure fixture groups;
+    - vocab parsing against the live pages;
+    - a live refresh matching the 18 Oct reference exactly (GM 772/959, portfolio 1,074/1,382);
+    - 18/18 smoke;
+    - a fetch-recorded cron run proving only GET + POST `/search/jql` reach Atlassian;
+    - headless desktop and phone with 0 overflow;
+    - a cold env-free build, 65 ƒ Dynamic, 0 warnings; 15 migrations; lint 0 for the project tree.
+  - **As-built:**
+    - `progressProgramKeys` on the mirror (filter 68266 is unscoped);
+    - `resolveRefreshAuth` moved to `lib/jira/refresh-auth.js`;
+    - mirror write = delete + createMany in one transaction;
+    - a 409 single-flight guard;
+    - the cron snapshots from the stale mirror when a refresh fails.
+  - **Findings:**
+    - filter 32995 is P1-only;
+    - default thresholds rate all six programs High (S2).
+  - **Noted, not fixed:** the older §9 vs schema drift around `BugReport*`/`ErrorLog`/`User`/`Team`
+    (pre-existing on `main`).
+  - **Done.**
+  - **Next:** the DBA bundle for migration 15, Naveen's commit + parity check, then PR 2.
+- 2026-10-21 — **Finished the Security Vulnerability Tracker PR 1 after Naveen's review rounds**
+  (security-vulnerability-tracker.md as-built 14–18).
+  - **Changes:**
+    - progress first, with a hoverable one-axis chart drawn at real pixel width (a scaled viewBox
+      had blown up text on wide screens);
+    - a "Path to zero" card (ETA, pace, release ladder), from the pure `pathToZero`;
+    - the vulnerability donut (coordinates rounded to fix a hydration mismatch);
+    - the risk register collapsed at the bottom; the triage queue removed;
+    - the artifact palette as scoped `sec-*` tokens;
+    - an `/impeccable polish` pass: contrast, wide-screen layout, coverage tiles, light skeleton;
+    - a StoryBoard | Artifact look toggle (the `sec-artifact:` variant and per-look token
+      overrides).
+  - **Verified:** 20/20 smoke; lint 0; 15 migrations; env-free build 65 ƒ / 0 warnings; headless
+    in both looks and themes.
+  - **Done.**
+  - **Next:**
+    - Naveen commits;
+    - the office DB bundle (00 → 01 → 02 → 02b) before rollout;
+    - then the Modern = artifact theme on `feature/modern-artifact-theme` (decisions ratified
+      2026-10-21).

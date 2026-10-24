@@ -62,6 +62,10 @@ export const ERROR_CODES = Object.freeze({
   CONNECTOR_OFFLINE: "CONNECTOR_OFFLINE",
   ANALYSIS_DISABLED: "ANALYSIS_DISABLED",
   ANALYSIS_IN_PROGRESS: "ANALYSIS_IN_PROGRESS",
+  // Security tracker (security-vulnerability-tracker.md (e)). VOCAB_UNAVAILABLE is a WARNING carried
+  // in a refresh's `warnings` — the old vocabulary is kept — never a 5xx on its own.
+  SECURITY_REFRESH_FAILED: "SECURITY_REFRESH_FAILED",
+  SECURITY_VOCAB_UNAVAILABLE: "SECURITY_VOCAB_UNAVAILABLE",
   // fallback
   INTERNAL: "INTERNAL",
 });

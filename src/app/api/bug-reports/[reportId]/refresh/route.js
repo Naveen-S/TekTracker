@@ -12,7 +12,8 @@
  */
 import { requireUser } from "@/lib/auth";
 import { withRoute } from "@/lib/api/route-helpers";
-import { refreshBugReport, resolveRefreshAuth } from "@/lib/bug-report/refresh";
+import { refreshBugReport } from "@/lib/bug-report/refresh";
+import { resolveRefreshAuth } from "@/lib/jira/refresh-auth";
 import { JiraAuthError, JiraApiError, JiraCredentialMissingError } from "@/lib/jira/client";
 
 export const dynamic = "force-dynamic";
