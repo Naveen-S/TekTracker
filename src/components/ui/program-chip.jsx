@@ -12,11 +12,11 @@ export function ProgramChip({ name, className }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white/80 ring-1 ring-white/15",
+        "inline-flex items-center gap-1.5 rounded-full bg-on-hero-tint/10 px-2.5 py-1 text-[11px] font-semibold text-on-hero/80 ring-1 ring-on-hero-tint/15",
         className,
       )}
     >
-      <Layers className="size-3 text-on-ink-accent" aria-hidden="true" />
+      <Layers className="size-3 text-on-hero-accent" aria-hidden="true" />
       {name} program
     </span>
   );

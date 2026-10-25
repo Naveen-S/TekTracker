@@ -138,7 +138,7 @@ export async function BugsPage({ slug, user }) {
                 {report.description && <HeroCopy className="mt-2">{report.description}</HeroCopy>}
                 {/* Provenance as discrete facts rather than one run-on "a · b · c" sentence: who owns
                     these numbers and how fresh they are are two different questions. */}
-                <ul className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-white/55">
+                <ul className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-white/55 modern:text-on-hero-muted">
                   {report.ownerName && (
                     <li className="flex items-center gap-1.5">
                       <UserRound className="size-3.5 shrink-0 opacity-70" aria-hidden="true" />

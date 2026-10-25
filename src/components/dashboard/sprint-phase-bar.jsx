@@ -14,7 +14,8 @@ import { DaysRemainingPill } from "@/components/ui/hero-shell";
  * (`metrics.deliveryAvgProgress` — roadmap + tech debt only) drives the four dev phases; once the
  * calendar passes dev end the dev phases are all Done and the QA/UAT/Release phases light up by
  * DATE (position through the QA/UAT window). Server-safe; the countdown is a client leaf beneath a
- * server-safe wrapper, so this renders on the dark ink hero in both themes.
+ * server-safe wrapper. It draws in the `on-hero` tokens, so it reads on Tekion's ink hero and on
+ * Modern's light header card alike (modern-artifact-theme.md (g)).
  */
 const DEV_PHASES = ["Scope", "Design", "Develop", "Review"];
 const QA_PHASES = ["QA", "UAT", "Release"];
@@ -55,9 +56,9 @@ function computePhases(completion, phase, qaProgress) {
 }
 
 const CYCLE_TONE = {
-  done: "border-[#35c07a]/35 bg-[#35c07a]/12 text-[#7ee0a6]",
-  active: "border-[#f0883e]/40 bg-[#f0883e]/14 text-[#f5b07a]",
-  todo: "border-white/12 bg-white/5 text-white/50",
+  done: "border-on-hero-done/35 bg-on-hero-done/12 text-on-hero-done-text",
+  active: "border-on-hero-active/40 bg-on-hero-active/14 text-on-hero-active-text",
+  todo: "border-on-hero-tint/12 bg-on-hero-tint/5 text-white/50 modern:text-on-hero-faint",
 };
 const CYCLE_WORD = { done: "Completed", active: "In progress", todo: "Upcoming" };
 
@@ -90,13 +91,13 @@ function CycleChip({ label, status }) {
 function Segment({ label, state, fill }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-      <span className="relative h-2 w-full overflow-hidden rounded-full bg-white/12">
+      <span className="relative h-2 w-full overflow-hidden rounded-full bg-on-hero-tint/12">
         <span
           className={cn(
             "absolute inset-y-0 left-0 rounded-full transition-[width] duration-700 ease-out",
-            state === "done" && "bg-[#35c07a]",
+            state === "done" && "bg-on-hero-done",
             state === "active" &&
-              "bg-[#f0883e] shadow-[0_0_10px_rgba(240,136,62,0.65)] motion-safe:animate-pulse",
+              "bg-on-hero-active shadow-[0_0_10px_rgba(240,136,62,0.65)] motion-safe:animate-pulse",
           )}
           style={{ width: `${Math.round(fill * 100)}%` }}
         />
@@ -104,7 +105,7 @@ function Segment({ label, state, fill }) {
       <span
         className={cn(
           "truncate text-[11px] transition-colors duration-500",
-          state === "todo" ? "text-white/45" : "text-white/70",
+          state === "todo" ? "text-white/45 modern:text-on-hero-faint" : "text-white/70 modern:text-on-hero-muted",
         )}
       >
         {label}
@@ -138,7 +139,7 @@ export function SprintPhaseBar({ completion, sprint, asOf }) {
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5">
         <div className="flex flex-wrap items-center gap-2">
           <CycleChip label="Dev cycle" status={devStatus} />
-          <span aria-hidden="true" className="text-white/25">
+          <span aria-hidden="true" className="text-white/25 modern:text-on-hero-faint">
             →
           </span>
           <CycleChip label="QA / UAT" status={qaStatus} />
@@ -153,7 +154,7 @@ export function SprintPhaseBar({ completion, sprint, asOf }) {
             <Segment key={label} label={label} state={phases[i].state} fill={phases[i].fill} />
           ))}
         </div>
-        <span aria-hidden="true" className="hidden w-px self-stretch bg-white/12 sm:block" />
+        <span aria-hidden="true" className="hidden w-px self-stretch bg-on-hero-tint/12 sm:block" />
         <div className="flex flex-[3] gap-2.5">
           {QA_PHASES.map((label, i) => (
             <Segment

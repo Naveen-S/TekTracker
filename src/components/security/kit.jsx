@@ -5,33 +5,28 @@ import { browseUrl, jqlUrl } from "@/lib/security/jql.mjs";
 /**
  * Shared bits for the /security panels (security-vulnerability-tracker.md (d)). Server-safe.
  *
- * Two looks (Naveen 2026-10-20, look.jsx): by default the StoryBoard frame (app neutrals, Lucide icon
- * tiles, display-font titles, theme-accent pills) with the artifact's colourful DATA; with
- * `sec-artifact:` the artifact's own frame (emoji titles, gradient LIVE pill, lavender tints). The
- * neutral `sec-*` tokens and `sec-accent` are swapped per look in globals.css.
+ * The frame follows the theme (modern-artifact-theme.md (k)): Tekion = the StoryBoard frame (app
+ * neutrals, theme-accent pills); Modern = the artifact frame (lavender tints, gradient LIVE pill). The
+ * neutral `sec-*` tokens and `sec-accent` are swapped per theme in globals.css; the colourful DATA is
+ * the artifact's in both. Titles carry Lucide icon tiles in both themes — no emoji.
  *
  * "Every number links to its Jira JQL" — `JiraCount` is the one way a count is drawn. Severity is
  * ALWAYS written as text as well as shown by colour.
  */
 
-export function SecPanel({ icon: Icon, emoji, title, tag, live = true, aside, className, children }) {
+export function SecPanel({ icon: Icon, title, tag, live = true, aside, className, children }) {
   return (
     <section
       className={cn(
-        "min-w-0 rounded-xl border border-sec-line bg-card p-5 sec-artifact:rounded-2xl sec-artifact:bg-white sec-artifact:shadow-xs",
+        "min-w-0 rounded-xl border border-sec-line bg-card p-5 modern:shadow-xs",
         className,
       )}
     >
       <header className="mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <h2 className="flex flex-wrap items-center gap-2 font-display text-base leading-tight font-bold text-sec-ink sec-artifact:font-sans sec-artifact:text-[15px]">
+        <h2 className="flex flex-wrap items-center gap-2 font-display text-base leading-tight font-bold text-sec-ink">
           {Icon && (
-            <span className="grid size-7 shrink-0 place-items-center rounded-md bg-accent text-accent-foreground sec-artifact:hidden" aria-hidden="true">
+            <span className="grid size-7 shrink-0 place-items-center rounded-md bg-accent text-accent-foreground" aria-hidden="true">
               <Icon className="size-4" />
-            </span>
-          )}
-          {emoji && (
-            <span className={cn(Icon && "hidden sec-artifact:inline")} aria-hidden="true">
-              {emoji}
             </span>
           )}
           {title}
@@ -47,7 +42,7 @@ export function SecPanel({ icon: Icon, emoji, title, tag, live = true, aside, cl
 
 export function LivePill() {
   return (
-    <span className="rounded-full bg-sec-accent px-2 py-0.5 text-[10px] font-bold tracking-wider text-white uppercase sec-artifact:bg-linear-to-r sec-artifact:from-sec-blue sec-artifact:to-sec-purple">
+    <span className="rounded-full bg-sec-accent px-2 py-0.5 text-[10px] font-bold tracking-wider text-white uppercase modern:bg-linear-to-r modern:from-sec-blue modern:to-sec-purple">
       Live
     </span>
   );
@@ -101,7 +96,7 @@ export function JiraLinkText({ jiraBaseUrl, jql, children, className }) {
       target="_blank"
       rel="noopener noreferrer"
       className={cn(
-        "inline-flex items-center gap-1 rounded-lg border border-sec-line bg-sec-lavender-soft px-2.5 py-1 text-xs font-medium text-sec-accent transition-colors hover:border-transparent hover:bg-sec-accent hover:text-white sec-artifact:hover:bg-linear-to-r sec-artifact:hover:from-sec-blue sec-artifact:hover:to-sec-purple",
+        "inline-flex items-center gap-1 rounded-lg border border-sec-line bg-sec-lavender-soft px-2.5 py-1 text-xs font-medium text-sec-accent transition-colors hover:border-transparent hover:bg-sec-accent hover:text-white modern:hover:bg-linear-to-r modern:hover:from-sec-blue modern:hover:to-sec-purple",
         className,
       )}
     >

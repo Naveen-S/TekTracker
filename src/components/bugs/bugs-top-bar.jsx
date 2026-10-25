@@ -39,7 +39,7 @@ export function BugsTopBar({ user, subtitle = "Bug report" }) {
         </div>
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
         <Button asChild variant="ghost" className="lg:hidden">
           <NavLink href="/">My board</NavLink>
         </Button>

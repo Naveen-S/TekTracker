@@ -106,7 +106,7 @@ function IssueList({ issues, jiraBaseUrl }) {
 function CalloutTile({ tone, label, count, breachedCount }) {
   return (
     <div className={cn("flex flex-col gap-0.5 rounded-lg border px-3 py-2", TILE_TONE[tone])}>
-      <span className="text-[11px] font-bold tracking-wider uppercase opacity-80">{label}</span>
+      <span className="text-[11px] font-bold tracking-wider uppercase opacity-80 modern:opacity-100">{label}</span>
       <span className="flex items-baseline gap-1.5">
         <span className="font-display text-2xl leading-none font-extrabold tabular-nums">{count}</span>
         {breachedCount > 0 && (
@@ -205,7 +205,7 @@ export function BugSprintOwnershipSection({ groups, jiraBaseUrl }) {
                   </button>
 
                   {bucketOpen && (
-                    <div className="mt-0.5 mb-1 ml-3.5 flex flex-col gap-0.5 border-l-2 border-border-subtle pl-2.5">
+                    <div className="mt-0.5 mb-1 ml-3.5 flex animate-disclose flex-col gap-0.5 border-l-2 border-border-subtle pl-2.5">
                       {bucketHref && (
                         <a
                           href={bucketHref}
@@ -258,7 +258,11 @@ export function BugSprintOwnershipSection({ groups, jiraBaseUrl }) {
                                   max={maxSprint}
                                 />
                               </button>
-                              {sprintOpen && <IssueList issues={sprint.issues} jiraBaseUrl={jiraBaseUrl} />}
+                              {sprintOpen && (
+                                <div className="animate-disclose">
+                                  <IssueList issues={sprint.issues} jiraBaseUrl={jiraBaseUrl} />
+                                </div>
+                              )}
                             </div>
                           );
                         })

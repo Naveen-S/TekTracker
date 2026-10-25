@@ -9,8 +9,10 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
+        // Modern paints the artifact's blue→purple gradient over the purple primary
+        // (modern-artifact-theme.md decision 6); brightness stands in for the /90 hover.
         default:
-          "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90 hover:-translate-y-px hover:shadow-brand active:translate-y-0 active:shadow-xs",
+          "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90 hover:-translate-y-px hover:shadow-brand active:translate-y-0 active:shadow-xs modern:bg-linear-to-r modern:from-grad-start modern:to-grad-end modern:hover:brightness-105",
         destructive:
           "bg-destructive text-white shadow-xs hover:bg-destructive/90 hover:-translate-y-px active:translate-y-0 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
         outline:
@@ -23,9 +25,10 @@ const buttonVariants = cva(
         ghostDestructive:
           "text-danger-strong hover:bg-danger-soft hover:text-danger-strong focus-visible:ring-destructive/20",
         link: "text-primary underline-offset-4 hover:underline",
-        // Glass button for the ink hero (legacy .btn-on-dark, src/styles.css :317-335)
+        // Glass button for the ink hero (legacy .btn-on-dark, src/styles.css :317-335). Under Modern
+        // the hero is a light card, so it becomes a white button with a lavender border.
         onDark:
-          "border border-white/15 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20 hover:border-white/25 hover:text-white hover:-translate-y-px active:translate-y-0",
+          "border border-white/15 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20 hover:border-white/25 hover:text-white hover:-translate-y-px active:translate-y-0 modern:border-border modern:bg-card modern:text-foreground modern:shadow-xs modern:backdrop-blur-none modern:hover:border-border-strong modern:hover:bg-accent modern:hover:text-accent-foreground",
       },
       size: {
         default: "h-9 px-4 py-2 has-[>svg]:px-3",

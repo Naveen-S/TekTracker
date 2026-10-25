@@ -1,6 +1,7 @@
 "use client";
 
 import { Palette } from "lucide-react";
+import { flushSync } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { useLocalPref } from "@/lib/use-local-pref";
 
@@ -16,10 +17,14 @@ const THEMES = [
 /**
  * Theme switcher (modern-theme.md). The choice is an ephemeral UI pref (§17):
  * stored in localStorage via useLocalPref, applied by toggling the `theme-modern`
- * class on <html>. The switch is imperative (no <html> re-render) so it lands
- * instantly; the no-FOUC boot script in layout.jsx applies the same class before
- * first paint on later loads. Lives in the top bar, so it is reachable in BOTH
- * themes (the Modern sidebar is hidden under Tekion).
+ * class on <html>. The switch is imperative (no <html> re-render); the no-FOUC
+ * boot script in layout.jsx applies the same class before first paint on later
+ * loads. Lives in the top bar, so it is reachable in BOTH themes.
+ *
+ * The switch runs inside a View Transition: the browser cross-fades a snapshot of
+ * the old page into the new one (globals.css `::view-transition-*(root)`), so
+ * gradients and colours change together. Without the API, or with reduced
+ * motion, it switches instantly.
  */
 export function ThemeToggle() {
   const [theme, setTheme] = useLocalPref("theme", THEMES[0].id);
@@ -31,13 +36,17 @@ export function ThemeToggle() {
   const next = THEMES[(index + 1) % THEMES.length];
 
   const switchTheme = () => {
-    const root = document.documentElement;
-    // "Wow" cross-fade only during the switch (globals.css `.theme-transition`;
-    // guarded by prefers-reduced-motion, so this is a no-op when motion is reduced).
-    root.classList.add("theme-transition");
-    root.classList.toggle("theme-modern", next.id === "modern");
-    setTheme(next.id);
-    window.setTimeout(() => root.classList.remove("theme-transition"), 450);
+    // flushSync so the button's own label is part of the "after" snapshot.
+    const apply = () => {
+      document.documentElement.classList.toggle("theme-modern", next.id === "modern");
+      flushSync(() => setTheme(next.id));
+    };
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!document.startViewTransition || reduced) {
+      apply();
+      return;
+    }
+    document.startViewTransition(apply);
   };
 
   return (

@@ -31,11 +31,24 @@ export function Skeleton({ className, ...props }) {
   );
 }
 
-/** Skeleton on the ink hero — the sweep has to read against a dark surface, not a light one. */
-function InkSkeleton({ className }) {
+/**
+ * Skeleton on an ink surface — the sweep has to read against a dark surface, not a light one.
+ * `hero` draws it in the on-hero tint instead, so the hero skeleton follows the header's theme
+ * (ink under Tekion, Modern's light card); the sidebar's follow the `.app-sidebar` scope (white-on-ink
+ * under Tekion, ink-on-white under Modern).
+ */
+function InkSkeleton({ className, hero = false }) {
   return (
-    <div className={cn("relative overflow-hidden rounded-md bg-white/12", className)} aria-hidden="true">
-      <span className="skeleton-sweep absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/18 to-transparent" />
+    <div
+      className={cn("relative overflow-hidden rounded-md", hero ? "bg-on-hero-tint/12" : "bg-white/12", className)}
+      aria-hidden="true"
+    >
+      <span
+        className={cn(
+          "skeleton-sweep absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent to-transparent",
+          hero ? "via-on-hero-tint/18" : "via-white/18",
+        )}
+      />
     </div>
   );
 }
@@ -51,7 +64,7 @@ function InkSkeleton({ className }) {
 export function SkeletonChrome({ children }) {
   return (
     <div className="app-shell flex min-h-screen" role="status" aria-busy="true" aria-label="Loading page">
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col bg-ink lg:flex">
+      <aside className="app-sidebar sticky top-0 hidden h-screen w-60 shrink-0 flex-col bg-ink lg:flex">
         <div className="flex h-14 items-center gap-2.5 px-3.5">
           <div className="size-8 shrink-0 rounded-lg bg-primary/60" />
           <InkSkeleton className="h-3.5 w-28" />
@@ -92,19 +105,19 @@ export function SkeletonChrome({ children }) {
  */
 export function SkeletonHero({ lines = 2, withBar = false }) {
   return (
-    <section className="hero-panel relative overflow-hidden rounded-2xl px-5 py-5 text-white md:px-7 md:py-6">
+    <section className="hero-panel relative overflow-hidden rounded-2xl px-5 py-5 text-on-hero md:px-7 md:py-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <InkSkeleton className="h-2.5 w-40" />
-          <InkSkeleton className="mt-2.5 h-7 w-72 max-w-full" />
-          {lines > 1 && <InkSkeleton className="mt-3 h-3 w-96 max-w-full" />}
+          <InkSkeleton hero className="h-2.5 w-40" />
+          <InkSkeleton hero className="mt-2.5 h-7 w-72 max-w-full" />
+          {lines > 1 && <InkSkeleton hero className="mt-3 h-3 w-96 max-w-full" />}
         </div>
-        <InkSkeleton className="size-20 shrink-0 rounded-full" />
+        <InkSkeleton hero className="size-20 shrink-0 rounded-full" />
       </div>
       {withBar && (
         <div className="mt-6 flex items-end gap-1.5">
           {[38, 22, 30, 18, 26, 20, 24].map((width, index) => (
-            <InkSkeleton key={index} className="h-8 flex-1 rounded-lg" style={{ flexGrow: width }} />
+            <InkSkeleton hero key={index} className="h-8 flex-1 rounded-lg" style={{ flexGrow: width }} />
           ))}
         </div>
       )}

@@ -17,6 +17,7 @@
  * on ink, even when another scope is active.
  */
 import { createContext, useContext, useState } from "react";
+import { SLIDE_ACTIVE_FALLBACK, SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
 import { cn } from "@/lib/utils";
 
 const ScopeContext = createContext(null);
@@ -40,6 +41,7 @@ export function useBugScope() {
 /** The segmented control, styled for the ink hero (the rollup-story-points glass-pill grammar). */
 export function BugScopeToggle({ className }) {
   const { scope, setScope, scopeOptions, externalScopeId } = useBugScope();
+  const { containerRef, indicatorRef } = useSlidingIndicator(scope);
 
   const segments = [
     ...scopeOptions.map((option) => ({
@@ -54,13 +56,15 @@ export function BugScopeToggle({ className }) {
 
   return (
     <span
+      ref={containerRef}
       role="group"
       aria-label="Bug scope"
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-full border border-white/12 bg-white/6 p-0.5",
+        "group/slide relative inline-flex items-center gap-0.5 rounded-full border border-on-hero-tint/12 bg-on-hero-tint/6 p-0.5",
         className,
       )}
     >
+      <SlidingIndicator indicatorRef={indicatorRef} className="rounded-full bg-on-hero-tint/15" />
       {segments.map((segment) => {
         const active = scope === segment.id;
         return (
@@ -69,14 +73,15 @@ export function BugScopeToggle({ className }) {
             type="button"
             onClick={() => setScope(segment.id)}
             aria-pressed={active}
+            data-active={active}
             title={segment.emphasized ? `${segment.label} bugs (highlighted)` : `${segment.label} bugs`}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold transition-colors",
-              active ? "bg-white/15 text-white" : "text-white/55 hover:bg-white/8 hover:text-white/80",
+              "relative inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold transition-colors",
+              active ? cn("bg-on-hero-tint/15 text-on-hero", SLIDE_ACTIVE_FALLBACK) : "text-white/55 modern:text-on-hero-muted hover:bg-on-hero-tint/8 hover:text-on-hero/80 modern:hover:text-on-hero",
             )}
           >
             {segment.emphasized && (
-              <span className="size-1.5 rounded-full bg-on-ink-accent" aria-hidden="true" />
+              <span className="size-1.5 rounded-full bg-on-hero-accent" aria-hidden="true" />
             )}
             {segment.label}
           </button>

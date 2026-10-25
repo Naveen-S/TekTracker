@@ -34,14 +34,14 @@ export function Hero({
   if (showWelcome) {
     return (
       <HeroShell className="flex min-h-80 flex-col items-center justify-center gap-4 px-5 py-10 text-center md:px-8 md:py-12">
-        <span className="inline-flex items-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-white/80 backdrop-blur-sm">
+        <span className="inline-flex items-center rounded-full border border-on-hero-tint/10 bg-on-hero-tint/10 px-3 py-1 text-xs text-on-hero/80 backdrop-blur-sm">
           {team.name} · {sprint.name} · {formatDate(sprint.developmentStart)} –{" "}
           {formatDate(sprint.developmentEnd)}
         </span>
-        <HeroTitle className="mt-0">
-          <Wordmark onInk className="font-extrabold" />
+        <HeroTitle plain className="mt-0">
+          <Wordmark onHero className="font-extrabold" />
         </HeroTitle>
-        <BrandTagline className="-mt-2 text-xl text-white/80" />
+        <BrandTagline className="-mt-2 text-xl text-on-hero/80" />
         <HeroCopy className="max-w-md">
           Track delivery progress across multiple Jira filters with real-time visibility
         </HeroCopy>
@@ -66,11 +66,11 @@ export function Hero({
           {WELCOME_FEATURES.map(({ icon: Icon, label, detail }) => (
             <div
               key={label}
-              className="rounded-lg border border-white/10 bg-white/5 p-3 text-left backdrop-blur-sm"
+              className="rounded-lg border border-on-hero-tint/10 bg-on-hero-tint/5 p-3 text-left backdrop-blur-sm"
             >
-              <Icon className="size-4 text-on-ink-accent" aria-hidden="true" />
-              <p className="mt-1.5 text-[13px] font-semibold text-white">{label}</p>
-              <p className="mt-0.5 text-xs text-white/60">{detail}</p>
+              <Icon className="size-4 text-on-hero-accent" aria-hidden="true" />
+              <p className="mt-1.5 text-[13px] font-semibold text-on-hero">{label}</p>
+              <p className="mt-0.5 text-xs text-white/60 modern:text-on-hero-muted">{detail}</p>
             </div>
           ))}
         </div>

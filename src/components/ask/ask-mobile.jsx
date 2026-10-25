@@ -9,9 +9,10 @@
 import { useState, useSyncExternalStore, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Copy, Smartphone } from "lucide-react";
+import { Smartphone } from "lucide-react";
 import { BrandMark, Wordmark } from "@/components/ui/brand";
 import { Button } from "@/components/ui/button";
+import { CopyStateIcon } from "@/components/ui/copy-state-icon";
 import { Dialog, DialogClose } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/select";
 import { AskChat } from "./ask-chat";
@@ -45,7 +46,7 @@ function PhoneSetupDialog({ askUrl, onClose }) {
         <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2">
           <code className="min-w-0 flex-1 truncate font-mono text-xs">{askUrl}</code>
           <Button type="button" variant="secondary" size="sm" onClick={copy}>
-            <Copy /> {copied ? "Copied" : "Copy"}
+            <CopyStateIcon copied={copied} /> {copied ? "Copied" : "Copy"}
           </Button>
         </div>
         <section>

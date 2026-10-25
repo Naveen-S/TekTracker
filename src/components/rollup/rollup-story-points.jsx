@@ -15,6 +15,7 @@
 import { BarChart3, Rows2, Rows3 } from "lucide-react";
 import { StoryPointsHighlight } from "@/components/dashboard/story-points-highlight";
 import { RollupCompositionChart } from "@/components/rollup/rollup-composition-chart";
+import { SLIDE_ACTIVE_FALLBACK, SlidingIndicator, useSlidingIndicator } from "@/components/ui/sliding-indicator";
 import { useLocalPref } from "@/lib/use-local-pref";
 import { cn } from "@/lib/utils";
 
@@ -29,13 +30,16 @@ const OPTIONS = [
 export function RollupStoryPoints({ teams, ...props }) {
   const [view, setView] = useLocalPref(PREF_KEY, "relaxed");
   const active = OPTIONS.some((option) => option.id === view) ? view : "relaxed";
+  const { containerRef, indicatorRef } = useSlidingIndicator(active);
 
   const toggle = (
     <span
+      ref={containerRef}
       role="group"
       aria-label="Story points view"
-      className="flex items-center gap-0.5 rounded-full border border-white/12 bg-white/6 p-0.5"
+      className="group/slide relative flex items-center gap-0.5 rounded-full border border-white/12 bg-white/6 p-0.5"
     >
+      <SlidingIndicator indicatorRef={indicatorRef} className="rounded-full bg-white/15" />
       {OPTIONS.map((option) => {
         const isActive = active === option.id;
         return (
@@ -44,12 +48,13 @@ export function RollupStoryPoints({ teams, ...props }) {
             type="button"
             onClick={() => setView(option.id)}
             aria-pressed={isActive}
+            data-active={isActive}
             title={`${option.label} view`}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold transition-colors",
+              "relative inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold transition-colors",
               isActive
-                ? "bg-white/15 text-white"
-                : "text-white/55 hover:bg-white/8 hover:text-white/80",
+                ? cn("bg-white/15 text-white", SLIDE_ACTIVE_FALLBACK)
+                : "text-white/55 modern:text-muted-foreground hover:bg-white/8 hover:text-white/80 modern:hover:text-foreground",
             )}
           >
             <option.icon className="size-3.5" aria-hidden="true" />

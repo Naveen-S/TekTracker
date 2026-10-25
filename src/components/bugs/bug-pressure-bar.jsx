@@ -13,10 +13,10 @@ import { SCOPE_TOTAL_BAND_KEY, TOTAL_ROW_KEY } from "@/lib/bug-report/matrix.mjs
  *           release countdown, i.e. the timeline's destination)
  *   row 2 — a composition rail over the priority bands + a labelled legend beneath
  *
- * COLOR: no new palette. Severity is encoded by **opacity of the single on-ink accent hue**
- * (P0 brightest → P4 dimmest) and SLA breach by `--on-ink-danger` — the two tokens the ink hero
- * already owns. That keeps the instrument monochrome-safe, and it re-hues to blue under the Modern
- * theme for free (both tokens are theme-scoped), exactly like the hero's own radial glows.
+ * COLOR: no new palette. Severity is encoded by **strength of the single hero accent hue**
+ * (P0 strongest → P4 faintest, mixed toward `--hero-surface`) and SLA breach by `--on-hero-danger` —
+ * tokens the hero already owns. That keeps the instrument monochrome-safe, and it re-themes for free:
+ * the ink tint on Tekion's ink hero, purple on Modern's light header card (modern-artifact-theme.md).
  *
  * Server-safe: pure props in, no client hooks.
  */
@@ -32,13 +32,13 @@ const bandFill = (index, count) => {
   // biggest group rendered as the faintest. Width already carries magnitude; the ramp only has to
   // be a legible ordering cue, not a wide contrast sweep.
   const pct = count <= 1 ? 100 : Math.round(100 - index * (32 / (count - 1)));
-  return `color-mix(in oklab, var(--color-on-ink-accent) ${pct}%, var(--color-ink))`;
+  return `color-mix(in oklab, var(--color-on-hero-accent) ${pct}%, var(--color-hero-surface))`;
 };
 
 const CHIP_TONE = {
-  clear: "border-[#35c07a]/35 bg-[#35c07a]/12 text-[#7ee0a6]",
-  alert: "border-[#f0883e]/40 bg-[#f0883e]/14 text-[#f5b07a]",
-  quiet: "border-white/12 bg-white/5 text-white/55",
+  clear: "border-on-hero-done/35 bg-on-hero-done/12 text-on-hero-done-text",
+  alert: "border-on-hero-active/40 bg-on-hero-active/14 text-on-hero-active-text",
+  quiet: "border-on-hero-tint/12 bg-on-hero-tint/5 text-white/55 modern:text-on-hero-muted",
 };
 
 /** A macro status chip — the `CycleChip` grammar from the sprint timeline. */
@@ -133,7 +133,7 @@ export function BugPressureBar({ matrix, diff, report }) {
           ) : (
             <StatusChip label="SLA" value="All within target" tone="clear" icon={Check} />
           )}
-          <span aria-hidden="true" className="text-white/25">
+          <span aria-hidden="true" className="text-white/25 modern:text-on-hero-faint">
             →
           </span>
           <StatusChip {...trendChip} />
@@ -147,10 +147,10 @@ export function BugPressureBar({ matrix, diff, report }) {
         </div>
 
         <p className="flex items-baseline gap-2 whitespace-nowrap">
-          <span className="font-display text-3xl leading-none font-extrabold tracking-tight text-white tabular-nums">
+          <span className="font-display text-3xl leading-none font-extrabold tracking-tight text-on-hero tabular-nums">
             {open}
           </span>
-          <span className="text-[11px] font-bold tracking-wider uppercase text-white/55">
+          <span className="text-[11px] font-bold tracking-wider uppercase text-white/55 modern:text-on-hero-muted">
             open bugs
           </span>
         </p>
@@ -163,7 +163,7 @@ export function BugPressureBar({ matrix, diff, report }) {
         tier is the severity mix, the lower tier is how much of each band is past SLA.
       */}
       <div className="flex flex-col gap-2.5">
-        <span className="flex h-4.5 w-full gap-0.5 overflow-hidden rounded-md bg-white/10">
+        <span className="flex h-4.5 w-full gap-0.5 overflow-hidden rounded-md bg-on-hero-tint/10">
           {segments.map((segment) => (
             <span
               key={segment.key}
@@ -175,10 +175,10 @@ export function BugPressureBar({ matrix, diff, report }) {
                 className="absolute inset-x-0 top-0 bottom-1.5"
                 style={{ backgroundColor: segment.fill }}
               />
-              <span className="absolute inset-x-0 bottom-0 h-1.5 bg-white/10" />
+              <span className="absolute inset-x-0 bottom-0 h-1.5 bg-on-hero-tint/10" />
               {segment.breached > 0 && (
                 <span
-                  className="absolute bottom-0 left-0 h-1.5 bg-on-ink-danger"
+                  className="absolute bottom-0 left-0 h-1.5 bg-on-hero-danger"
                   style={{ width: `${(segment.breached / segment.count) * 100}%` }}
                 />
               )}
@@ -195,17 +195,17 @@ export function BugPressureBar({ matrix, diff, report }) {
                 style={{ backgroundColor: segment.fill }}
                 aria-hidden="true"
               />
-              <span className="text-white/55">{segment.label}</span>
-              <span className="font-bold text-white/85 tabular-nums">{segment.count}</span>
+              <span className="text-white/55 modern:text-on-hero-muted">{segment.label}</span>
+              <span className="font-bold text-on-hero/85 tabular-nums">{segment.count}</span>
               {segment.breached > 0 && (
-                <span className="font-bold text-on-ink-danger tabular-nums">
+                <span className="font-bold text-on-hero-danger tabular-nums">
                   ({segment.breached})
                 </span>
               )}
             </li>
           ))}
-          <li className="text-[11px] text-white/40">
-            <span className="text-on-ink-danger">(n)</span> past SLA
+          <li className="text-[11px] text-white/40 modern:text-on-hero-faint">
+            <span className="text-on-hero-danger">(n)</span> past SLA
           </li>
         </ul>
       </div>

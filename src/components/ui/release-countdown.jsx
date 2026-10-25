@@ -37,10 +37,10 @@ function breakdown(ms) {
 }
 
 const TONE = {
-  accent: "border-primary/25 bg-primary/12 text-on-ink-accent",
-  danger: "border-danger/40 bg-danger/15 text-on-ink-danger",
-  success: "border-success/40 bg-success/12 text-on-ink-success",
-  muted: "border-white/15 bg-white/8 text-white/80",
+  accent: "border-primary/25 bg-primary/12 text-on-hero-accent",
+  danger: "border-danger/40 bg-danger/15 text-on-hero-danger",
+  success: "border-success/40 bg-success/12 text-on-hero-success",
+  muted: "border-on-hero-tint/15 bg-on-hero-tint/8 text-on-hero/80",
 };
 
 /** A small SVG progress ring with a live-pulsing core (colour rides currentColor). */
@@ -75,7 +75,7 @@ function Unit({ value, unit }) {
   return (
     <span className="inline-flex items-baseline">
       <span className="font-mono text-sm leading-none font-extrabold tabular-nums">{value}</span>
-      <span className="ml-0.5 text-[9px] font-bold opacity-55">{unit}</span>
+      <span className="ml-0.5 text-[9px] font-bold opacity-55 modern:opacity-100">{unit}</span>
     </span>
   );
 }
@@ -95,7 +95,7 @@ function Shell({ tone, children }) {
     >
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/12 to-transparent motion-safe:animate-sweep"
+        className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-on-hero-tint/12 to-transparent motion-safe:animate-sweep"
       />
       {children}
     </span>
@@ -117,7 +117,7 @@ export function ReleaseCountdown({ phase, devStartMs, devEndMs, releaseMs, daysT
       <Shell tone="success">
         <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />
         <span className="flex flex-col leading-tight">
-          <span className="text-[9px] font-bold tracking-[0.14em] uppercase opacity-70">Shipped</span>
+          <span className="text-[9px] font-bold tracking-[0.14em] uppercase opacity-70 modern:opacity-100">Shipped</span>
           <span className="text-sm font-extrabold">Released</span>
         </span>
       </Shell>
@@ -151,7 +151,7 @@ export function ReleaseCountdown({ phase, devStartMs, devEndMs, releaseMs, daysT
     <Shell tone={tone}>
       <ProgressRing progress={progress} />
       <span className="flex flex-col leading-tight">
-        <span className="text-[9px] font-bold tracking-[0.14em] uppercase opacity-70">{label}</span>
+        <span className="text-[9px] font-bold tracking-[0.14em] uppercase opacity-70 modern:opacity-100">{label}</span>
         {live ? (
           <LiveTimer remainingMs={target - now} />
         ) : (

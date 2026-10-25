@@ -97,7 +97,7 @@ function Veil({ label }) {
       <div
         role="status"
         aria-live="polite"
-        className="fixed inset-0 z-60 flex animate-veil items-center justify-center bg-ink/60 backdrop-blur-[4px] backdrop-saturate-125"
+        className="app-veil fixed inset-0 z-60 flex animate-veil items-center justify-center bg-ink/60 backdrop-blur-[4px] backdrop-saturate-125"
       >
         {/* No card (Naveen, 2026-09-27): the jigsaw and its words float on the scrim. The scrim is
             darker than the old 45% so the white label holds contrast over light pages without a
@@ -106,7 +106,7 @@ function Veil({ label }) {
             elapsed line appearing, the hint lengthening it, or the label changing mid-wait
             ("Syncing Jira…" → "Updating…") can never move the mark. */}
         <div className="relative animate-veil-panel">
-          <BrandLoader glow className="size-18" />
+          <BrandLoader glow tone="ink" className="size-18" />
           <span className="absolute top-full left-1/2 mt-6 flex w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-col items-center gap-1.5 text-center text-shadow-sm text-shadow-black/40">
             <span className="text-base font-semibold tracking-tight text-white">{label}</span>
             {/* Speaks only once the wait is long enough to feel uncertain — before that, a counter

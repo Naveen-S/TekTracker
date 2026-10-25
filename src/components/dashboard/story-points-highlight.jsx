@@ -84,7 +84,7 @@ const TYPES = [
     zone: "bg-on-ink-accent/22",
     fill: "bg-on-ink-accent",
     swatch: "bg-on-ink-accent",
-    value: "text-on-ink-accent",
+    value: "text-on-ink-accent-text",
   },
   {
     key: "techDebt",
@@ -180,7 +180,7 @@ function TypeColumn({ type, planned, delivered, share, capacity, index, classNam
     >
       <div className="flex items-center gap-2">
         <span className={cn("size-2 shrink-0 rounded-[2px]", type.swatch)} aria-hidden="true" />
-        <span className="truncate text-[11px] font-bold tracking-wider text-white/55 uppercase">
+        <span className="truncate text-[11px] font-bold tracking-wider text-white/55 modern:text-muted-foreground uppercase">
           {type.label}
         </span>
       </div>
@@ -191,13 +191,13 @@ function TypeColumn({ type, planned, delivered, share, capacity, index, classNam
         >
           {Math.round(delivered)}
         </span>
-        <span className="font-display text-base leading-none font-bold text-white/50 tabular-nums">
+        <span className="font-display text-base leading-none font-bold text-white/50 modern:text-muted-foreground tabular-nums">
           / {Math.round(planned)}
         </span>
         <span aria-hidden="true" className="text-white/20">
           ·
         </span>
-        <span className="text-xs font-bold text-white/50 tabular-nums">
+        <span className="text-xs font-bold text-white/50 modern:text-muted-foreground tabular-nums">
           {Math.round(donePct)}% done
         </span>
       </p>
@@ -223,9 +223,9 @@ function TypeColumn({ type, planned, delivered, share, capacity, index, classNam
         )}
       </div>
 
-      <p className="mt-2 text-[11px] text-white/50">{Math.round(share)}% of sprint scope</p>
+      <p className="mt-2 text-[11px] text-white/50 modern:text-muted-foreground">{Math.round(share)}% of sprint scope</p>
       {capacity != null && (
-        <p className={cn("text-[11px] font-semibold", over ? "text-on-ink-alert" : "text-white/55")}>
+        <p className={cn("text-[11px] font-semibold", over ? "text-on-ink-alert" : "text-white/55 modern:text-muted-foreground")}>
           {Math.round(capacity)} capacity
           {gap === 0 ? " · exactly at target" : over ? ` · ${gap} pts over` : ` · ${gap} pts spare`}
         </p>
@@ -261,20 +261,20 @@ function CompositionLegend({ segments, planned, capacityPoints, overCapacity, ca
             className={cn("size-2 shrink-0 rounded-[2px]", segment.type.swatch)}
             aria-hidden="true"
           />
-          <span className="font-bold tracking-wide text-white/55 uppercase">
+          <span className="font-bold tracking-wide text-white/55 modern:text-muted-foreground uppercase">
             {segment.type.label}
           </span>
           <span className={cn("font-display font-bold tabular-nums", segment.type.value)}>
             {Math.round(segment.delivered)}
           </span>
-          <span className="text-white/50 tabular-nums">
+          <span className="text-white/50 modern:text-muted-foreground tabular-nums">
             / {Math.round(segment.planned)} · {Math.round(pctOf(segment.planned, planned))}% of scope
           </span>
           {segment.type.key === "committed" && capacityPoints != null && (
             <span
               className={cn(
                 "font-semibold tabular-nums",
-                overCapacity ? "text-on-ink-alert" : "text-white/50",
+                overCapacity ? "text-on-ink-alert" : "text-white/50 modern:text-muted-foreground",
               )}
             >
               · {Math.round(capacityPoints)} cap
@@ -364,7 +364,7 @@ export function StoryPointsHighlight({
           </span>
           <p className="text-[11px] font-bold tracking-wider text-white/70 uppercase">
             Story points delivered{" "}
-            <span className="font-medium tracking-normal text-white/50 normal-case">· {scope}</span>
+            <span className="font-medium tracking-normal text-white/50 modern:text-muted-foreground normal-case">· {scope}</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -395,7 +395,7 @@ export function StoryPointsHighlight({
                 relaxed ? "text-5xl sm:text-6xl" : "text-4xl sm:text-5xl",
               )}
             />
-            <p className="mt-1 text-[10px] font-bold tracking-wider text-white/50 uppercase">
+            <p className="mt-1 text-[10px] font-bold tracking-wider text-white/50 modern:text-muted-foreground uppercase">
               Delivered
             </p>
           </div>
@@ -417,7 +417,7 @@ export function StoryPointsHighlight({
             >
               {planned}
             </p>
-            <p className="mt-1 text-[10px] font-bold tracking-wider text-white/50 uppercase">
+            <p className="mt-1 text-[10px] font-bold tracking-wider text-white/50 modern:text-muted-foreground uppercase">
               Planned
             </p>
           </div>
@@ -428,10 +428,10 @@ export function StoryPointsHighlight({
             {/* The rail needs naming — unlabelled it is just a decorative bar. "Remaining" sits at
                 the right because that is spatially where the unfilled scope actually is. */}
             <div className="flex items-baseline justify-between gap-3">
-              <p className="text-[10px] font-bold tracking-wider text-white/50 uppercase">
+              <p className="text-[10px] font-bold tracking-wider text-white/50 modern:text-muted-foreground uppercase">
                 Scope by work type
               </p>
-              <p className="text-[11px] text-white/50">
+              <p className="text-[11px] text-white/50 modern:text-muted-foreground">
                 {remaining > 0 ? (
                   <>
                     <span className="font-display font-bold text-white/85 tabular-nums">
@@ -493,7 +493,7 @@ export function StoryPointsHighlight({
                     <span className="font-bold tracking-wide text-white uppercase">
                       {segment.type.label}
                     </span>
-                    <span className="text-white/60">
+                    <span className="text-white/60 modern:text-muted-foreground">
                       {" · "}
                       <span className="tabular-nums">
                         {Math.round(segment.delivered)} of {Math.round(segment.planned)} pts
@@ -539,13 +539,13 @@ export function StoryPointsHighlight({
                 admin has actually configured, so the figure never pretends to be the whole org. */}
             {capacity?.configuredTeamCount != null &&
               capacity.configuredTeamCount < capacity.totalTeamCount && (
-                <p className="mt-1.5 text-[11px] text-white/50">
+                <p className="mt-1.5 text-[11px] text-white/50 modern:text-muted-foreground">
                   Capacity covers {capacity.configuredTeamCount} of {capacity.totalTeamCount} teams.
                 </p>
               )}
           </div>
         ) : (
-          <p className="text-[11px] text-white/50 lg:ml-auto">
+          <p className="text-[11px] text-white/50 modern:text-muted-foreground lg:ml-auto">
             {remaining > 0 ? `${remaining} points remaining` : "All planned work delivered"}
           </p>
         )}

@@ -5,7 +5,6 @@ import { Callout } from "@/components/ui/callout";
 import { HeroCopy, HeroEyebrow, HeroShell, HeroTitle } from "@/components/ui/hero-shell";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { SecurityActions } from "@/components/security/security-actions";
-import { SecurityLook, SecurityLookToggle } from "@/components/security/look";
 import { relativeTime } from "@/components/security/kit";
 import { RiskRegister } from "@/components/security/risk-register";
 import {
@@ -46,35 +45,24 @@ function vocabLine(meta, asOf) {
   return `vocabulary live from Confluence (${relativeTime(meta.vocabFetchedAt, asOf)})`;
 }
 
-function DeadlineCard({ release, asOf, onDark = false }) {
+/**
+ * Days to the current release. It sits on the page header, so it draws in the on-hero tokens (ink
+ * glass under Tekion); Modern restyles it as the artifact's gold card (modern-artifact-theme.md (k)).
+ */
+function DeadlineCard({ release, asOf }) {
   const days = Math.max(0, Math.ceil((release.deadline.getTime() - asOf.getTime()) / DAY_MS));
   const month = release.label.split(" ")[0].slice(0, 3);
-  if (onDark) {
-    return (
-      <div className="relative min-w-44 overflow-hidden rounded-xl border border-white/10 bg-white/5 px-5 pt-4 pb-3 text-center">
-        <span className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-sec-amber to-sec-orange" aria-hidden="true" />
-        <p className="font-display text-[30px] leading-tight font-extrabold text-white tabular-nums">
-          {days}
-          <span className="ml-1 text-[13px] font-bold text-sec-amber">days</span>
-        </p>
-        <p className="text-[10.5px] tracking-wider text-white/60 uppercase">
-          to {month} {release.shipDay} release{release.est ? " (est.)" : ""}
-        </p>
-        <p className="mt-0.5 text-[11px] font-semibold text-white/70">{release.name}</p>
-      </div>
-    );
-  }
   return (
-    <div className="relative min-w-44 overflow-hidden rounded-xl border border-sec-gold-line bg-white px-5 pt-4 pb-3 text-center shadow-sec-gold">
-      <span className="absolute inset-x-0 top-0 h-1.25 bg-linear-to-r from-sec-amber to-sec-orange" aria-hidden="true" />
-      <p className="text-[30px] leading-tight font-extrabold text-sec-ink tabular-nums">
+    <div className="relative min-w-44 overflow-hidden rounded-xl border border-on-hero-tint/10 bg-on-hero-tint/5 px-5 pt-4 pb-3 text-center modern:border-sec-gold-line modern:bg-card modern:shadow-sec-gold">
+      <span className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-sec-amber to-sec-orange modern:h-1.25" aria-hidden="true" />
+      <p className="font-display text-[30px] leading-tight font-extrabold text-on-hero tabular-nums">
         {days}
-        <span className="ml-1 text-[13px] font-bold text-sec-gold-text">days</span>
+        <span className="ml-1 text-[13px] font-bold text-sec-amber modern:text-sec-gold-text">days</span>
       </p>
-      <p className="text-[10.5px] tracking-wider text-sec-muted uppercase">
+      <p className="text-[10.5px] tracking-wider text-white/60 modern:text-on-hero-muted uppercase">
         to {month} {release.shipDay} release{release.est ? " (est.)" : ""}
       </p>
-      <p className="mt-0.5 text-[11px] font-semibold text-sec-muted">{release.name}</p>
+      <p className="mt-0.5 text-[11px] font-semibold text-white/70 modern:text-on-hero-muted">{release.name}</p>
     </div>
   );
 }
@@ -90,17 +78,16 @@ export async function SecurityPage({ user, programKey }) {
   const subtitle = isRollup ? "Rollup across every program" : `Program: ${view.program.key} vulnerability remediation`;
 
   return (
-    <SecurityLook>
-      <main className="flex w-full min-w-0 flex-1 flex-col gap-4 p-4 text-sec-body *:min-w-0 md:p-6 sec-artifact:bg-linear-to-b sec-artifact:from-sec-paper sec-artifact:to-sec-peach">
-        {/* StoryBoard look: the app's ink hero, like /bugs and /rollup. */}
-        <HeroShell className="flex flex-wrap items-start justify-between gap-4 px-5 py-6 md:px-8 md:py-7 sec-artifact:hidden">
+    <main className="flex w-full min-w-0 flex-1 flex-col gap-4 p-4 text-sec-body *:min-w-0 md:p-6">
+        {/* One header: the theme-aware hero (ink under Tekion, the artifact's white card under Modern). */}
+        <HeroShell className="flex flex-wrap items-start justify-between gap-4 px-5 py-6 md:px-8 md:py-7">
           <div className="min-w-0 flex-[1_1_280px]">
             <HeroEyebrow>Security vulnerabilities · read-only</HeroEyebrow>
             <HeroTitle>{title}</HeroTitle>
             <HeroCopy className="mt-2">
               {subtitle} · P0–P4 open pipeline · triage & Jira writes stay in the Vulnerability Tracker
             </HeroCopy>
-            <ul className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-white/60">
+            <ul className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-white/60 modern:text-on-hero-muted">
               <li className="flex items-center gap-1.5">
                 <Clock className="size-3.5 shrink-0 opacity-70" aria-hidden="true" />
                 Updated {relativeTime(meta.lastRefreshedAt, asOf)}
@@ -122,41 +109,10 @@ export async function SecurityPage({ user, programKey }) {
                 onDark
                 remember
               />
-              <SecurityLookToggle onDark />
-            </div>
-          </div>
-          <DeadlineCard release={window.current} asOf={asOf} onDark />
-        </HeroShell>
-
-        {/* Artifact look: the white header with the gradient title. */}
-        <header className="hidden flex-wrap items-start justify-between gap-4 rounded-2xl border border-sec-line bg-white/80 px-5 py-5 shadow-xs md:px-6 sec-artifact:flex">
-          <div className="min-w-0 flex-[1_1_280px]">
-            <h1 className="text-[22px] leading-tight font-extrabold tracking-tight text-balance">
-              {/* Emoji outside the gradient clip, so it keeps its own colours. */}
-              <span aria-hidden="true">🔐 </span>
-              <span className="bg-linear-to-r from-sec-purple via-sec-pink to-sec-orange bg-clip-text text-transparent">
-                {title}
-              </span>
-            </h1>
-            <p className="mt-1 text-[13px] text-sec-muted">
-              {subtitle} · P0–P4 open pipeline · read-only (triage & Jira writes stay in the Vulnerability Tracker)
-            </p>
-            <p className="mt-1 text-xs text-sec-muted">
-              Last refreshed {relativeTime(meta.lastRefreshedAt, asOf)}
-              {meta.lastRefreshedByEmail ? ` by ${meta.lastRefreshedByEmail}` : ""} · {vocabLine(meta, asOf)}
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <SecurityActions
-                programs={programs}
-                selectedKey={selectedKey}
-                explicit={programKey !== null}
-                canRefresh={user.isAdmin}
-              />
-              <SecurityLookToggle />
             </div>
           </div>
           <DeadlineCard release={window.current} asOf={asOf} />
-        </header>
+        </HeroShell>
 
         {meta.lastRefreshError && (
           <div className="flex items-start gap-2.5 rounded-xl border border-sec-pink/30 bg-sec-pink-tint px-4 py-3">
@@ -201,14 +157,12 @@ export async function SecurityPage({ user, programKey }) {
             <div className="grid items-start gap-4 *:min-w-0 xl:grid-cols-2">
               <ReleasePlanPanel
                 icon={Rocket}
-                emoji="🚀"
                 title={`This release — ${window.current.label}`}
                 plan={view.releasePlans.current}
                 jiraBaseUrl={jiraBaseUrl}
               />
               <ReleasePlanPanel
                 icon={PlaneTakeoff}
-                emoji="🛫"
                 title={`Next release — ${window.next.label}`}
                 plan={view.releasePlans.next}
                 jiraBaseUrl={jiraBaseUrl}
@@ -240,6 +194,5 @@ export async function SecurityPage({ user, programKey }) {
           </Link>
         </p>
       </main>
-    </SecurityLook>
   );
 }

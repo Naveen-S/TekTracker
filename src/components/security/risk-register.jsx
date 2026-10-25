@@ -213,13 +213,12 @@ export function RiskRegister({ view, isRollup, jiraBaseUrl, workbenchUrl }) {
   const highs = signals.filter((signal) => signal.severity === "High").length;
   const mediums = signals.filter((signal) => signal.severity === "Medium").length;
   return (
-    <details className="group min-w-0 rounded-xl border border-sec-line bg-card sec-artifact:rounded-2xl sec-artifact:bg-white sec-artifact:shadow-xs">
+    <details className="group min-w-0 rounded-xl border border-sec-line bg-card modern:shadow-xs">
       <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 rounded-xl px-5 py-4 select-none hover:bg-sec-paper [&::-webkit-details-marker]:hidden">
-        <span className="grid size-7 shrink-0 place-items-center rounded-md bg-accent text-accent-foreground sec-artifact:hidden" aria-hidden="true">
+        <span className="grid size-7 shrink-0 place-items-center rounded-md bg-accent text-accent-foreground" aria-hidden="true">
           <ShieldAlert className="size-4" />
         </span>
-        <span className="hidden sec-artifact:inline" aria-hidden="true">🚨</span>
-        <span className="font-display text-base font-bold text-sec-ink sec-artifact:font-sans sec-artifact:text-[15px]">Risks & blockers</span>
+        <span className="font-display text-base font-bold text-sec-ink">Risks & blockers</span>
         <LivePill />
         <SeverityChip severity={level} />
         <span className="text-xs text-sec-muted">

@@ -22,6 +22,7 @@
    semantic health colors used by the delivery matrix (ui-polish.md (a)). */
 :root {
   --radius: 0.625rem;
+  --brand-glow: rgb(0 191 165 / 0.3);
 
   /* Page canvas + quiet surfaces (legacy --bg-app / --bg-subtle) */
   --bg-app: #f4f7fa;
@@ -124,6 +125,27 @@
   --on-ink-cat-2: #e3a72f;
   --on-ink-cat-3: #f2a8b6;
   --on-ink-cat-4: #d385b0;
+
+  /* ── On-HERO colours (modern-artifact-theme.md (e)) ──────────────────
+     What is drawn ON the page header. Under Tekion the header is the ink hero, so these are the
+     same white tints the hero always used (byte-for-byte: text-white → --on-hero, text-white/65 →
+     --on-hero-muted); Modern turns the header into a light card and flips them to ink. `-tint` is
+     the base for translucent glass surfaces/borders on the hero (bg-on-hero-tint/10): white glass on
+     ink, lavender (purple at 10%) on the light card. */
+  --on-hero: #ffffff;
+  --on-hero-muted: rgb(255 255 255 / 0.65);
+  --on-hero-faint: rgb(255 255 255 / 0.45);
+  --on-hero-accent: var(--on-ink-accent);
+  --on-hero-danger: var(--on-ink-danger);
+  --on-hero-success: var(--on-ink-success);
+  --on-hero-tint: #ffffff;
+  /* The sprint-timeline / bug-pressure cycle chips: green = done, orange = in progress. */
+  --on-hero-done: #35c07a;
+  --on-hero-done-text: #7ee0a6;
+  --on-hero-active: #f0883e;
+  --on-hero-active-text: #f5b07a;
+  /* The surface a hero ramp fades toward (bug-pressure-bar's severity ramp). */
+  --hero-surface: var(--ink);
 
   --chart-1: #00bfa5;
   --chart-2: #0ea5e9;
@@ -261,12 +283,36 @@
   --color-danger-soft: var(--danger-soft);
 
   --color-on-ink-accent: var(--on-ink-accent);
+  /* Accent as small TEXT. Unset = the accent itself (Tekion); the light Modern scoreboard sets a
+     darker step because its bar blue is 3.35:1 as 11px text. */
+  --color-on-ink-accent-text: var(--on-ink-accent-text, var(--on-ink-accent));
   --color-on-ink-danger: var(--on-ink-danger);
   --color-on-ink-success: var(--on-ink-success);
   --color-on-ink-alert: var(--on-ink-alert);
   --color-on-ink-cat-2: var(--on-ink-cat-2);
   --color-on-ink-cat-3: var(--on-ink-cat-3);
   --color-on-ink-cat-4: var(--on-ink-cat-4);
+
+  --color-on-hero: var(--on-hero);
+  --color-on-hero-muted: var(--on-hero-muted);
+  --color-on-hero-faint: var(--on-hero-faint);
+  --color-on-hero-accent: var(--on-hero-accent);
+  --color-on-hero-danger: var(--on-hero-danger);
+  --color-on-hero-success: var(--on-hero-success);
+  --color-on-hero-done: var(--on-hero-done);
+  --color-on-hero-done-text: var(--on-hero-done-text);
+  --color-on-hero-active: var(--on-hero-active);
+  --color-on-hero-active-text: var(--on-hero-active-text);
+  --color-hero-surface: var(--hero-surface);
+  --color-on-hero-tint: var(--on-hero-tint);
+
+  /* Modern-only (defined in :root.theme-modern); used through the `modern:` variant. */
+  --color-grad-start: var(--grad-start);
+  --color-grad-end: var(--grad-end);
+  --color-art-blue: var(--art-blue);
+  --color-art-pink: var(--art-pink);
+  --color-art-orange: var(--art-orange);
+  --color-art-amber: var(--art-amber);
 
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -317,8 +363,10 @@
   --shadow-dialog:
     0 32px 72px -16px rgb(0 0 0 / 0.5), 0 12px 24px -12px rgb(0 0 0 / 0.3),
     0 0 96px -20px color-mix(in oklab, var(--primary) 45%, transparent);
-  /* Teal glow under primary buttons (legacy --shadow-brand) */
-  --shadow-brand: 0 6px 18px rgb(0 191 165 / 0.3);
+  /* Glow under primary buttons (legacy --shadow-brand). The colour goes through `--brand-glow`
+     because Tailwind inlines a shadow token's value into the utility: a theme override of
+     `--shadow-brand` itself never reaches `shadow-brand` (Modern's purple glow rendered teal). */
+  --shadow-brand: 0 6px 18px var(--brand-glow);
   /* Right-edge shadow separating the matrix's frozen column while it scrolls */
   --shadow-col: 4px 0 8px rgb(11 22 32 / 0.05);
 
@@ -337,6 +385,19 @@
     to {
       opacity: 1;
       transform: translateY(0);
+    }
+  }
+  /* Micro-animations (modern-artifact-theme.md amendment, 2026-10-21). `disclose`: a drill-down's
+     revealed list settles down 4px instead of teleporting in (collapsing stays instant). `enter`: a
+     rare screen's content (empty states) rises in, staggered by the caller with animation-delay.
+     Both drop to a plain fade under reduced motion (see the reduced-motion block). */
+  --animate-disclose: disclose 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-enter: rise 260ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+
+  @keyframes disclose {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
     }
   }
   @keyframes toast-out {
@@ -603,22 +664,19 @@
   --color-sec-amber-light: #ffd966;
   --color-sec-others: #d9d3ec;
   --color-sec-gold-line: #f4dfa0;
-  --color-sec-gold-text: #b78500;
+  --color-sec-gold-text: #8a6400; /* 5.4:1 on white; the artifact's #b78500 was 3.3 */
   --color-sec-label: #9a8fad;
   --shadow-sec-gold: 0 3px 12px rgb(255 190 11 / 0.18);
-  /* Links, LIVE pills, hover and focus accents. Purple in the Artifact look; the theme primary in the
-     StoryBoard look (below), so it re-hues with Tekion ↔ Modern. */
+  /* Links, LIVE pills, hover and focus accents. Purple under Modern; the theme primary under Tekion
+     (below). */
   --color-sec-accent: #8338ec;
 }
 
-/* /security "look" toggle (Naveen 2026-10-20: "middle path, with a toggle to go back").
-   DEFAULT = the StoryBoard look: the app's own neutrals, borders and theme accent, so the page sits
-   in the app; the DATA colours (charts, donut, KPI stripes, coverage, severity) stay the artifact's
-   in both looks. `sec-artifact:` utilities restore the artifact frame (light gradient page, white
-   header, emoji titles). The attribute lives on <SecurityLook> and is a per-browser UI pref. */
-@custom-variant sec-artifact (&:where([data-sec-look="artifact"], [data-sec-look="artifact"] *));
-
-[data-sec-look="app"] {
+/* /security follows the THEME (modern-artifact-theme.md (k); replaces the 2026-10-20 StoryBoard |
+   Artifact look toggle and its first-paint flash). Tekion = the StoryBoard frame: the app's own
+   neutrals, borders and accent. Modern IS the artifact look, so the artifact values above stand. The
+   DATA colours (charts, donut, KPI stripes, coverage, severity) are the artifact's in both themes. */
+:root:not(.theme-modern) {
   --color-sec-ink: var(--foreground);
   --color-sec-body: var(--foreground);
   --color-sec-muted: var(--muted-foreground);
@@ -663,92 +721,268 @@
   }
 }
 
-/* ── "Modern" theme (modern-theme.md) — blue, sidebar-shell alternative ──
-   Additive: overrides only the tokens that differ; the Tekion `:root` is
-   untouched. `:root.theme-modern` (specificity 0,2,0) beats `:root` (0,1,0).
-   Health/semantic + chart tokens are inherited so status colors keep their
-   meaning across themes; semantic color survives in matrix dots + card accents. */
+/* ── "Modern" theme = the artifact look (modern-artifact-theme.md) ──────────
+   The claude.ai Programs Team Vulnerability Tracker's look, app-wide: a lavender→peach page, white
+   cards with lavender borders, a LIGHT header card with a purple→pink→orange title, a purple accent
+   with blue→purple gradient primaries, and a dark artifact-ink sidebar. Replaces the blue Modern
+   (modern-theme.md decisions 1 + 7 superseded; the mechanism — `theme-modern` on <html>, the
+   no-FOUC boot script, the stored "modern" value — is unchanged).
+   Additive: overrides only the tokens that differ; the Tekion `:root` is untouched.
+   `:root.theme-modern` (specificity 0,2,0) beats `:root` (0,1,0). */
 :root.theme-modern {
-  --bg-app: #eef1f5;
-  --bg-subtle: #f6f8fb;
-  --preview-canvas: #e6eaf1;
+  /* The page is a gradient (decision 10) — `--bg-app` stays a solid colour (its top stop) because
+     `bg-app` is a background-COLOR utility; the base layer paints the gradient below. */
+  /* Lightened 2026-10-22 (Naveen: "too dark"): about half the original artifact tint. */
+  --bg-app: #fdfcff;
+  --bg-app-end: #fffaf7;
+  --bg-subtle: #f8f6fe;
+  --preview-canvas: #ece8f7;
 
   --background: #ffffff;
-  --foreground: #1b1e24;
+  --foreground: #241e33;
 
   --card: #ffffff;
-  --card-foreground: #1b1e24;
+  --card-foreground: #241e33;
 
   --popover: #ffffff;
-  --popover-foreground: #1b1e24;
+  --popover-foreground: #241e33;
 
-  --primary: #2f6bff;
+  /* Purple accent (decision 6): links, focus rings, selection. Primary BUTTONS and the active nav
+     item paint the blue→purple gradient on top of this (button.jsx / app-sidebar.jsx). */
+  --primary: #8338ec;
   --primary-foreground: #ffffff;
 
-  --secondary: #eef1f6;
-  --secondary-foreground: #2c2f47;
+  --secondary: #f5f2fd;
+  --secondary-foreground: #332c47;
 
-  --muted: #eef1f6;
-  --muted-foreground: #79818d;
+  --muted: #f5f2fd;
+  /* #655e7d, not the artifact's #6e6787: that read 4.41:1 on the accent fill (a highlighted row).
+     Now 5.06 on --accent, ≥ 5.4 on --hero-fill-1, 6.1 on white. */
+  --muted-foreground: #655e7d;
 
-  --accent: #e9f1ff;
-  --accent-foreground: #2258e6;
+  --accent: #ede7fd;
+  --accent-foreground: #6d28d9;
 
-  --destructive: #ef5350;
+  --destructive: #d6005c;
   --destructive-foreground: #ffffff;
 
-  --border: #e7eaf0;
-  --border-subtle: #eef1f5;
-  --border-strong: #d4d9e2;
-  --input: #e7eaf0;
-  --ring: #2f6bff;
+  --border: #e5dff5;
+  --border-subtle: #efebfa;
+  --border-strong: #d3c9ef;
+  --input: #e5dff5;
+  --ring: #8338ec;
 
-  --ink: #17181b;
-  --on-ink-accent: #9db8ff;
-  --on-ink-danger: #fca5a5;
+  /* Artifact ink — the sidebar and every surface that stays dark. */
+  --ink: #241e33;
+  /* On-ink slot 1 (scoreboard "Committed", eyebrows on ink). The artifact's light blue, NOT a
+     purple: against the scoreboard's on-ink categories (validate_palette.js, dark, surface ink,
+     every pair) it clears worst CVD ΔE 10.7 / normal ≥ 16.9 — better than the old Modern #9db8ff
+     (10.1 / 14.9) — while both light purples tried (#b182f5, #a98bff) fall to normal ΔE 12–13
+     against the orchid `--on-ink-cat-4`. */
+  --on-ink-accent: #7fb2ff;
+  --on-ink-danger: #ffa3c8;
 
-  /* Categorical slot 1 follows the theme (see the :root block); slot 2 swaps
-     to teal, which separates from this blue even better than the Tekion pair
-     (ΔE 26.0 normal / 23.5 deutan). The AGE ramp is theme-neutral by design —
-     amber is nobody's brand hue here, so "how old" never reads as "ours". */
-  --chart-cat-1: #2f6bff;
-  --chart-cat-2: #00a892;
+  /* The light artifact header (decision 3): what sits ON the hero flips from white tints to ink. */
+  --on-hero: #241e33;
+  --on-hero-muted: #5e5776;
+  /* Text shades are set against the countdown pill's own tint over the header fill, the darkest
+     background they sit on: faint 5.0, accent 5.3, danger 5.4, success 4.8. */
+  --on-hero-faint: #6a6384;
+  --on-hero-accent: #6d28d9;
+  --on-hero-danger: #a30049;
+  --on-hero-success: #0a6b61;
+  --on-hero-tint: #8338ec;
+  --on-hero-done: #0e8c7f;
+  --on-hero-done-text: #08665c;
+  --on-hero-active: #fb5607;
+  --on-hero-active-text: #a84000;
+  /* The header and scoreboard cards are tinted, not white (Naveen, 2026-10-21): lavender → peach,
+     a step stronger than the page so they read as cards. Lightened 2026-10-22 (Naveen: "too
+     dark") from #f4efff / #fff1e9 to about half that tint; the gradient border still separates them
+     from the page. Every text shade measured on the old, darker stop, so contrast only rose. */
+  --hero-fill-1: #f9f6ff;
+  --hero-fill-2: #fff7f2;
+  --hero-surface: var(--hero-fill-1);
 
-  --radius: 0.75rem;
-  --shadow-brand: 0 6px 18px rgb(47 107 255 / 0.3);
+  /* Status colours (decision 8): pink / amber / blue / teal, app-wide under Modern — not just on the
+     health chips, so a done cell, a warn badge and a chip agree. Both the base and the -strong step
+     are used as TEXT on the -soft tint (Badge prints -strong, the matrix health pill prints the
+     base), so both clear 4.5:1 on it: base 4.5–5.0, strong 5.9–6.5. */
+  --success: #0a7268;
+  --success-strong: #08665c;
+  --success-soft: #dcf3ef;
+  --warn: #946200;
+  --warn-strong: #7a5200;
+  --warn-soft: #fff3d1;
+  --danger: #c8005a;
+  --danger-strong: #a30049;
+  --danger-soft: #ffe0ee;
+  --info: #1d5fcc;
+  --info-strong: #1a52b0;
+  --info-soft: #e3eeff;
 
-  --sidebar: #17181b;
-  --sidebar-foreground: #e8eaee;
-  --sidebar-primary: #2f6bff;
+  /* The artifact's signature gradients. */
+  --grad-start: #3a86ff;
+  --grad-end: #8338ec;
+  --grad-title-1: #8338ec;
+  --grad-title-2: #ff006e;
+  --grad-title-3: #fb5607;
+  /* The artifact's data hues, for Modern-only gradient accents (KPI stripes). Decorative. */
+  --art-blue: #3a86ff;
+  --art-pink: #ff006e;
+  --art-orange: #fb5607;
+  --art-amber: #ffbe0b;
+
+  /* Categorical (decision 9). Slot 1 is the theme's own purple; slot 2 is the artifact's blue pulled
+     toward sky (#3a86ff → #0a96e8) because the artifact's exact pair only WARNs under deuteranopia.
+     validate_palette.js --mode light --surface #ffffff:
+       #8338ec,#3a86ff  CVD ΔE 7.5 deutan (WARN) · normal 17.3
+       #8338ec,#0a96e8  CVD ΔE 10.8 deutan (PASS) · normal 22.0 · both ≥ 3:1 — ALL PASS
+     The artifact's full five (blue/purple/pink/orange/amber) FAILS as one categorical set (amber is
+     out of the lightness band at 1.66:1, orange↔pink normal ΔE 13.6), so two slots stay the cap. */
+  --chart-cat-1: #8338ec;
+  --chart-cat-2: #0a96e8;
+
+  --radius: 0.875rem;
+  --brand-glow: rgb(131 56 236 / 0.3);
+
+  /* The sidebar is LIGHT under Modern (decision 6 amended, Naveen 2026-10-22): white, a lavender
+     divider, the gradient active item. Painted by the `.app-sidebar` scope below. */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #241e33;
+  --sidebar-primary: #8338ec;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #23252a;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #26282e;
-  --sidebar-ring: #2f6bff;
+  --sidebar-accent: #ede7fd;
+  --sidebar-accent-foreground: #6d28d9;
+  --sidebar-border: #e5dff5;
+  --sidebar-ring: #8338ec;
 }
 
-/* Re-hue the ink hero's radial glows to blue (with a warm accent) for Modern. */
-:root.theme-modern .hero-panel {
+/* The lavender→peach page (decision 10). `fixed` so a long page doesn't stretch one gradient over
+   4,000px into an invisible tint. */
+:root.theme-modern body {
+  background-image: linear-gradient(180deg, var(--bg-app), var(--bg-app-end));
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+/* The PAGE header becomes the artifact's white card (decision 3) with the faintest purple and peach
+   washes in the corners so it isn't flat paper, and a soft lift. Its border is the title's
+   purple→pink→orange gradient (Naveen, 2026-10-21: the plain lavender edge left the header reading
+   as a lot of white space): a transparent border over a border-box gradient, with every other layer
+   clipped to the padding box. A dialog's header band (`.dialog-band`) shares the hero-panel utility
+   but is styled below, so it is excluded. */
+:root.theme-modern .hero-panel:not(.dialog-band),
+:root.theme-modern .sp-board {
+  border-color: transparent;
   background:
-    radial-gradient(130% 150% at 88% -10%, rgb(196 138 86 / 0.26), transparent 46%),
-    radial-gradient(120% 130% at 0% 120%, rgb(47 107 255 / 0.18), transparent 55%),
-    var(--ink);
+    radial-gradient(ellipse at 100% 0%, rgb(131 56 236 / 0.045), transparent 55%) padding-box,
+    radial-gradient(ellipse at 0% 100%, rgb(251 86 7 / 0.03), transparent 60%) padding-box,
+    linear-gradient(120deg, var(--hero-fill-1), var(--hero-fill-2)) padding-box,
+    linear-gradient(120deg, var(--grad-title-1), var(--grad-title-2) 55%, var(--grad-title-3)) border-box;
+  box-shadow: 0 1px 3px rgb(36 30 51 / 0.05), 0 1px 2px rgb(36 30 51 / 0.03);
+}
+
+/* Ink surfaces turn LIGHT under Modern (decision O1 = (b), Naveen 2026-10-21). The components keep
+   their ink markup, so inside each surface the white-on-ink utilities are re-pointed: `--color-white`
+   at the ink foreground (so `text-white/NN`, `border-white/NN`, `bg-white/NN` read as ink on white)
+   and `--ink` at the card. Faint labels that would fall under 4.5:1 carry `modern:text-muted-foreground`
+   in the component.
+
+   The delivery scoreboard (`.sp-board`, also the roll-up "By team" chart) re-slots its categorical
+   channels for a white surface. validate_palette.js "#3a86ff,#c48600,#ff006e,#a8459a" --mode light
+   --surface "#ffffff" --pairs all → ALL CHECKS PASS: worst CVD ΔE 8.2 (#ff006e↔#c48600, deutan; the
+   pink is also hatched), worst normal ΔE 17.7, all ≥ 3:1 against white. Success text takes the
+   on-hero teal (#0a6b61, 5.5:1 on the fill). */
+:root.theme-modern .sp-board {
+  --ink: var(--hero-fill-1);
+  --color-white: var(--foreground);
+  --on-ink-accent: #3a86ff;
+  --on-ink-accent-text: #1f62d6; /* 4.9:1 on the fill; the bar blue is 3.35 as 11px text */
+  --on-ink-cat-2: #c48600;
+  --on-ink-cat-3: #ff006e;
+  --on-ink-cat-4: #a8459a;
+  --on-ink-success: var(--on-hero-success);
+  --on-ink-danger: var(--on-hero-danger);
+  --on-ink-alert: var(--on-hero-danger);
+}
+/* The nav sidebar (and its loading skeleton) turns light too (decision 6 amended, Naveen
+   2026-10-22: once the other ink surfaces went light, a dark sidebar was the one heavy block left).
+   Same re-point as the surfaces above; the wordmark's "Board" takes the purple. Nav text and the
+   active item's white label carry `modern:` classes in app-sidebar.jsx (muted #6e6787 = 5.3:1). */
+:root.theme-modern .app-sidebar {
+  --ink: var(--card);
+  --color-white: var(--foreground);
+  --on-ink-accent: var(--primary);
+  border-right: 1px solid var(--sidebar-border);
+}
+
+/* The brand mark under Modern (option B, Naveen 2026-10-22): the teal logo's structure — one hue
+   family plus the odd piece out — re-hued in the artifact purples. The light piece on a surface that
+   is light under Modern (`tone="ink"` / `"light"` in brand.jsx: the sidebar, the loading veil, the
+   dialog band, the login card) takes the ink colour. The favicon and app icon are static files and
+   stay teal. */
+:root.theme-modern .brand-piece-0 {
+  fill: #8338ec;
+}
+:root.theme-modern .brand-ink-piece {
+  fill: var(--foreground);
+}
+:root.theme-modern .brand-piece-2 {
+  fill: #b794f6;
+}
+:root.theme-modern .brand-piece-3 {
+  fill: #5b21b6;
+}
+
+:root.theme-modern .dialog-band {
+  --color-white: var(--foreground);
+  background:
+    radial-gradient(ellipse at 100% 0%, rgb(131 56 236 / 0.16), transparent 55%),
+    radial-gradient(ellipse at 0% 100%, rgb(255 0 110 / 0.08), transparent 60%),
+    var(--accent);
+  box-shadow: none;
+}
+:root.theme-modern .dialog-band-close {
+  --color-white: var(--foreground);
+}
+:root.theme-modern .app-toast {
+  --color-white: var(--foreground);
+  background-color: var(--card);
+  border: 1px solid var(--border);
+}
+:root.theme-modern .app-veil {
+  --color-white: var(--foreground);
+  background-color: rgb(251 250 255 / 0.72);
+}
+:root.theme-modern .app-veil * {
+  text-shadow: none;
+}
+:root.theme-modern .jigsaw-halo {
+  background: radial-gradient(closest-side, rgb(131 56 236 / 0.7), rgb(131 56 236 / 0.2) 50%, transparent);
+}
+
+/* The artifact's purple→pink→orange page title. Applied by HeroTitle under Modern only; anything
+   that must keep its own colour (an icon, the two-tone wordmark) stays outside it. */
+:root.theme-modern .hero-title-gradient {
+  background-image: linear-gradient(90deg, var(--grad-title-1), var(--grad-title-2) 55%, var(--grad-title-3));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+@media (forced-colors: active) {
+  :root.theme-modern .hero-title-gradient {
+    background-image: none;
+    color: CanvasText;
+  }
 }
 
 /* Selection highlight (the base layer uses a fixed teal literal). */
 :root.theme-modern ::selection {
-  background-color: #dbe4ff; /* blue-100 */
+  background-color: #e4d7fc; /* lavender */
   color: var(--ink);
-}
-
-/* Monochrome blue status chips under Modern — health chips read as one calm pill;
-   semantic color survives in matrix dots, card accents, and SLA-breach counts
-   (modern-theme.md decision 7). Unlayered → wins over the tone utilities. */
-:root.theme-modern .health-chip,
-:root.theme-modern .health-pill {
-  background-color: var(--accent);
-  border-color: color-mix(in oklab, var(--primary) 22%, transparent);
-  color: var(--accent-foreground);
 }
 
 /* ── Story-points scoreboard: read one work type in isolation ────────────
@@ -955,6 +1189,39 @@
    Reduced motion means CALMER, not absent: the skeletons keep a static tint and
    dialogs still cross-fade, so state changes stay legible. Travelling sweeps
    (shimmer, progress) and the dialog's rise are what get dropped. */
+/* Action-icon hover replays (modern-artifact-theme.md amendment, 2026-10-21), in the spirit of
+   useanimations.com's "hover replay" icons but as CSS on the lucide glyphs already in place (keyed on
+   lucide's own `lucide-<name>` class, so every button carrying the icon gets it with no component
+   edit). The icon acts out its verb once — download nudges down, refresh turns a full circle, the AI
+   sparkle twinkles — under 500ms, only for a real mouse and only without reduced motion. An icon
+   already spinning (sync in flight) is left alone. */
+@media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
+  :is(button, a):not(:disabled):hover > :is(svg.lucide-download, svg.lucide-file-down) {
+    animation: icon-nudge-down 420ms var(--ease-out);
+  }
+  :is(button, a):not(:disabled):hover > svg.lucide-refresh-cw:not(.animate-spin) {
+    animation: icon-turn 520ms var(--ease-out);
+  }
+  :is(button, a):not(:disabled):hover > svg.lucide-sparkles {
+    animation: icon-twinkle 460ms var(--ease-out);
+  }
+}
+@keyframes icon-nudge-down {
+  45% {
+    transform: translateY(2px);
+  }
+}
+@keyframes icon-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes icon-twinkle {
+  45% {
+    transform: scale(1.18) rotate(12deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .skeleton-sweep,
   .progress-sweep {
@@ -980,6 +1247,10 @@
   .dialog-panel[data-state] .dialog-sparkle {
     animation: none !important;
   }
+  .animate-disclose,
+  .animate-enter {
+    animation-name: dialog-fade-in !important;
+  }
   /* The loader holds the finished picture and breathes instead of flying apart. */
   .jigsaw-piece,
   .jigsaw-halo {
@@ -990,17 +1261,13 @@
   }
 }
 
-/* "Wow" theme-swap: cross-fade colors ONLY during a switch — the toggle adds
-   `.theme-transition` to <html> for ~450ms, never during normal interaction. */
-@media (prefers-reduced-motion: no-preference) {
-  html.theme-transition,
-  html.theme-transition * {
-    transition:
-      background-color 0.4s var(--ease-out),
-      border-color 0.4s var(--ease-out),
-      color 0.35s var(--ease-out),
-      fill 0.4s var(--ease-out),
-      box-shadow 0.4s var(--ease-out) !important;
-    transition-delay: 0s !important;
-  }
+/* Theme switch: a View Transition cross-fades a snapshot of the whole page (theme-toggle.jsx), so
+   gradients, the gradient title and solid colours all change together. It replaced a per-element
+   colour transition (2026-10-22): `background-image` cannot transition, so under Modern every
+   gradient snapped while the colours around it faded, and fading every element was heavy on the
+   big tables. Browsers without View Transitions, and reduced motion, switch instantly. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 380ms;
+  animation-timing-function: var(--ease-out);
 }

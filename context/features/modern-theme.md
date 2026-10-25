@@ -1,5 +1,28 @@
 # Modern theme — a blue, sidebar-shell theme alongside Tekion
 
+> **[Amended 2026-10-24, modern-artifact-theme.md] The blue Modern described here is replaced.**
+> Modern is now the claude.ai vulnerability-tracker *artifact* look, app-wide:
+> - a lavender→peach page;
+> - light header cards with a purple→pink→orange gradient border and title;
+> - a purple accent with blue→purple gradient primaries;
+> - a light sidebar;
+> - artifact-coloured status chips and charts.
+>
+> **Superseded:**
+> - **decision 1** (blue palette);
+> - **decision 7** (monochrome status chips; now artifact-coloured and app-wide);
+> - **the dark nav sidebar** (light under Modern);
+> - **the `.theme-transition` colour fade**, replaced by a View Transition cross-fade in
+>   `theme-toggle.jsx`.
+>
+> **Still standing:**
+> - the mechanism decisions: the `theme-modern` class on `<html>`, the `THEME_INIT` no-flash boot
+>   script, `useLocalPref("theme")` and the stored value `"modern"`;
+> - the sidebar app shell in both themes;
+> - Tekion as the default.
+>
+> Read the dated body below as history.
+
 Post-v1. Requested by Naveen: *"modernize the app while keeping the current Tekion design as is;
 have an option in settings to switch themes."* The visual target is an approved 5-frame design
 board (see References) built from Naveen's own mockups.

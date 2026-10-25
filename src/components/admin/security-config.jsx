@@ -120,7 +120,7 @@ function SettingsForm({ settings, releases: initialReleases, run, busy }) {
         <p className="mb-2 text-sm font-semibold">Release calendar</p>
         <div className="flex flex-col gap-2">
           {releases.map((row, index) => (
-            <div key={index} className="grid grid-cols-[6.5rem_9.5rem_1fr_auto] items-center gap-2">
+            <div key={index} className="grid grid-cols-2 items-center gap-2 sm:grid-cols-[6.5rem_9.5rem_minmax(0,1fr)_auto]">
               <Input aria-label="Month (YYYY-MM)" value={row.month} disabled={busy} placeholder="2027-01" onChange={(event) => setRelease(index, { month: event.target.value })} />
               <Input aria-label="Ship date" type="date" value={row.shipDate} disabled={busy} onChange={(event) => setRelease(index, { shipDate: event.target.value })} />
               <Input aria-label="Note" value={row.note ?? ""} disabled={busy} placeholder="note (optional)" onChange={(event) => setRelease(index, { note: event.target.value })} />

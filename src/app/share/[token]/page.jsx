@@ -123,7 +123,7 @@ export default async function SharePage({ params }) {
           {isLive ? (
             <DaysRemainingPill sprint={sprint} />
           ) : (
-            <span className="inline-flex items-center rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-bold whitespace-nowrap text-white/80">
+            <span className="inline-flex items-center rounded-full border border-on-hero-tint/15 bg-on-hero-tint/10 px-3 py-1 text-xs font-bold whitespace-nowrap text-on-hero/80">
               Frozen snapshot
             </span>
           )}

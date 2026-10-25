@@ -45,7 +45,7 @@ export function SecurityActions({ programs, selectedKey, explicit, canRefresh, o
   const [toast, showToast] = useToast();
   const inFlight = busy || pending;
 
-  // Only ONE instance (`remember`) applies the stored program — the page renders a header per look.
+  // Only the instance given `remember` applies the stored program (the page header passes it).
   useEffect(() => {
     if (!remember) return;
     if (explicit) {

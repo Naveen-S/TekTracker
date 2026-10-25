@@ -215,3 +215,22 @@ open 4 s) in both themes, 4 animated pieces in the panel. A real Jira sync is Na
     other work (the migrate-on-start branch/stash and the launch video) and must be left out of the
     `feature/brand-jigsaw` commit. The brand-board PDF under `context/SprintTracker - Project Spec/`
     *is* this feature's source reference and ships with it.
+12. **[Amended 2026-10-22, modern-artifact-theme.md (Naveen picked option B of eight)] The mark
+    follows the theme; it supersedes Scope line 51 ("the mark's colours are fixed").**
+    - **Tekion:** unchanged, teal.
+    - **Modern:** the pieces re-hue to the artifact purples — `#8338ec`, ink `#241e33`, light
+      purple `#b794f6` and deep purple `#5b21b6` — keeping the mark's structure (one hue family
+      plus the odd piece out).
+    - **Mechanism:**
+      - `BrandMark` pieces carry `brand-piece-N` / `brand-ink-piece` classes, and
+        `:root.theme-modern` repaints their `fill` in `globals.css`. A CSS `fill` beats the
+        presentation attribute, so the SVG markup is unchanged.
+      - A new `tone="ink"` draws the light piece in ink on surfaces that are light under Modern:
+        the sidebar, the loading veil and the dialog band.
+    - **Favicon (same day, "favicon should change based on the theme"):** `public/icon-modern.svg`
+      is note 8's adaptive `icon.svg` in the option-B colours, with the same light/dark `.flip`.
+      - The `THEME_INIT` boot script re-points the SVG icon link before paint.
+      - `ui/theme-favicon.jsx` keeps it in step with the toggle, navigation and React's hydration
+        re-insert.
+      - **Still teal:** `favicon.ico` (Safari ignores SVG favicons), `public/app-icon.png` and the
+        TEKION corporate wordmark on the login card, which is Tekion's mark, not StoryBoard's.

@@ -14,9 +14,9 @@ import { JiraCount, JiraLinkText, MissCount, SecPanel, fmtDays, pctTone } from "
 const th = "py-2 pr-3 text-[11px] font-semibold tracking-wide text-sec-muted uppercase";
 const td = "py-1.5 pr-3";
 
-export function ReleasePlanPanel({ icon, emoji, title, plan, jiraBaseUrl }) {
+export function ReleasePlanPanel({ icon, title, plan, jiraBaseUrl }) {
   return (
-    <SecPanel icon={icon} emoji={emoji} title={title} tag={`${plan.count} issues`}>
+    <SecPanel icon={icon} title={title} tag={`${plan.count} issues`}>
       {plan.count === 0 ? (
         <p className="text-sm text-sec-muted">No open issues carry this release yet.</p>
       ) : (
@@ -72,7 +72,7 @@ const EFFORT_SWATCH = { current: "bg-sec-blue", next: "bg-sec-purple", overdue: 
 export function EffortPanel({ view, jiraBaseUrl }) {
   const all = view.effort.find((scope) => scope.key === "all");
   return (
-    <SecPanel icon={Timer} emoji="⏱" title="Story point coverage + effort" tag="1 SP = 1 day">
+    <SecPanel icon={Timer} title="Story point coverage + effort" tag="1 SP = 1 day">
       <div className="overflow-x-auto">
         <table className="w-full min-w-150 text-[13px]">
           <thead>
@@ -125,7 +125,7 @@ export function LegacySplitPanel({ legacy, jiraBaseUrl }) {
   if (!legacy) return null;
   const total = legacy.sides.reduce((sum, side) => sum + side.total, 0);
   return (
-    <SecPanel icon={GitFork} emoji="🔀" title="1.0 vs 2.0 bifurcation" tag={`${legacy.sides[0].total} legacy · ${legacy.sides[1].total} current`}>
+    <SecPanel icon={GitFork} title="1.0 vs 2.0 bifurcation" tag={`${legacy.sides[0].total} legacy · ${legacy.sides[1].total} current`}>
       {total > 0 && (
         <div className="mb-3 flex h-8 gap-0.5 overflow-hidden rounded-full border border-sec-line bg-sec-lavender-soft">
           {legacy.sides.map((side, index) =>
@@ -178,7 +178,7 @@ export function LegacySplitPanel({ legacy, jiraBaseUrl }) {
 export function CampaignsPanel({ view, jiraBaseUrl }) {
   const { list, packages, top5Coverage, oligoTotal } = view.campaigns;
   return (
-    <SecPanel icon={Repeat} emoji="🔁" title="Fix-once campaigns" tag={`${packages} packages · top 5 cover ${top5Coverage} of ${oligoTotal}`}>
+    <SecPanel icon={Repeat} title="Fix-once campaigns" tag={`${packages} packages · top 5 cover ${top5Coverage} of ${oligoTotal}`}>
       {list.length === 0 ? (
         <p className="text-sm text-sec-muted">No open Oligo issues in this view.</p>
       ) : (
@@ -228,7 +228,7 @@ export function ReferenceLinks({ view, jiraBaseUrl }) {
     ["Progress universe (incl. done)", view.progress.jql],
   ];
   return (
-    <SecPanel icon={Link2} emoji="🔗" title="Reference links" tag="live Jira filters">
+    <SecPanel icon={Link2} title="Reference links" tag="live Jira filters">
       <div className="flex flex-wrap gap-2">
         {links.map(([label, jql]) => (
           <JiraLinkText key={label} jiraBaseUrl={jiraBaseUrl} jql={jql}>{label}</JiraLinkText>

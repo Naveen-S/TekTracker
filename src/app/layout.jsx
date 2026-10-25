@@ -1,4 +1,6 @@
 import { Instrument_Serif, Inter, JetBrains_Mono, Manrope } from "next/font/google";
+import { ThemeFavicon } from "@/components/ui/theme-favicon";
+import { MODERN_FAVICON } from "@/lib/theme-favicon";
 import "./globals.css";
 
 // Legacy type stack (src/styles.css :69-80): Manrope for headings/display numerals,
@@ -46,7 +48,9 @@ export const metadata = {
 // BEFORE first paint, so a Modern user never sees a Tekion → Modern flash. Runs
 // synchronously; `suppressHydrationWarning` silences the expected <html> class
 // diff (the server can't know a client-only localStorage value).
-const THEME_INIT = `(function(){try{if(localStorage.getItem("theme")==="modern"){document.documentElement.classList.add("theme-modern")}}catch(e){}})();`;
+// It also points the SVG favicon at the Modern icon when its link is already in <head>; ThemeFavicon
+// keeps it in step after that (streamed metadata, navigation, the theme toggle).
+const THEME_INIT = `(function(){try{if(localStorage.getItem("theme")==="modern"){document.documentElement.classList.add("theme-modern");document.querySelectorAll('link[rel~="icon"][type="image/svg+xml"]').forEach(function(l){l.dataset.tekionHref=l.getAttribute("href");l.setAttribute("href","${MODERN_FAVICON}")})}}catch(e){}})();`;
 
 export default function RootLayout({ children }) {
   return (
@@ -57,6 +61,7 @@ export default function RootLayout({ children }) {
     >
       <body className="min-h-full flex flex-col">
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
+        <ThemeFavicon />
         {children}
       </body>
     </html>

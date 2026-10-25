@@ -6,10 +6,13 @@ import { ReleaseCountdown } from "@/components/ui/release-countdown";
  * The signature ink hero surface (legacy .hero-panel, src/styles.css :381-443) shared by the
  * dashboard Hero and /rollup — one place for the dual-teal-glow panel, eyebrow, title, and
  * days-remaining pill. Server-safe on purpose (no "use client": /rollup renders it on the server).
+ *
+ * Theme-aware (modern-artifact-theme.md (e)): everything here draws in the `on-hero` colours, which
+ * are the ink hero's white tints under Tekion and ink/purple on Modern's light header card.
  */
 export function HeroShell({ className, children }) {
   return (
-    <section className={cn("hero-panel relative overflow-hidden rounded-2xl text-white", className)}>
+    <section className={cn("hero-panel relative overflow-hidden rounded-2xl text-on-hero", className)}>
       {children}
     </section>
   );
@@ -17,22 +20,26 @@ export function HeroShell({ className, children }) {
 
 export function HeroEyebrow({ className, children }) {
   return (
-    <p className={cn("text-[11px] font-bold tracking-widest uppercase text-on-ink-accent", className)}>
+    <p className={cn("text-[11px] font-bold tracking-widest uppercase text-on-hero-accent", className)}>
       {children}
     </p>
   );
 }
 
-export function HeroTitle({ className, children }) {
+/**
+ * Under Modern the title wears the artifact's purple→pink→orange gradient (`.hero-title-gradient`,
+ * globals.css). `plain` opts out for a title whose content keeps its own colours (the wordmark).
+ */
+export function HeroTitle({ className, plain = false, children }) {
   return (
-    <h1 className={cn("mt-1.5 font-display text-3xl font-extrabold tracking-tight text-white", className)}>
-      {children}
+    <h1 className={cn("mt-1.5 font-display text-3xl font-extrabold tracking-tight text-on-hero", className)}>
+      {plain ? children : <span className="hero-title-gradient">{children}</span>}
     </h1>
   );
 }
 
 export function HeroCopy({ className, children }) {
-  return <p className={cn("text-[13px] leading-relaxed text-white/65", className)}>{children}</p>;
+  return <p className={cn("text-[13px] leading-relaxed text-on-hero-muted", className)}>{children}</p>;
 }
 
 /**

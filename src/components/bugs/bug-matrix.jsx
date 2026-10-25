@@ -83,7 +83,7 @@ function Cell({ cell, delta, href, breachedHref, emphasis, rowMax, groupStart, i
               target="_blank"
               rel="noopener noreferrer"
               title={`${cell.breachedCount} SLA-breached`}
-              className="text-xs font-bold text-danger underline-offset-2 hover:underline"
+              className="text-xs font-bold text-danger modern:text-danger-strong underline-offset-2 hover:underline"
             >
               ({cell.breachedCount})
             </a>

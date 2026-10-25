@@ -24,8 +24,9 @@ const selectVariants = cva(
           "border-input text-foreground hover:border-border-strong focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
         // Glass select for the ink hero (mirrors Button's onDark, src/styles.css .btn-on-dark).
         // The trigger is dark-glass; the OS option popup stays the browser's normal light chrome.
+        // Under Modern the hero is a light card, so the trigger matches the default variant.
         onDark:
-          "border-white/15 bg-white/10 text-white backdrop-blur-sm hover:border-white/25 hover:bg-white/15 focus-visible:border-white/40 focus-visible:ring-[3px] focus-visible:ring-white/25",
+          "border-white/15 bg-white/10 text-white backdrop-blur-sm hover:border-white/25 hover:bg-white/15 focus-visible:border-white/40 focus-visible:ring-[3px] focus-visible:ring-white/25 modern:border-input modern:bg-card modern:text-foreground modern:backdrop-blur-none modern:hover:border-border-strong modern:hover:bg-card modern:focus-visible:border-ring modern:focus-visible:ring-ring/50",
       },
     },
     defaultVariants: { variant: "default", size: "default" },
@@ -38,7 +39,7 @@ const chevronVariants = cva(
     variants: {
       variant: {
         default: "text-muted-foreground",
-        onDark: "text-white/60",
+        onDark: "text-white/60 modern:text-muted-foreground",
       },
     },
     defaultVariants: { variant: "default" },
@@ -62,7 +63,9 @@ function Select({ className, variant, size, disabled, children, ...props }) {
           chevronVariants({ variant }),
           size === "sm" && "right-2 size-3.5",
           !disabled && "group-hover:text-foreground group-focus-within:text-foreground",
-          variant === "onDark" && !disabled && "group-hover:text-white group-focus-within:text-white",
+          variant === "onDark" &&
+            !disabled &&
+            "group-hover:text-white group-focus-within:text-white modern:group-hover:text-foreground modern:group-focus-within:text-foreground",
           disabled && "opacity-50",
         )}
       />

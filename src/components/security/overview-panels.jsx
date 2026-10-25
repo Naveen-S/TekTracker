@@ -17,7 +17,7 @@ export function ProgressPanel({ view, jiraBaseUrl }) {
   const isRollup = view.program.key === "ALL";
   const scope = isRollup ? "All programs" : `${view.program.key} scope`;
   return (
-    <SecPanel icon={TrendingUp} emoji="📈" title="Overall program progress" tag={`${scope} · all triaged incl. done`}>
+    <SecPanel icon={TrendingUp} title="Overall program progress" tag={`${scope} · all triaged incl. done`}>
       <JiraCount
         jiraBaseUrl={jiraBaseUrl}
         jql={progress.jql}
@@ -127,7 +127,7 @@ export function ProgramScorecard({ view, window, jiraBaseUrl }) {
   const total = view.progress;
   const th = "py-2 pr-3 text-[11px] font-semibold tracking-wide text-sec-muted uppercase";
   return (
-    <SecPanel icon={Flag} emoji="🏁" title="Program scorecard" tag="remediation · delivered · planned">
+    <SecPanel icon={Flag} title="Program scorecard" tag="remediation · delivered · planned">
       <div className="overflow-x-auto">
         <table className="w-full min-w-170 text-[13px]">
           <thead>
@@ -218,7 +218,7 @@ export function CoverageBar({ view, jiraBaseUrl }) {
   const buckets = view.coverage;
   const total = view.kpis.pipeline;
   return (
-    <SecPanel icon={CalendarRange} emoji="🗓️" title="Where does every open item stand?" tag={`all ${total} accounted for`}>
+    <SecPanel icon={CalendarRange} title="Where does every open item stand?" tag={`all ${total} accounted for`}>
       <div className="flex h-8 gap-0.5 overflow-hidden rounded-full border border-sec-line bg-sec-lavender-soft">
         {buckets.map((bucket) =>
           bucket.count > 0 ? (
@@ -290,7 +290,7 @@ export function PriorityStatusTable({ view, jiraBaseUrl }) {
   const max = Math.max(1, ...rows.map((row) => row.total));
   return (
     <SecPanel
-      icon={Target} emoji="🎯"
+      icon={Target}
       title="Status by priority"
       aside={
         <span className="flex items-center gap-3 text-[11px] text-sec-muted">
@@ -343,7 +343,7 @@ export function PriorityStatusTable({ view, jiraBaseUrl }) {
 export function VulnMixChart({ view, jiraBaseUrl }) {
   const { entries, total } = view.vulnMix;
   return (
-    <SecPanel icon={Bug} emoji="🧬" title="Open + in progress by vulnerability" tag={`${total} items`}>
+    <SecPanel icon={Bug} title="Open + in progress by vulnerability" tag={`${total} items`}>
       <VulnDonut entries={entries} total={total} jiraBaseUrl={jiraBaseUrl} />
     </SecPanel>
   );
@@ -385,7 +385,7 @@ export function PathToZeroPanel({ view, window, jiraBaseUrl }) {
   };
   const ladderJql = { today: view.progress.jql, current: view.jql.current, next: view.jql.next };
   return (
-    <SecPanel icon={Compass} emoji="🧭" title="Path to zero" tag="at the last 3 months' pace" className="flex flex-col">
+    <SecPanel icon={Compass} title="Path to zero" tag="at the last 3 months' pace" className="flex flex-col">
       <div className="flex flex-1 flex-col justify-center rounded-2xl bg-linear-to-br from-sec-lavender-soft to-sec-peach px-5 py-4">
         <p className="text-[11px] font-bold tracking-wider text-sec-muted uppercase">Open backlog reaches zero</p>
         {path.remaining === 0 ? (

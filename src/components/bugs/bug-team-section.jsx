@@ -127,7 +127,7 @@ export function BugTeamSection({ teams, jiraBaseUrl }) {
                 </button>
 
                 {teamOpen && (
-                  <div className="mt-0.5 mb-1 ml-3.5 flex flex-col gap-0.5 border-l-2 border-border-subtle pl-2.5">
+                  <div className="mt-0.5 mb-1 ml-3.5 flex animate-disclose flex-col gap-0.5 border-l-2 border-border-subtle pl-2.5">
                     {team.developers.map((dev) => {
                       const devKey = `${team.key}::${dev.name}`;
                       const devOpen = openDevs.has(devKey);
@@ -166,7 +166,7 @@ export function BugTeamSection({ teams, jiraBaseUrl }) {
                           </button>
 
                           {devOpen && (
-                            <div className="mt-0.5 mb-1.5 ml-5 flex flex-col gap-1">
+                            <div className="mt-0.5 mb-1.5 ml-5 flex animate-disclose flex-col gap-1">
                               {dev.issues.map((issue) => (
                                 <div
                                   key={`${issue.scopeId}-${issue.jiraKey}`}

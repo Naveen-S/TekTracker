@@ -222,13 +222,13 @@ function HeroHeader({
     <header className="relative shrink-0">
       <div
         className={cn(
-          "hero-panel relative overflow-hidden rounded-t-xl border-0! shadow-[inset_0_1px_0_rgb(255_255_255/0.12)]",
+          "hero-panel dialog-band relative overflow-hidden rounded-t-xl border-0! shadow-[inset_0_1px_0_rgb(255_255_255/0.12)]",
           compact ? "h-14" : "h-20 sm:h-24",
         )}
       >
         <span className="dialog-hero-glow absolute inset-0" aria-hidden="true" />
         <BrandMark
-          tone="dark"
+          tone="ink"
           className="pointer-events-none absolute -top-10 -right-8 size-44 rotate-12 opacity-[0.08]"
         />
         <span
@@ -256,7 +256,7 @@ function HeroHeader({
         onClick={requestClose}
         disabled={!onClose}
         aria-label="Close"
-        className="absolute top-3 right-3 z-10 grid size-8 place-items-center rounded-md text-white/75 transition-colors duration-150 hover:bg-white/15 hover:text-white focus-visible:ring-[3px] focus-visible:ring-white/40 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40"
+        className="dialog-band-close absolute top-3 right-3 z-10 grid size-8 place-items-center rounded-md text-white/75 transition-colors duration-150 hover:bg-white/15 hover:text-white focus-visible:ring-[3px] focus-visible:ring-white/40 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40"
       >
         <X className="size-4" />
       </button>

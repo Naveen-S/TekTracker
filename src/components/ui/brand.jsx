@@ -2,8 +2,12 @@
  * StoryBoard brand (brand-logo-tagline.md): the Concept-A "Jigsaw" mark, the two-tone wordmark and
  * the tagline. Each scrum team is a piece; the white piece is the one leadership never used to see.
  *
- * The mark's colours are FIXED — it is the product mark, not a themed accent. Only the wordmark's
- * "Board" follows the active theme (`primary`, or `on-ink-accent` on the ink surfaces).
+ * The mark's teal colours are the product mark and are what Tekion, the favicon and the app icon
+ * show. **Amended 2026-10-22 (modern-artifact-theme.md):** under Modern the same four pieces are
+ * re-hued in the artifact purples (option B: purple, ink, light purple, deep purple). Each piece
+ * carries a `brand-piece-N` class and globals.css repaints it under `.theme-modern`; the markup
+ * still paints teal, so Tekion is untouched. The wordmark's "Board" follows the active theme
+ * (`primary`, or `on-ink-accent` on the ink surfaces).
  */
 import { useId } from "react";
 import { cn } from "@/lib/utils";
@@ -51,7 +55,9 @@ const TILE_FILL = "#00a896";
 
 /**
  * The four-piece mark as an inline SVG. `tone` picks the palette for the surface it sits on
- * ("dark" = ink, "light" = card); `tile` draws the rounded teal app-icon tile around it.
+ * ("dark" = ink, "light" = card, "ink" = a surface that is ink under Tekion but light under Modern —
+ * the sidebar, the loading veil, the dialog band: the dark palette, whose light piece carries
+ * `.brand-ink-piece` so the theme can re-colour it); `tile` draws the rounded teal app-icon tile.
  *
  * Each piece is ONE group — its rect, its outgoing neck + knob — and its rect is masked by its own
  * incoming socket (a transparent ring cut, never a painted circle, so the mark sits on any
@@ -59,7 +65,7 @@ const TILE_FILL = "#00a896";
  * `animated` hands each group its fly-in vector and arrival slot for the `.jigsaw-piece` keyframes.
  */
 export function BrandMark({ tone = "dark", tile = false, animated = false, className, title }) {
-  const fills = PALETTES[tile ? "tile" : tone];
+  const fills = PALETTES[tile ? "tile" : tone === "ink" ? "dark" : tone];
   const cutId = `sb-cut-${useId().replace(/[^\w-]/g, "")}`;
 
   const pieces = PIECES.map(([x, y], index) => {
@@ -77,8 +83,15 @@ export function BrandMark({ tone = "dark", tile = false, animated = false, class
           },
         }
       : {};
+    // Theme hooks (see the header): the light piece on a light-under-Modern surface takes the ink
+    // colour; the three coloured pieces take the Modern brand purples. The tile keeps its own fills.
+    const themeHook = tile
+      ? undefined
+      : index === 1
+        ? tone !== "dark" && "brand-ink-piece"
+        : `brand-piece-${index}`;
     return (
-      <g key={index} fill={fills[index]} {...motion}>
+      <g key={index} fill={fills[index]} {...motion} className={cn(motion.className, themeHook) || undefined}>
         <mask id={maskId} maskUnits="userSpaceOnUse" x={0} y={0} width={100} height={100}>
           <rect width={100} height={100} fill="#fff" />
           <circle cx={socketX} cy={socketY} r={9.5} fill="#000" />
@@ -137,11 +150,15 @@ export function BrandLoader({ tone = "dark", glow = false, className }) {
   );
 }
 
-/** "Story" + accent "Board". `onInk` switches the accent to the ink-surface tint. */
-export function Wordmark({ onInk = false, className }) {
+/**
+ * "Story" + accent "Board". `onInk` switches the accent to the ink-surface tint; `onHero` to the page
+ * header's accent (the ink tint under Tekion, purple on Modern's light header card).
+ */
+export function Wordmark({ onInk = false, onHero = false, className }) {
+  const accent = onHero ? "text-on-hero-accent" : onInk ? "text-on-ink-accent" : "text-primary";
   return (
     <span className={cn("font-display font-bold tracking-tight", className)}>
-      Story<span className={onInk ? "text-on-ink-accent" : "text-primary"}>Board</span>
+      Story<span className={accent}>Board</span>
     </span>
   );
 }

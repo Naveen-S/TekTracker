@@ -68,7 +68,7 @@ export function RollupCompositionChart({ teams = [], scope = "this sprint", acti
           </span>
           <p className="text-[11px] font-bold tracking-wider text-white/70 uppercase">
             Story points by team{" "}
-            <span className="font-medium tracking-normal text-white/50 normal-case">· {scope}</span>
+            <span className="font-medium tracking-normal text-white/50 modern:text-muted-foreground normal-case">· {scope}</span>
           </p>
         </div>
         <div className="flex items-center gap-2">{action}</div>
@@ -84,7 +84,7 @@ export function RollupCompositionChart({ teams = [], scope = "this sprint", acti
             className="sp-part flex cursor-default items-center gap-1.5 text-[11px] whitespace-nowrap"
           >
             <span className={cn("size-2.5 shrink-0 rounded-[3px]", type.swatch)} aria-hidden="true" />
-            <span className="font-bold tracking-wide text-white/60 uppercase">{type.label}</span>
+            <span className="font-bold tracking-wide text-white/60 modern:text-muted-foreground uppercase">{type.label}</span>
           </li>
         ))}
       </ul>
@@ -100,7 +100,7 @@ export function RollupCompositionChart({ teams = [], scope = "this sprint", acti
               >
                 <p className="min-w-0 truncate text-xs" title={`${row.key} · ${row.name}`}>
                   <span className="font-bold text-white/85">{row.key}</span>
-                  <span className="text-white/45"> · {row.name}</span>
+                  <span className="text-white/45 modern:text-muted-foreground"> · {row.name}</span>
                 </p>
 
                 {/* Full-width lane: the fill is this team's share of the heaviest team's load, so a
@@ -129,15 +129,15 @@ export function RollupCompositionChart({ teams = [], scope = "this sprint", acti
                   <span className="font-display text-sm font-bold text-white/90">
                     {round(row.delivered)}
                   </span>
-                  <span className="text-white/45"> / {round(row.planned)}</span>
-                  <span className="ml-1 text-white/35">· {pct}%</span>
+                  <span className="text-white/45 modern:text-muted-foreground"> / {round(row.planned)}</span>
+                  <span className="ml-1 text-white/35 modern:text-muted-foreground">· {pct}%</span>
                 </p>
               </div>
             );
           })}
         </div>
       ) : (
-        <p className="relative mt-4 text-[11px] text-white/50">No story points in scope this sprint.</p>
+        <p className="relative mt-4 text-[11px] text-white/50 modern:text-muted-foreground">No story points in scope this sprint.</p>
       )}
     </section>
   );

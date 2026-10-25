@@ -2653,3 +2653,64 @@ context/features/editable-filters.md.
     - the office DB bundle (00 → 01 → 02 → 02b) before rollout;
     - then the Modern = artifact theme on `feature/modern-artifact-theme` (decisions ratified
       2026-10-21).
+- 2026-10-21 — Planning session (no code): drafted context/features/modern-artifact-theme.md.
+  - It makes the claude.ai vulnerability-tracker artifact look the app-wide **Modern** theme,
+    replacing the blue Modern.
+  - **14 decisions ratified with Naveen across four question rounds:**
+    - replace the blue Modern, keep the name;
+    - light artifact headers on every page;
+    - theme-level depth, with no emoji (icon tiles on `/security` too);
+    - the theme replaces `/security`'s look toggle;
+    - a purple accent with blue→purple gradient primaries;
+    - a dark artifact-ink sidebar;
+    - artifact-coloured status chips;
+    - the artifact chart palette, validated for colour blindness;
+    - a lavender→peach page;
+    - login and share follow the viewer's theme;
+    - StoryBoard fonts;
+    - Tekion stays default;
+    - small Tekion tweaks are allowed.
+  - **Two decisions left open by design, for Naveen to pick from real pages in Phase 0 behind a
+    temporary switch:** O1, whether the ink surfaces stay dark or turn light; O2, whether exports
+    stay fixed or follow the theme.
+  - Branch `feature/modern-artifact-theme`, cut from `3129931`. The invariants stay unchanged
+    (65 ƒ / 15 migrations).
+- 2026-10-21 — Picked context/features/modern-artifact-theme.md as the current feature (the
+  vulnerability-tracker artifact look becomes the app-wide Modern theme, replacing the blue Modern).
+- 2026-10-22 — Planning session (no code): drafted context/features/support-oncall.md — per-sprint
+  team Support POCs + an optional Primary POC, a `/oncall` directory for any signed-in user (by
+  team / module / person) with each team's External + Internal bug pulse, and an admin per-team
+  headcount cap. Ratified with Naveen: Primary optional ≤ 1 per team; any signed-in audience;
+  admin cap; bug pulse in. Queued behind modern-artifact-theme; moves invariants to 67 ƒ / 16
+  migrations.
+- 2026-10-24 — **Implemented context/features/modern-artifact-theme.md (Modern = the artifact
+  look, app-wide).**
+  - **Decisions:** O1 = light (the ink surfaces turn light) and O2 = themed exports, picked by
+    Naveen from real pages behind the temporary Phase 0 switch, which is now deleted.
+  - **Amended during the build (Naveen):**
+    - gradient-bordered, tinted header and scoreboard cards, lightened once;
+    - a **light sidebar** (decision 7 reversed);
+    - artifact status colours **app-wide**, with both shades ≥ 4.5:1 on their tints;
+    - a theme-aware **logo and SVG favicon** (option B; `public/icon-modern.svg` and
+      `ui/theme-favicon.jsx`);
+    - a **View Transition** theme switch replacing `.theme-transition`;
+    - micro-animations: sliding toggle pill, drill-down reveal, copy→check, empty-state entrance
+      and icon hover replays.
+  - **Fixes from the design review and polish pass:**
+    - contrast shades;
+    - `shadow-brand` was teal under Modern, because Tailwind inlines shadow tokens; the colour
+      now goes through `--brand-glow`;
+    - phone top bars and the `/admin` release calendar now wrap.
+  - **Removed:** `/security`'s look toggle (`security/look.jsx`), folded into the theme.
+  - **Verified:**
+    - lint 0;
+    - 15 migrations, up to date;
+    - cold env-free build: exit 0, 65 ƒ, 0 warnings;
+    - 60 headless renders (10 pages × 2 themes × 390/1440/2240): 0 console errors, 0 overflow;
+    - Tekion vs baseline: identical except intended changes and live data;
+    - Modern contrast failures down from 107 to 35, none in scope;
+    - switching restores Tekion exactly, with no flash when JS is blocked;
+    - export sheets measure the same in both themes.
+  - **Invariants unchanged:** 65 ƒ / 15 migrations, no schema change, §12 untouched.
+  - **Done.**
+  - **Next:** Naveen's authed pass and commit, then context/features/support-oncall.md.

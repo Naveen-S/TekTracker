@@ -31,7 +31,7 @@ export function Toast({ toast }) {
     <div
       key={toast.key}
       role="status"
-      className="pointer-events-none fixed right-6 bottom-6 z-60 animate-toast rounded-lg bg-ink px-4 py-2.5 text-[13px] font-semibold text-white shadow-lg"
+      className="app-toast pointer-events-none fixed right-6 bottom-6 z-60 animate-toast rounded-lg bg-ink px-4 py-2.5 text-[13px] font-semibold text-white shadow-lg"
     >
       {toast.message}
     </div>

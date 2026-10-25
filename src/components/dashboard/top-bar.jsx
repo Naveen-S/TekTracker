@@ -86,7 +86,7 @@ export function TopBar({
         )}
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
         {canManage && onAddFilter && (
           <Button variant="secondary" size="sm" onClick={onAddFilter} disabled={busy}>
             <Plus /> Add filter

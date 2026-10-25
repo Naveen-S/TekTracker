@@ -4,8 +4,10 @@
  * App navigation sidebar (modern-theme.md Phase B; promoted to both themes per Naveen 2026-07-26).
  * Rendered by AppShell on the four authenticated pages, visible at lg+ widths in BOTH themes
  * (`hidden lg:flex`) and hidden below lg so mobile falls back to top-bar nav. `bg-ink` plus the
- * themed `--primary`/`--accent` tokens mean it re-hues automatically (teal active state under
- * Tekion, blue under Modern) with no per-theme branching here.
+ * themed `--primary`/`--accent` tokens mean it re-hues automatically: an ink rail with a teal active
+ * state under Tekion; under Modern the `.app-sidebar` scope in globals.css turns it white with the
+ * gradient active item (modern-artifact-theme.md, decision 6 amended), and the `modern:` classes
+ * below keep its labels legible there.
  *
  * Nav owns the cross-page links at lg+ (the top bars hide theirs via `lg:hidden`).
  * Collapse ↔ icon-rail state is a third ephemeral localStorage pref (§17).
@@ -76,7 +78,7 @@ export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess, onAsk = n
           collapsed && "justify-center px-0",
         )}
       >
-        <BrandMark className="size-8" />
+        <BrandMark tone="ink" className="size-8" />
         {!collapsed && <Wordmark onInk className="text-sm whitespace-nowrap" />}
       </Link>
 
@@ -91,8 +93,8 @@ export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess, onAsk = n
               "flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
               collapsed && "justify-center px-0",
               active
-                ? "bg-primary text-white shadow-brand"
-                : "text-white/60 hover:bg-white/10 hover:text-white",
+                ? "bg-primary text-white shadow-brand modern:bg-linear-to-r modern:from-grad-start modern:to-grad-end modern:text-primary-foreground"
+                : "text-white/60 hover:bg-white/10 hover:text-white modern:text-muted-foreground modern:hover:bg-accent modern:hover:text-foreground",
             )}
           >
             <Icon className="size-[18px] shrink-0" />
@@ -110,7 +112,7 @@ export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess, onAsk = n
             onClick={onAsk}
             title={collapsed ? "Ask StoryBoard (⌘K)" : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border border-white/12 bg-white/6 px-2.5 py-2 text-sm font-medium text-white/85 transition-colors hover:bg-white/12 hover:text-white",
+              "flex w-full items-center gap-3 rounded-lg border border-white/12 bg-white/6 px-2.5 py-2 text-sm font-medium text-white/85 transition-colors hover:bg-white/12 hover:text-white modern:hover:bg-accent",
               collapsed && "justify-center border-transparent bg-transparent px-0",
             )}
           >
@@ -118,7 +120,7 @@ export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess, onAsk = n
             {!collapsed && (
               <>
                 <span className="whitespace-nowrap">Ask StoryBoard</span>
-                <kbd className="ml-auto rounded bg-white/10 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-white/60">
+                <kbd className="ml-auto rounded bg-white/10 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-white/60 modern:bg-muted modern:text-muted-foreground">
                   ⌘K
                 </kbd>
               </>
@@ -133,7 +135,7 @@ export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess, onAsk = n
           onClick={() => setCollapsedPref(String(!collapsed))}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           className={cn(
-            "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium text-white/55 transition-colors hover:bg-white/10 hover:text-white",
+            "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium text-white/55 transition-colors hover:bg-white/10 hover:text-white modern:text-muted-foreground modern:hover:bg-accent modern:hover:text-foreground",
             collapsed && "justify-center px-0",
           )}
         >

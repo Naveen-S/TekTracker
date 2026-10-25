@@ -301,17 +301,17 @@ export function AdminPanel({
             ].map(({ label, value }) => (
               <li
                 key={label}
-                className="inline-flex items-center gap-1.5 rounded-full border border-white/12 bg-white/8 px-2.5 py-1 text-[11px] whitespace-nowrap text-white/65 backdrop-blur-sm"
+                className="inline-flex items-center gap-1.5 rounded-full border border-on-hero-tint/12 bg-on-hero-tint/8 px-2.5 py-1 text-[11px] whitespace-nowrap text-on-hero-muted backdrop-blur-sm"
               >
-                <span className="font-bold text-white tabular-nums">{value}</span>
+                <span className="font-bold text-on-hero tabular-nums">{value}</span>
                 {value === 1 ? label : `${label}s`}
               </li>
             ))}
-            <li className="inline-flex items-center gap-1.5 rounded-full border border-white/12 bg-white/8 px-2.5 py-1 text-[11px] whitespace-nowrap text-white/65 backdrop-blur-sm">
+            <li className="inline-flex items-center gap-1.5 rounded-full border border-on-hero-tint/12 bg-on-hero-tint/8 px-2.5 py-1 text-[11px] whitespace-nowrap text-on-hero-muted backdrop-blur-sm">
               <span
                 className={cn(
                   "size-1.5 rounded-full",
-                  activeSprint ? "bg-on-ink-success" : "bg-on-ink-danger",
+                  activeSprint ? "bg-on-hero-success" : "bg-on-hero-danger",
                 )}
                 aria-hidden="true"
               />

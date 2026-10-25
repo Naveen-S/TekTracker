@@ -8,8 +8,9 @@
  * (re-read every 5 s, so starting the connector flips it to "Online" without a refresh).
  */
 import { useEffect, useState } from "react";
-import { Check, Copy, KeyRound, PlugZap, Sparkles, Trash2 } from "lucide-react";
+import { KeyRound, PlugZap, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CopyStateIcon } from "@/components/ui/copy-state-icon";
 import { Badge } from "@/components/ui/badge";
 import { DialogError } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
@@ -50,7 +51,7 @@ function CommandBlock({ label, command }) {
       <div className="flex items-start gap-2 rounded-lg border bg-subtle p-2.5">
         <code className="min-w-0 flex-1 font-mono text-[11px] leading-relaxed break-all text-foreground">{command}</code>
         <Button variant="ghost" size="sm" onClick={copy} aria-label={`Copy: ${label}`}>
-          {copied ? <Check /> : <Copy />}
+          <CopyStateIcon copied={copied} />
         </Button>
       </div>
     </div>

@@ -5,13 +5,14 @@ import { Badge } from "@/components/ui/badge";
 import { formatPoints, getWeeklyVelocity } from "@/lib/metrics.mjs";
 import { cn } from "@/lib/utils";
 
-/* Legacy metric-card tone system (src/styles.css :557-581): 3px top stripe + tinted icon tile. */
+/* Legacy metric-card tone system (src/styles.css :557-581): 3px top stripe + tinted icon tile.
+   Under Modern the stripe becomes the artifact gradient for its tone (modern-artifact-theme.md (i)). */
 const toneStripe = {
-  brand: "bg-primary",
+  brand: "bg-primary modern:bg-linear-to-r modern:from-grad-start modern:to-grad-end",
   success: "bg-success",
-  info: "bg-info",
-  warn: "bg-warn",
-  danger: "bg-danger",
+  info: "bg-info modern:bg-art-blue",
+  warn: "bg-warn modern:bg-linear-to-r modern:from-art-orange modern:to-art-amber",
+  danger: "bg-danger modern:bg-linear-to-r modern:from-art-pink modern:to-art-orange",
   neutral: "bg-border-strong",
 };
 

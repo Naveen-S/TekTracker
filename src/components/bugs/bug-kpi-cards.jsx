@@ -13,10 +13,10 @@ import {
  * Deltas come from the previous CAPTURE, not "yesterday" — snapshot gaps are never zero-filled.
  */
 const toneStripe = {
-  brand: "bg-primary",
-  danger: "bg-danger",
-  warn: "bg-warn",
-  info: "bg-info",
+  brand: "bg-primary modern:bg-linear-to-r modern:from-grad-start modern:to-grad-end",
+  danger: "bg-danger modern:bg-linear-to-r modern:from-art-pink modern:to-art-orange",
+  warn: "bg-warn modern:bg-linear-to-r modern:from-art-orange modern:to-art-amber",
+  info: "bg-info modern:bg-art-blue",
   neutral: "bg-border-strong",
 };
 

@@ -1,81 +1,79 @@
 # Current Feature
 
-**Security Vulnerability Tracker v1 — read-only all-programs remediation dashboard (`/security`)**
-(@context/features/security-vulnerability-tracker.md). Ports the read side of the claude.ai
-artifact "Programs Team Vulnerability Tracker" (v32) into StoryBoard, so leadership sees one set
-of server-computed numbers instead of per-viewer connector math. All six programs (DR_GM,
-AEPlatform, DR_Honda, Fleet_Honda, DigitalRetailing, DR_Ford) plus an "All programs" rollup.
-**No Jira writes:** triage and apply stay in the artifact. Picked next because the weekly
-security email links to an artifact that most viewers see as "Unavailable".
+**Modern = the artifact look — replace the blue Modern theme app-wide**
+(@context/features/modern-artifact-theme.md). Switching to Modern gives every StoryBoard page the
+claude.ai vulnerability-tracker artifact's look: lavender→peach page, white cards with lavender
+borders, a light header card with a purple→pink→orange gradient title, gradient KPI stripes, a
+purple accent with blue→purple gradient primaries, artifact-coloured status chips and charts.
+Picked next because Naveen liked the `/security` artifact look (as-built 14–18) and wants it as
+the whole app's Modern theme; it also retires `/security`'s look toggle (and its flash).
 
 ## Status
 
-**Done 2026-10-21 — PR 1 (spec items a–f) · verified · uncommitted** on
-`feature/security-tracker-dashboard` (cut from `main` @ `6ace5c0`). Clarifications C1–C10 and
-as-built notes 1–13 are in the spec.
+**Done 2026-10-24 · verified · uncommitted** on `feature/modern-artifact-theme` (cut from
+`3129931`).
+- **Decisions:** O1 = light, O2 = themed.
+- **Amended during the build:**
+  - gradient-bordered, tinted header and scoreboard;
+  - a light sidebar;
+  - status colours app-wide;
+  - a theme-aware logo and favicon;
+  - a View Transition theme switch;
+  - micro-animations.
+- **Verification:**
+  - lint 0;
+  - 15 migrations, up to date;
+  - cold env-free build: exit 0, **65 ƒ**, **0 warnings**;
+  - **60 headless renders** (10 pages × 2 themes × 3 widths): 0 console errors, 0 overflow;
+  - Tekion vs baseline: identical except intended changes and live data;
+  - switching: back to Tekion exactly, and no flash with JS blocked;
+  - exports measure the same in both themes.
+- **Pending:** Naveen's authed browser pass and commit.
 
-**Verified 2026-10-20:**
-- 16 pure fixture groups pass; `vocab.mjs` passes against the three live Confluence pages.
-- **Live refresh:** 1,451 issues, 7 snapshots. **DR_GM 772/959 and portfolio 1,074/1,382 match the
-  18 Oct reference exactly.**
-- **18/18** page + API smoke; a fetch-recorded nightly run hit Atlassian with **only GET + POST
-  `/search/jql`**.
-- Headless 1440 / 390 px with 0 overflow; cold env-free build exit 0, **65 ƒ Dynamic**, 0 warnings;
-  **15 migrations** up to date; lint 0 for the project tree.
+**Next:** Naveen commits this branch. Then context/features/support-oncall.md, which is queued
+(it moves the invariants to 67 ƒ / 16 migrations).
 
-**Review rounds 2026-10-20/21** (spec as-built 14–18):
-- progress first, with a hoverable chart, and Path to zero beside it on wide screens;
-- the vulnerability donut;
-- the risk register collapsed at the bottom; the triage queue removed;
-- the artifact palette, a polish pass, and a StoryBoard | Artifact look toggle.
-
-**Final verification 2026-10-21:** 20/20 smoke; lint 0; 15 migrations up to date; env-free build
-65 ƒ / 0 warnings; headless 390 / 1440 / 2240 px, both looks and themes, 0 overflow and 0 errors.
-
-**Next:**
-- Naveen runs the office DB bundle for migration 15 (`00` → `01` → `02` → `02b`) **before** the image
-  rolls out (generated + rehearsed 2026-10-20; see the spec Status).
-- Naveen's commit (gitleaks hook), authed browser pass, and the same-morning parity check against
-  the artifact (expect C5/C6 differences: DR_GM pipeline 176 vs the artifact's ~183).
-- Set `workbenchUrl` in Admin → Security tracker.
-- Then the **Modern = artifact theme** (`feature/modern-artifact-theme`, branched from this branch
-  once it is committed). Decided 2026-10-21: light artifact headers on every page, theme-level
-  depth, and the theme replaces /security's look toggle.
-- Then PR 2 (`feature/security-tracker-updates`, copy-only leadership updates).
+Carried over from the security tracker (committed in `3129931`): Naveen's office DB bundle for
+migration 15 (`00` → `01` → `02` → `02b`) before the image rolls out, the same-morning parity check
+against the artifact, and setting `workbenchUrl` in Admin → Security tracker. Then PR 2
+(`feature/security-tracker-updates`).
 
 ## Goals
 
-- (a) Schema: migration `add_security_tracker` (14 → **15**) adds `SecurityTrackerSettings`
-  (singleton), `SecurityProgram`, `SecurityIssue` (raw-fact mirror, + `statusCategoryChangedAt`),
-  `SecuritySnapshot` (per program + `__all__`) and `SecurityRelease`. Keep it in sync with §9 and
-  the ERD.
-- (b) Pure libs: `src/lib/security/{classify,aggregate,risks,vocab}.mjs`. Server code:
-  `src/lib/jira/confluence.js`, `src/lib/security/{refresh,vocab-refresh,data}.js`, and the
-  security step in `src/lib/cron/daily.js`. `resolveRefreshAuth` moves into a shared helper.
-- (c) Routes: `src/app/security/page.jsx`, plus `api/security/{refresh,settings,programs,
-  programs/[programId]}`, all wrapped in `withRoute`.
-- (d) UI: `src/components/security/*`, with the risk register built from
-  `context/features/security-risk-register-mockup.html`. Admin card:
-  `src/components/admin/security-config.jsx` (lean forms, C4). Sidebar entry "Security".
-- (e) `ERROR_CODES`: `SECURITY_REFRESH_FAILED` and `SECURITY_VOCAB_UNAVAILABLE`. No new env vars.
-- (f) Seed: the settings singleton, six programs and the 2026 release calendar, all create-only.
+- **Phase 0** — temporary dev-only `?mt=dark|light` / `?mx=fixed|themed` switch (sessionStorage) so
+  Naveen can see O1/O2 on the real board, a dialog, a toast, the loader, the countdown and a sprint
+  export page. Stop for his decision; delete the switch in Phase 5.
+- **Phase 1 — tokens + frame** (`src/app/globals.css`, `src/components/ui/*`): rewrite
+  `:root.theme-modern` with artifact values (purple `--primary`, lavender neutrals, `--ink #241e33`,
+  sidebar, `--chart-cat-*`, radius), the `--bg-app` page gradient, gradient `Button` default +
+  sidebar active item, lavender `::selection`, artifact-tinted status chips.
+- **Phase 2 — light headers** (`ui/hero-shell.jsx` + hero users): `--on-hero*` tokens (Tekion
+  byte-identical), white header card + gradient title under Modern, theme-aware `onDark`
+  `Button`/`Select`, `text-white` → on-hero tokens inside hero subtrees only.
+- **Phase 3 — shared components:** lavender cards (`bugs/panel.jsx`, admin `SectionCard`,
+  `security/kit.jsx` `SecPanel`, skeletons), gradient KPI stripes (`metric-grid`, `bug-kpi-cards`,
+  security `Kpi`), charts on the validated Modern `--chart-cat-*` set.
+- **Phase 4 — fold `/security` into the theme:** delete `security/look.jsx` + the
+  `sprintTracker_securityLook` writer, re-key the `sec-*` overrides to the theme, drop the emoji,
+  one header.
+- **Phase 5** — build Naveen's O1/O2 choices, then remove the Phase 0 switch (grep `mt=` / `mx=`).
 
 ## Notes
 
-- **Read-only, enforced:** only GET plus the existing POST `/search/jql` may reach Atlassian.
-  Before each PR, grep the diff for `PUT`, `/comment`, `/transitions` and `editIssue`.
-- **Deliberate parity divergences from the artifact:**
-  - C5: NON_DR_GM is excluded everywhere, so the DR_GM pipeline will read below 182.
-  - C6: 5 coverage buckets, and `noFixVersion` includes `*_BREACHED` items.
-  - Write both up in as-built notes; the parity check is Naveen's.
-- **`labels != X` drops unlabelled issues:** always write `(labels IS EMPTY OR labels != X)`.
-- `searchIssues({ maxIssues: 5000 })` for security queries only. `SEARCH_MAX_ISSUES = 2000` stays.
-- Atlassian calls are serial. A failed refresh keeps the previous mirror and records
-  `lastRefreshError`.
-- Next 16: `params` is async. Prisma 7: run `prisma generate` after `migrate dev`. Tailwind v4: no
-  inline styles. The page must work at phone width.
-- **Invariants to record:** 15 migrations. The ƒ Dynamic count = the `main` baseline plus the new
-  route files and `/security`; count it on `main` before adding routes.
+- **Mechanism unchanged:** `theme-modern` on `<html>`, `THEME_INIT` in `layout.jsx` before first
+  paint, `useLocalPref("theme")`, stored value `"modern"`. No new theme, label or key.
+- **`modern:` is `&:is(.theme-modern *)`** — matches descendants of `<html>`, never `<html>` itself.
+- **Never hard-code a hex in a component** — add a token. Tailwind v4: `@theme` / `@custom-variant`
+  / `@utility` in `globals.css`; no config file, no inline styles.
+- **Tekion must be byte-identical** except listed decision-14 tweaks; before/after screenshots of
+  every page at 1440 px prove it.
+- **Gradient text** keeps icons outside the clip and has a solid fallback for forced colours.
+- **Exports render from the live DOM** — the `theme-modern` class reaches the offscreen print pages,
+  so O2 (a) needs a token reset scoped to the print subtree.
+- **Chart palette:** validate with the dataviz `validate_palette.js` (light, vs the white card);
+  never eyeball. If O1 = light, re-run the scoreboard ΔE check (CIEDE2000 + Machado CVD).
+- **Restart the dev server after `globals.css` changes** before any screenshot.
+- **Invariants unchanged: 65 ƒ Dynamic / 15 migrations.** No schema change, no new route.
 
 ## Carry-forward — critical for any new feature
 

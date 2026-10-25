@@ -12,11 +12,12 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Copy, ExternalLink, PlugZap, RefreshCw, Sparkles } from "lucide-react";
+import { ExternalLink, PlugZap, RefreshCw, Sparkles } from "lucide-react";
 import { Dialog, DialogClose, DialogError } from "@/components/ui/dialog";
 import { Callout } from "@/components/ui/callout";
 import { SectionLabel } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
+import { CopyStateIcon } from "@/components/ui/copy-state-icon";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { BrandLoader } from "@/components/ui/brand";
@@ -325,7 +326,7 @@ export function IssueAnalysisDialog({ jiraKey, source, title, jiraBaseUrl, onClo
         <>
           {data?.analysis && !running && (
             <Button variant="ghost" onClick={handleCopy}>
-              <Copy /> {copied ? "Copied" : "Copy"}
+              <CopyStateIcon copied={copied} /> {copied ? "Copied" : "Copy"}
             </Button>
           )}
           {data && data.settings.allowedModels.length > 1 && (
