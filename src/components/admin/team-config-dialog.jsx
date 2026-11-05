@@ -19,6 +19,7 @@ import { Select } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { apiFetch } from "@/lib/api-client";
+import { DEFAULT_ONCALL_HEADCOUNT } from "@/lib/oncall/rotation.mjs";
 
 const parseIssueTypes = (text) =>
   [...new Set(text.split(",").map((v) => v.trim()).filter(Boolean))];
@@ -27,6 +28,8 @@ const parseIssueTypes = (text) =>
 // validated server-side (memberEmail zod); this only normalizes what the admin typed.
 const parseEmails = (text) =>
   [...new Set(text.split(/[\s,]+/).map((v) => v.trim().toLowerCase()).filter(Boolean))];
+
+const EMPTY_CONTACT = { displayName: "", phone: "" };
 
 export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, onClose }) {
   const router = useRouter();
@@ -37,7 +40,22 @@ export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, on
   const [developerCount, setDeveloperCount] = useState(
     team?.developerCount != null ? String(team.developerCount) : "",
   );
+  const [onCallHeadcount, setOnCallHeadcount] = useState(
+    team?.onCallHeadcount != null ? String(team.onCallHeadcount) : "",
+  );
   const [memberEmails, setMemberEmails] = useState((team?.memberEmails ?? []).join("\n"));
+  // Name + phone per roster email (support-oncall.md as-built 15), keyed by email so editing the
+  // textarea above never loses what was typed for someone still on it.
+  const [contacts, setContacts] = useState(
+    () =>
+      new Map(
+        (team?.rosterContacts ?? []).map((contact) => [
+          contact.email,
+          { displayName: contact.displayName, phone: contact.phone },
+        ]),
+      ),
+  );
+  const signedInNames = new Map((team?.rosterContacts ?? []).map((contact) => [contact.email, contact.signedInName]));
   const [featureIssueTypes, setFeatureIssueTypes] = useState(
     (team?.featureIssueTypes ?? []).join(", "),
   );
@@ -62,7 +80,11 @@ export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, on
 
   const selectedComponent = jiraComponents.find((c) => c.id === selectedComponentId) ?? null;
   const claimedCount = claimedIds.size;
-  const memberEmailCount = parseEmails(memberEmails).length;
+  const rosterEmails = parseEmails(memberEmails);
+  const memberEmailCount = rosterEmails.length;
+
+  const setContact = (email, field, value) =>
+    setContacts((current) => new Map(current).set(email, { ...(current.get(email) ?? EMPTY_CONTACT), [field]: value }));
 
   const toggleSubComponent = (subComponentId) => {
     setClaimedIds((current) => {
@@ -85,7 +107,12 @@ export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, on
       programId: programId || null,
       description: description.trim() || null,
       developerCount: developerCount.trim() === "" ? null : Number(developerCount),
-      memberEmails: parseEmails(memberEmails),
+      onCallHeadcount: onCallHeadcount.trim() === "" ? null : Number(onCallHeadcount),
+      memberEmails: rosterEmails,
+      rosterContacts: rosterEmails.map((email) => {
+        const contact = contacts.get(email) ?? EMPTY_CONTACT;
+        return { email, displayName: contact.displayName.trim(), phone: contact.phone.trim() };
+      }),
       featureIssueTypes: parseIssueTypes(featureIssueTypes),
       techDebtIssueTypes: parseIssueTypes(techDebtIssueTypes),
       internalBugIssueTypes: parseIssueTypes(internalBugIssueTypes),
@@ -188,23 +215,43 @@ export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, on
             disabled={saving}
           />
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="team-developer-count">Team size (developers)</Label>
-          <Input
-            id="team-developer-count"
-            type="number"
-            min="1"
-            max="200"
-            value={developerCount}
-            onChange={(event) => setDeveloperCount(event.target.value)}
-            placeholder="e.g. 8"
-            disabled={saving}
-            className="w-28"
-          />
-          <p className="text-xs text-muted-foreground">
-            Used as the Velocity Leaderboard&rsquo;s points &divide; developers divisor. Leave
-            blank to exclude this team from the team leaderboard&rsquo;s ranking.
-          </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="team-developer-count">Team size (developers)</Label>
+            <Input
+              id="team-developer-count"
+              type="number"
+              min="1"
+              max="200"
+              value={developerCount}
+              onChange={(event) => setDeveloperCount(event.target.value)}
+              placeholder="e.g. 8"
+              disabled={saving}
+              className="w-28"
+            />
+            <p className="text-xs text-muted-foreground">
+              Used as the Velocity Leaderboard&rsquo;s points &divide; developers divisor. Leave
+              blank to exclude this team from the team leaderboard&rsquo;s ranking.
+            </p>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="team-oncall-headcount">On-call headcount</Label>
+            <Input
+              id="team-oncall-headcount"
+              type="number"
+              min="1"
+              max="20"
+              value={onCallHeadcount}
+              onChange={(event) => setOnCallHeadcount(event.target.value)}
+              placeholder={`${DEFAULT_ONCALL_HEADCOUNT} (default)`}
+              disabled={saving}
+              className="w-28"
+            />
+            <p className="text-xs text-muted-foreground">
+              How many Support POCs managers can nominate for each sprint on the On-call page.
+              Leave blank for {DEFAULT_ONCALL_HEADCOUNT}.
+            </p>
+          </div>
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -233,6 +280,51 @@ export function TeamConfigDialog({ mode, team, programs = [], jiraComponents, on
             track: their items missing a sub-component or fix version. Separate from team
             membership &amp; roles below — listing an email here grants no app access.
           </p>
+          {rosterEmails.length > 0 && (
+            <div className="mt-1 flex flex-col gap-2.5 rounded-lg border border-border-subtle bg-subtle/60 p-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                <p className="text-sm font-medium text-foreground">Contact details</p>
+                <p className="text-xs text-muted-foreground">
+                  Optional — managers pick on-call POCs from this list
+                </p>
+              </div>
+              <ul className="flex flex-col gap-3 sm:gap-2">
+                {rosterEmails.map((email) => {
+                  const contact = contacts.get(email) ?? EMPTY_CONTACT;
+                  return (
+                    <li
+                      key={email}
+                      className="grid gap-1.5 sm:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.85fr)] sm:items-center sm:gap-2"
+                    >
+                      <span className="truncate font-mono text-xs text-secondary-foreground" title={email}>
+                        {email}
+                      </span>
+                      <Input
+                        aria-label={`Name for ${email}`}
+                        value={contact.displayName}
+                        onChange={(event) => setContact(email, "displayName", event.target.value)}
+                        placeholder={signedInNames.get(email) || "Full name"}
+                        maxLength={120}
+                        disabled={saving}
+                        className="h-8 text-[13px]"
+                      />
+                      <Input
+                        type="tel"
+                        aria-label={`Phone for ${email}`}
+                        value={contact.phone}
+                        onChange={(event) => setContact(email, "phone", event.target.value)}
+                        placeholder="Phone"
+                        autoComplete="off"
+                        maxLength={40}
+                        disabled={saving}
+                        className="h-8 text-[13px] tabular-nums"
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </div>
 
         <fieldset className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-subtle/60 p-4">

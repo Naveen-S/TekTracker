@@ -1222,7 +1222,28 @@
   }
 }
 
+/* Themed select list (themed-select.md): a 120ms drop from the trigger edge. `data-side` is set by
+   the positioner before first paint, so an upward list grows from its bottom edge. */
+@keyframes select-pop-down {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+}
+@keyframes select-pop-up {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+}
+.select-pop {
+  transform-origin: top;
+  animation: select-pop-down 120ms var(--ease-out);
+}
+.select-pop[data-side="top"] {
+  transform-origin: bottom;
+  animation-name: select-pop-up;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .select-pop,
+  .select-pop[data-side="top"] {
+    animation: dialog-fade-in 100ms ease-out !important;
+  }
   .skeleton-sweep,
   .progress-sweep {
     animation: none !important;

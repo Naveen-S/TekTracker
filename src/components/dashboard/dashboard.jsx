@@ -94,6 +94,7 @@ export function Dashboard({
   progressByKey,
   snapshots,
   capacity,
+  onCall,
   sprintStartConfig,
   asOf,
   metrics,
@@ -458,6 +459,7 @@ export function Dashboard({
               completion={metrics ? metrics.deliveryAvgProgress : null}
               sprint={selectedSprint}
               team={selectedTeam}
+              onCall={onCall}
               onConfigureSprint={can.configureSprint ? () => setSprintDialogMode("edit") : null}
               onAddFilter={can.manage ? () => setShowAddFilter(true) : null}
               onShare={can.write && base ? () => setShowShare(true) : null}

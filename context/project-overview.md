@@ -147,6 +147,7 @@ Key relationships:
 | Brand: Jigsaw logo + tagline | **[BUILT]** | Concept-A "Jigsaw" mark (inline SVG, `components/ui/brand.jsx`) replaces the placeholder "T" — bare on the ink sidebar, tiled only for the unreferenced 256 px app icon — in the sidebar, login card, mobile top bars, share header and welcome hero; two-tone wordmark ("Board" in the theme primary / on-ink accent) + the tagline *"Every piece. One picture."* in Instrument Serif italic. favicon = an adaptive `icon.svg` (ink piece flips white under `prefers-color-scheme: dark`; replaces `icon.png`) + a light-tone `favicon.ico` fallback for Safari; `public/app-icon.png` keeps the tiled app icon. A **`BrandLoader`** (the mark assembling itself over a faint ghost of the finished picture; white piece lands last, a teal halo blooms on the veil) is the indicator for the long-wait tier — the `PageLoader` veil + the AI digest wait; button spinners stay rings. **[Amended 2026-09-29]** the veil centres only the mark and hangs its label + elapsed-time line below it, so text appearing mid-wait never moves it. **[Amended 2026-10-22]** the mark (and the SVG favicon, `public/icon-modern.svg`) re-hues to the artifact purples under Modern; Safari's `favicon.ico` and the app icon stay teal (modern-artifact-theme.md). Presentation-only. See context/features/brand-logo-tagline.md. |
 | Claude Connector — per-ticket "Analyse with Claude" | **[BUILT]** | A sparkle on every `/` board track row (Roadmap, Tech Debt incl. Vulnerability, External, Internal), the Needs-attention panel, `/bugs` ticket rows and `/rollup` risks opens a per-ticket analysis: root cause (or implementation areas), similar past tickets, triage & sizing — plus a security section for Vulnerability tickets and a missing sub-component/fix-version suggestion for Needs-attention ones. It runs on the **user's own Claude Code** (company subscription + signed-in ORBIT DeepContext) through a local **StoryBoard Connector** (`public/storyboard-connector.mjs`, paired from `/settings`) that long-polls StoryBoard, runs `claude -p` headless with read-only DeepContext tools only, and posts a zod-gated result. Saved latest-only for everyone who can see the ticket; admin sets allowed models, effort, per-run budget and timeout. Separate from the server-side AI Digest. See context/features/claude-connector-analysis.md. |
 | Security vulnerability tracker (`/security`) | **[BUILT in part]** | Read-only, all-programs P0–P4 remediation dashboard (DR_GM, AEPlatform, DR_Honda, Fleet_Honda, DigitalRetailing, DR_Ford + an "All programs" rollup), ported from the read side of the claude.ai "Programs Team Vulnerability Tracker" artifact so everyone sees the same server-computed numbers. Nightly + admin-refreshed mirror of raw Jira facts and the Confluence vocabulary, classified at read time: KPIs, remediated %, coverage, status by priority, vulnerability mix, progress first with a hoverable fixed/new/backlog chart, release plans, fix-once campaigns, effort, the 1.0/2.0 split, and a computed **risk register** collapsed at the bottom (S1–S8 heatmap + headlines in the rollup, ranked cards with week-over-week deltas per program), in the artifact's own colours; the page frame follows the app theme (Tekion = the StoryBoard frame, Modern = the artifact frame — the 2026-10-21 look toggle was folded into the theme, modern-artifact-theme.md); every number links to Jira. Admin config in `/admin`. **Triage and every Jira write stay in the artifact** (a later writes spec); parity with the artifact is pending Naveen's same-morning check. See context/features/security-vulnerability-tracker.md. |
+| Support on-call directory (`/oncall`) | **[BUILT]** | Moves the per-release Confluence "AEC Support POD POC Details" page into StoryBoard. Each scrum team's managers (`TEAM_MANAGER_ROLES` + global admin) nominate the team's **Support POCs for each sprint** (email, name, optional phone and area) and may flag **one Primary**, up to an admin-set `Team.onCallHeadcount` cap (default 2), picking each POC from everyone an admin added to the team (name + phone from the admin's roster contact details, `RosterContact`). `/oncall` lets **any signed-in user** (Support included) find the right person by team, program (a picker that opens on the viewer's own program; search always spans all programs), module (claimed sub-components) or name, with `tel:` / `mailto:` / copy on every POC, at phone width. The default rotation is the latest sprint whose dev cycle has started; a picker shows others, and CLOSED sprints are read-only. Each card shows the team's open **External / Internal bug counts "as on the board"** (per-issue completion < 100 over its SUPPORT / INTERNAL_BUG tracks; display-only, no Jira call). The board hero shows "On call: {Primary} +N", linking to the card. Phone numbers are PII and are on the log redactor's key list. PagerDuty, the escalation matrix and non-StoryBoard contacts are **not** built. See context/features/support-oncall.md. |
 
 ---
 
@@ -425,6 +426,10 @@ model Team {
   /// NOT app users and grant NO access; they need not have signed in. Empty ⇒ no NA track is
   /// generated for this team (an empty roster deletes any existing NA filter on next sync).
   memberEmails          String[]
+  /// Admin-set cap on how many Support on-call POCs the team may nominate per sprint
+  /// (support-oncall.md decision 4; the Confluence "Final Headcount" column). `null` ⇒ the code
+  /// default DEFAULT_ONCALL_HEADCOUNT (2 — one FE + one BE). Enforced by the on-call PUT.
+  onCallHeadcount       Int?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
@@ -436,6 +441,7 @@ model Team {
   statusMappings  StatusStageMapping[]
   subComponents   JiraSubComponent[]
   capacities      SprintCapacity[]
+  supportPocs     SupportPoc[]
 
   @@index([programId])
 }
@@ -527,6 +533,7 @@ model Sprint {
   snapshots        SprintSnapshot[]
   sharedViews      SharedView[]
   capacities       SprintCapacity[]
+  supportPocs      SupportPoc[]
 
   @@index([state])
 }
@@ -716,6 +723,43 @@ model SprintCapacity {
 
   @@unique([sprintId, teamId])
   @@index([sprintId])
+}
+
+/// A team's Support on-call POC for one sprint's rotation (support-oncall.md). Keyed (team, sprint)
+/// like SprintCapacity; nothing carries over between sprints. Display-only — never a §12 metric
+/// input. ≤ 1 isPrimary per (team, sprint) and the per-team headcount cap are enforced by the
+/// replace-all PUT over one validated list (no partial unique index — Prisma would see it as drift).
+model SupportPoc {
+  id          String   @id @default(cuid())
+  teamId      String
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sprintId    String
+  sprint      Sprint   @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  email       String                       // lowercased Jira identity; need not be an app User
+  displayName String
+  phone       String?                      // PII — redacted at the logging boundary (§13)
+  area        String?                      // free text: "BE", "FE", "SCX", "OX"…
+  isPrimary   Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  updatedById String?                      // no FK (ErrorLog reasoning: survive user deletion)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([teamId, sprintId, email])
+  @@index([sprintId])
+}
+
+/// Contact details for a roster person (support-oncall.md as-built 15), keyed by the lowercased
+/// Jira email so one person has one phone even across rosters. Not a User (need not have signed
+/// in) and grants no access. Feeds the on-call dialog's member picker; never a §12 input.
+model RosterContact {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  displayName String?
+  phone       String?                      // PII — redacted at the logging boundary (§13)
+  updatedById String?                      // no FK (ErrorLog reasoning)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1145,6 +1189,8 @@ erDiagram
     SPRINT ||--o{ ISSUE_PROGRESS : "scopes"
     SPRINT ||--o{ SHARED_VIEW : "scopes"
     SPRINT ||--o{ SPRINT_SNAPSHOT : "scopes"
+    TEAM ||--o{ SUPPORT_POC : "nominates"
+    SPRINT ||--o{ SUPPORT_POC : "rotation of"
 
     FILTER ||--o{ ISSUE : "caches"
 
@@ -1264,6 +1310,21 @@ erDiagram
         datetime capturedOn
         float totalPoints
         float completedPoints
+    }
+    SUPPORT_POC {
+        string id PK
+        string teamId FK
+        string sprintId FK
+        string email "unique per team+sprint"
+        string phone "PII"
+        bool isPrimary
+        string updatedById "no FK by design"
+    }
+    ROSTER_CONTACT {
+        string id PK
+        string email UK "one row per person"
+        string displayName
+        string phone "PII"
     }
     BUG_REPORT {
         string id PK
@@ -1409,6 +1470,10 @@ erDiagram
 > `SecuritySnapshot.programKey` has no FK so history survives a program's removal;
 > `SecurityTrackerSettings` is a singleton (security-vulnerability-tracker.md).
 >
+> **Note — `RosterContact` (2026-10-25) is unlinked by design**: keyed by email so one person has
+> one name + phone across every roster that lists them, joined to `Team.memberEmails` and
+> `TeamMembership` users by email at read time (support-oncall.md as-built 15).
+>
 > **Note — `ErrorLog` has no relationships at all**, which is why it floats free in the diagram
 > above: it records failures *about* entities that may not exist (a deleted team, a user who never
 > signed in, a request that died before auth), and a cascade must never erase incident history.
@@ -1432,6 +1497,8 @@ erDiagram
   JQL scoping input (`assignee in (...)`) for the auto-generated `NEEDS_ATTENTION` hygiene track — it
   grants no access and is never an RBAC subject. Kept as a scalar array (not a child table) because it
   is only ever consumed as JQL literals. See context/features/needs-attention-roster.md.
+  *(**[Amended 2026-10-25]** the roster's names and phones live in the separate, email-keyed
+  `RosterContact`, so this array stays plain JQL input — support-oncall.md as-built 15.)*
 - **JiraCredential is separate** so tokens are isolated and encrypted; one place to swap to OAuth.
 - **Sprint is first-class and global** (stable id, one shared cadence for all teams — decided
   2026-05-29), replacing the brittle `startDate_endDate` key. Renaming a sprint no longer loses data.
@@ -1491,6 +1558,16 @@ erDiagram
   missing row means unconfigured, not zero — the Committed/Tech Debt/Unplanned Bugs breakdown it
   feeds is a display-only composition lens and never an input to Sprint Health/Completion/velocity.
   See context/features/committed-unplanned-work.md.
+- **`SupportPoc` (added 2026-10-24) is the first data about people's support DUTY, not Jira work.**
+  Keyed `(team, sprint)` like `SprintCapacity` and joined to the sprint spine (cascade on either), so
+  each Gate's rotation is its own record and nothing carries over. Display-only: no §12 metric reads
+  it. `email` is a Jira identity, not a `User` FK, because a POC need not have signed in;
+  `updatedById` is FK-less (ErrorLog reasoning). "At most one Primary" and the
+  `Team.onCallHeadcount` cap are list-level rules enforced by the replace-all PUT, not by the
+  database. **[Amended 2026-10-25]** `RosterContact` holds an admin-entered name + phone per roster
+  person, keyed by email (a person, not a team, owns a phone). The POC dialog picks from roster ∪
+  members and copies the phone into the `SupportPoc`, so past rotations keep the number on duty
+  then. See context/features/support-oncall.md as-built 15.
 - **`Program` (added 2026-08-12) is the first grouping ABOVE `Team`** — a plain admin-managed entity
   (name + unique key) with `Team.programId` (`onDelete: SetNull`, so deleting a program un-assigns
   its teams rather than cascading, mirroring `JiraSubComponent.teamId`). It carries **no** sprint,
@@ -1611,6 +1688,9 @@ UI/UX *direction* is the spec above; this table is the *history* of what shipped
 | 2026-10-20 | `/security` vulnerability tracker — program picker, KPI row, risk register (heatmap + headlines / ranked cards), progress, coverage, triage + campaigns; sidebar "Security"; admin "Security tracker" card | security-vulnerability-tracker.md |
 | 2026-10-21 | `/security` review rounds — progress first (hoverable fixed/new/backlog chart) + "Path to zero" card, vulnerability donut, risk register collapsed at the bottom, triage queue removed, artifact palette, polish pass, StoryBoard \| Artifact look toggle | security-vulnerability-tracker.md (as-built 14–18) |
 | 2026-10-24 | Modern = the artifact look app-wide — light gradient-bordered headers + scoreboard, gradient title, purple accent, light sidebar, artifact status chips/charts, themed logo + favicon, View-Transition theme switch, micro-animations (sliding toggle pill, drill-down reveal, copy→check, empty-state entrance, icon hover replays); `/security` look toggle folded into the theme | modern-artifact-theme.md |
+| 2026-10-25 | `/oncall` program picker; on-call member picker (name + phone from the roster); admin roster "Contact details" | support-oncall.md (as-built 14–15) |
+| 2026-10-25 | Themed dropdown app-wide — the shared `Select` gets a theme-matched list (portal, filter box above 8 options, second-line hints, keyboard), replacing the browser's native menu on all 30 dropdowns | themed-select.md |
+| 2026-10-24 | `/oncall` Support on-call directory (program-grouped team cards, Primary first, tel/mailto/copy, bug pulse, search, sprint picker), on-call edit dialog, "On-call" sidebar item, board-hero "On call" chip, admin on-call headcount field | support-oncall.md |
 
 ---
 
@@ -1770,6 +1850,14 @@ file store. Token is **plaintext on disk** in `.sessions/`. Acceptable for a loc
    question) is sent to ElevenLabs. The key stays server-side behind `POST /api/ask/speech`
    (signed-in only, 60 per 10 min per user, only the character count is logged), and the panel says
    "Answers are voiced by ElevenLabs." Unset, nothing leaves StoryBoard for speech output.
+9. **Support POC phone numbers are PII** (added 2026-10-24, support-oncall.md (k)). They are
+   visible to every signed-in user on `/oncall` by design (decision 3), but never logged: `phone`
+   is on the redactor's `SECRET_KEY` list next to `email`, so any key containing "phone" is
+   `[redacted]` in stdout and `ErrorLog.details` (verified with a forced write). The on-call route
+   never logs its body. Editor-only data (a team's roster and its members' emails) is sent only for
+   teams the viewer can edit. **[Amended 2026-10-25]** roster phones (`RosterContact.phone`) follow
+   the same rule: visible on `/admin` (global admins) and in the on-call picker for teams the viewer
+   can edit, never to other viewers; `rosterContacts` in an error's details is redacted (verified).
 
 ---
 
@@ -2109,6 +2197,32 @@ All previously open decisions are now resolved:
   - **Scope:** presentation only — no schema change, no new route. **65 ƒ Dynamic / 15
     migrations unchanged**; §12 untouched.
   - See context/features/modern-artifact-theme.md.
+
+- **Support on-call directory (ratified 2026-10-22; built 2026-10-24).** Moves the per-release
+  Confluence POC page into StoryBoard.
+  - **Ratified (Naveen):** (1) POCs per team **per sprint**, nothing carried over; (2) an optional
+    **Primary**, at most one per team per sprint, with no new "support pod" entity; (3) audience =
+    **any signed-in user**, the `/security` rule; (4) an admin-set **`Team.onCallHeadcount`** cap;
+    (5) a read-only **bug pulse** (open External / Internal bugs) from the board's own tracks.
+  - **Proposed, built as written:** the default rotation = the latest sprint whose
+    `developmentStart` ≤ now; edit gate = `TEAM_MANAGER_ROLES` + global admin; a null cap means 2;
+    contact = email, name, optional phone and area; suggestions from roster ∪ members; "open" =
+    per-issue completion < 100 ("as on the board"); CLOSED sprints read-only (409); one
+    replace-all `PUT`; the board-hero chip.
+  - **Invariants moved and declared:** **65 → 67 ƒ Dynamic** (`/oncall` + the PUT route) and
+    **15 → 16 migrations** (`add_support_oncall`). §12 untouched (`resolveProgress` /
+    `calculateWeightedCompletion` imported unchanged).
+  - See context/features/support-oncall.md.
+  - **[Amended 2026-10-25, Naveen]** a program picker on `/oncall` (as-built 14), and the POC dialog
+    picks people from the admin roster, with names and phones from a new email-keyed
+    `RosterContact` (as-built 15). Folded into migration 16 (uncommitted, not on the office DB):
+    still **67 ƒ / 16 migrations**.
+
+- **Themed select app-wide (2026-10-25, Naveen).** No native dropdowns: the shared `Select` is
+  rebuilt in place as a drop-in (same props and `<option>` children, event-shaped `onChange`), with
+  a portaled, theme-token list, a filter box above 8 options, `hint` second lines and full keyboard
+  support. Supersedes ui-port.md decision 5. Presentation only: no schema or route change.
+  See context/features/themed-select.md.
 
 ---
 

@@ -19,6 +19,7 @@ import {
   Bug,
   Layers,
   LayoutGrid,
+  LifeBuoy,
   PanelLeft,
   PanelLeftClose,
   Settings,
@@ -54,6 +55,8 @@ export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess, onAsk = n
     ...(hasBugReport
       ? [{ href: "/bugs", label: "Bug report", icon: Bug, active: pathname.startsWith("/bugs") }]
       : []),
+    // Who to call per team — every signed-in user, Support included (support-oncall.md decision 3).
+    { href: "/oncall", label: "On-call", icon: LifeBuoy, active: pathname.startsWith("/oncall") },
     // Org-level and read-only, so every signed-in user (security-vulnerability-tracker.md P1).
     { href: "/security", label: "Security", icon: ShieldCheck, active: pathname.startsWith("/security") },
     // Personal settings — the Claude Connector pairing (claude-connector-analysis.md), for everyone.

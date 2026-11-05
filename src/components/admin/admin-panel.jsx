@@ -170,6 +170,7 @@ function TeamCard({ team, run, busy, onEdit }) {
             </span>
             <Select
               className="h-7 text-xs"
+              aria-label={`Role for ${membership.user.email}`}
               value={membership.role}
               disabled={busy}
               onChange={(event) =>
@@ -214,7 +215,13 @@ function TeamCard({ team, run, busy, onEdit }) {
           disabled={busy}
           className="h-8 text-xs"
         />
-        <Select className="h-8 text-xs" value={role} onChange={(e) => setRole(e.target.value)} disabled={busy}>
+        <Select
+          className="h-8 text-xs"
+          aria-label="Role for the new member"
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+          disabled={busy}
+        >
           {ROLES.map((r) => (
             <option key={r} value={r}>
               {r}

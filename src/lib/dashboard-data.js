@@ -150,6 +150,8 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
   // A sibling of `metrics` (never folded into computeSprintMetrics), since it's an admin-entered
   // value, not derived from issues; `null` when unconfigured (decision 3).
   let capacity = null;
+  // support-oncall.md (j) — the hero's "On call: {Primary} +N" chip; null when nobody is nominated.
+  let onCall = null;
   if (selectedTeam && selectedSprint) {
     const allFilters = await prisma.filter.findMany({
       where: { teamId: selectedTeam.id, sprintId: selectedSprint.id },
@@ -195,6 +197,15 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
       select: { committedPoints: true },
     });
     capacity = capacityRow ? { committedPoints: capacityRow.committedPoints } : null;
+    const pocs = await prisma.supportPoc.findMany({
+      where: { teamId: selectedTeam.id, sprintId: selectedSprint.id },
+      orderBy: { sortOrder: "asc" },
+      select: { displayName: true, isPrimary: true },
+    });
+    if (pocs.length > 0) {
+      const lead = pocs.find((poc) => poc.isPrimary) ?? pocs[0];
+      onCall = { name: lead.displayName, isPrimary: lead.isPrimary, others: pocs.length - 1 };
+    }
   }
 
   // UI affordances only — every mutation is re-checked server-side by the step-4/5 routes.
@@ -225,6 +236,7 @@ export async function getDashboardData(user, { teamId, sprintId } = {}) {
     progressByKey,
     snapshots,
     capacity,
+    onCall,
     sprintStartConfig,
     // Request-time clock for the trend panel's "today" marker + projection — passed down so the
     // SSR render and the client hydration draw identical geometry (no client-side new Date()).

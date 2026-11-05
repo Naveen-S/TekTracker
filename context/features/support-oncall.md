@@ -42,8 +42,57 @@ Canonical-doc sections touched: project-overview §5 (feature row), §9 (schema 
 
 ## Status
 
-Planned 2026-10-22. Not started. Branch to be `feature/support-oncall`, cut from `main` after
-`feature/modern-artifact-theme` merges.
+Planned 2026-10-22.
+
+**Done 2026-10-24 · verified · uncommitted** on `feature/support-oncall`, **stacked on
+`feature/modern-artifact-theme`** (cb7891a): that branch is pushed but not yet merged to `main`, so
+retarget this PR to `main` once it merges (as-built 1).
+
+- **Built:**
+  - (a) `SupportPoc` + `Team.onCallHeadcount`, migration `20261024122757_add_support_oncall`;
+  - (b) `src/lib/oncall/{rotation,pulse}.mjs`;
+  - (c) `src/lib/schemas/oncall.js` + `teamFields.onCallHeadcount`;
+  - (d) `PUT /api/teams/[teamId]/sprints/[sprintId]/oncall`;
+  - (e) `src/lib/oncall/data.js`;
+  - (f) `src/app/oncall/{page,loading}.jsx` + `src/components/oncall/{oncall-directory,team-card,poc-contact}.jsx`;
+  - (g) `oncall-edit-dialog.jsx`;
+  - (h) the admin team dialog field;
+  - (i) the sidebar "On-call" item;
+  - (j) the board-hero chip (`getDashboardData.onCall`, `hero.jsx`);
+  - (k) `phone` on the redactor key list.
+- **Verified:**
+  - `yarn lint` clean;
+  - `prisma validate` + `migrate status`: **16 migrations, up to date**;
+  - §9 `SupportPoc` block and `Team.onCallHeadcount` **byte-identical** to `schema.prisma` (diffed);
+  - **cold, env-free build on Node 22.22.2** (scratch copy, no `.env*`): exit 0, **67 ƒ Dynamic**,
+    **0 warnings** (grepped from the log);
+  - **12/12 pure fixtures** (`resolveOnCallSprint` between cycles / all future / latest wins /
+    exact boundary / 1 ms before; `bugPulse` mixed / duplicate key / empty / missing progress) and
+    **7/7 zod checks**;
+  - **API + page smoke 28/28** on `next start` + Neon:
+    - EM A→200, EM B→403, MEMBER→403, admin→200, signed out→401;
+    - over cap → 400 `details.cap = 2`; two primaries / case-duplicate email → 400;
+    - CLOSED → 409; unknown sprint or team → 404;
+    - failed PUTs leave rows untouched; the admin PATCH raises the cap to 3; a second PUT replaces;
+    - a no-team viewer sees every POC with no `canEdit` and no roster or member emails;
+    - an EM can edit only their own team and sees only their own roster;
+    - the `?sprint=` and `?team=` deep links work, and the hero chip data is right;
+    - the bug-pulse fixture reads 1/2 and 1/1;
+    - **live team "GM Integrations" pulse = an independent SQL hand count** (External 3 open / 11,
+      Internal 2 open / 3);
+    - fixtures torn down to **0 rows**;
+  - a forced `ErrorLog` write with `phone` / `phoneNumber` keys reads **`[redacted]`** (row
+    deleted);
+  - **headless Chrome**, 6 views (`/oncall`, `?team=` focus, edit dialog, search, board, admin) × 2
+    themes × 390 / 1440 px = **24 renders, 0 horizontal overflow, 0 console errors**, re-shot after
+    the polish fixes.
+- **Pending:**
+  - Naveen's authed browser pass and one real rotation (Nov Dev / Dec 26) entered end to end;
+  - Naveen runs the **office DB bundle for migration 16**, before the image rolls out. It was
+    generated with `--applied-through …add_security_tracker` (office head confirmed at 15,
+    2026-11-01) and rehearsed on a throwaway PostgreSQL 15.17 (happy path, Prisma status/deploy/diff
+    clean, 5/5 refusals): `output/storyboard-dba-migration-2026-11-01-add_support_oncall/`;
+  - the commit.
 
 ## Decisions
 
@@ -336,3 +385,87 @@ above the list.
 - Precedents: `SprintCapacity` (per (team, sprint) admin data), `program-rollup.md` (self-contained
   admin data + picker), `security-vulnerability-tracker.md` (any-signed-in audience),
   `needs-attention-roster.md` (`Team.memberEmails`).
+
+## As-built notes (vs. the spec)
+
+1. **Branch base.** The spec said to cut from `main` after the Modern theme PR merged. That PR is
+   pushed (`tekion/feature/modern-artifact-theme`) but not merged, so this branch is stacked on it
+   (cb7891a) to build on the new tokens as intended. Retarget the PR to `main` after Modern merges.
+   The merge commit cb7891a also re-added `src/components/security/look.jsx`, which Modern had
+   deleted; it is unrelated to this feature and left untouched here.
+2. **`formatRotationWindow` uses local time, not `formatDateUTC`.** Sprint dates are entered as an
+   IST midnight and stored as 18:30Z, so a UTC-pinned label read one day early ("Sep 16" for a
+   Sep 17 start). It now formats like the board's `formatDate` / `formatSprintWindow`, and is
+   called in the client directory (as the board hero does) instead of being shipped from the
+   loader.
+3. **`DEFAULT_ONCALL_HEADCOUNT` and `onCallCap(team)` live in `rotation.mjs`**, because the route,
+   the loader and the admin dialog's placeholder all need them, and that module is client-safe.
+4. **Program groups use a plain heading** (Layers icon + name + team count), not `ProgramChip`.
+   `ProgramChip` draws in `on-hero` tokens, which are white tints under Tekion and would be
+   invisible on the page background.
+5. **The hero search box** reuses the `onDark` glass treatment of `Select` (Input has no `onDark`
+   variant); under Modern it becomes a plain light input like the select.
+6. **Edit dialog details:** email suggestions use a native `<datalist>` (roster ∪ members; picking
+   one prefills an empty name). The Primary is a radio across rows plus "No primary". A fully blank
+   row is dropped on save rather than failing validation. Footer-start shows "N of cap". Add row
+   reads "Cap of N reached" at the cap. Reorder was not built (optional in the spec); row order is
+   `sortOrder`.
+7. **Phone validation:** optional, ≤ 40 chars, digits, spaces and `+ - ( ) .` only. Blank phone and
+   area are stored as null.
+8. **Copy button** copies "Name · phone · email" (one paste for PagerDuty or Slack). It sits in the
+   POC's name row so it never wraps onto its own line at 390 px.
+9. **Board chip without a Primary** shows the first POC by `sortOrder` with "+N".
+10. **Loader** restricts the pulse's progress query to the keys in the SUPPORT / INTERNAL_BUG
+    filters, and computes `canEdit` as manager AND sprint not CLOSED (so a closed rotation shows no
+    Edit button, and no suggestions are loaded for it).
+11. **The redaction check** used a direct `recordError` write with `phone` keys, the exact path a
+    route 500 takes, rather than a real 500 from this route, because the route never puts phone
+    numbers in error details.
+12. **Verification ran on a scratch copy** (`next start -p 3010`, built with no `.env*`). Naveen's
+    running dev server had the pre-migration Prisma client cached (`Unknown field supportPocs`), and
+    building in place would clobber its `.next`, so it was left alone. **Restart `yarn dev` before
+    opening `/oncall` locally.**
+13. **Gap, not built (spec scope only named the sidebar):** the mobile top bars have no "On-call"
+    link. Below `lg`, people reach `/oncall` through the board-hero chip or a bookmark. Worth a
+    one-line follow-up if Support uses phones heavily.
+14. **Program picker (added 2026-10-25, Naveen).** Teams grow to 40–60 once all six programs are
+    onboarded, so the hero gained a program dropdown ("All programs", each program, "No program"),
+    in the `/rollup` picker's shape. It filters instantly on the client (every team is already
+    loaded) and is kept in `?program=` via `history.replaceState`. It opens on the viewer's own
+    program when all their teams share one (`defaultProgramId` from the loader), else All.
+    **Search always spans every program**, with a "Search covers every program." note, because
+    Support rarely knows which program owns a module. `?team=` overrides `?program=` so the focused
+    card is always on screen; an unknown `?program=` falls back to the default. Verified: env-free
+    build (67 ƒ, 0 warnings), 15/15 headless behaviour checks, no overflow at 390/768/1280/1440 in
+    both themes.
+15. **Roster contacts and a member picker (added 2026-10-25, Naveen).** Admins will put every
+    developer on the team roster, so the POC dialog now picks from that list instead of retyping.
+    - **Storage:** a new `RosterContact` (email `@unique`, optional `displayName` and `phone`,
+      FK-less `updatedById`), keyed **per person** so one phone serves every roster that lists them.
+      `Team.memberEmails` is untouched, so the Needs-attention JQL can't be affected.
+    - **Admin:** the team dialog keeps the roster textarea and adds a "Contact details" list derived
+      live from it (email, name, phone per row; edits survive retyping the textarea). Saved through
+      the existing team POST/PATCH as `rosterContacts`, split off before `prisma.team.*` and written
+      in the same interactive transaction (`lib/teams/roster-contacts.js`). Only emails on the saved
+      roster are written; a row with neither name nor phone deletes that person's contact; contacts
+      for emails dropped from this roster are kept. No new route (still **67 ƒ**).
+    - **Picker:** each POC row has a "Person" dropdown listing everyone an admin added to the team
+      (roster ∪ memberships), **signed in or not**, name from the contact first, then
+      `User.displayName`, email as a second line. A pick fills name and phone (copied into the POC,
+      still editable; past rotations keep the number on duty then). Members picked in another row
+      are disabled. "Someone not on the roster…" brings back the typed email. The `<datalist>` is gone.
+    - **Privacy:** suggestions (now with phones) are still sent only for teams the viewer can edit;
+      admin-only `/admin` carries the rest. `phone` keys were already redacted (re-verified with
+      `rosterContacts` in a forced `ErrorLog` write).
+    - **Migration:** folded into migration 16. It was uncommitted and not on the office DB, and Neon
+      held 0 `SupportPoc` rows and 0 headcounts, so 16 was reverted by hand on Neon (drop table,
+      drop column, delete the `_prisma_migrations` row) and regenerated as
+      `20261025180446_add_support_oncall` (Team column + `SupportPoc` + `RosterContact`). Still
+      **16 migrations**; one office bundle.
+    - **Verified:** 18/18 API and loader checks (upsert, clear, off-roster ignored, bad phone /
+      duplicates / > 200 → 400, LEAD → 403, team ADMIN → 200, POST, editor sees phones, viewer
+      doesn't); headless picker and admin-dialog flows at 1440 Tekion and 390 Modern (pick fills,
+      duplicates disabled, keyboard pick, someone-else email, saves persist); the earlier 28/28
+      on-call smoke still passes.
+16. **Themed dropdown everywhere** (Naveen: no native dropdowns). The picker needed a real list with
+    a second line, so the shared `Select` was rebuilt app-wide; see `themed-select.md`.

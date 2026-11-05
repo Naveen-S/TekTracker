@@ -20,8 +20,9 @@
  *                          what `prisma migrate deploy` re-verifies at every container boot)
  *   02-verify.sql          READ ONLY — asserts the full history + the new objects exist
  *   README.md · migration-manifest.json · SHA256SUMS
- * VALIDATION.md is written by hand after the local rehearsal (see the `dba-migration-bundle`
- * skill), then `shasum -a 256` is re-run so SHA256SUMS covers it.
+ * Then rehearse it with `bash scripts/dba-migration-rehearse.sh <bundle-dir>`, write VALIDATION.md
+ * from its output (see the `dba-migration-bundle` skill), and run the same script with `--finalize`
+ * so SHA256SUMS covers VALIDATION.md and the zip is rebuilt.
  *
  * Usage (from the repo root):
  *   node scripts/dba-migration-bundle.mjs --applied-through <last migration already on the DB>

@@ -1,6 +1,7 @@
 "use client";
 
-import { Download, Layers, Link2, ListChecks, Rocket, Sparkles, TrendingUp } from "lucide-react";
+import Link from "next/link";
+import { Download, Layers, LifeBuoy, Link2, ListChecks, Rocket, Sparkles, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   HeroCopy,
@@ -19,11 +20,30 @@ const WELCOME_FEATURES = [
   { icon: TrendingUp, label: "Leadership-ready metrics", detail: "Health, velocity, and risk at a glance" },
 ];
 
+/**
+ * "On call: {Primary} +N" (support-oncall.md (j)) — the selected team's Support POCs for this
+ * sprint, linking to their card on /oncall. Same quiet on-hero pill as ProgramChip.
+ */
+function OnCallChip({ onCall, teamId, sprintId }) {
+  return (
+    <Link
+      href={`/oncall?team=${teamId}&sprint=${sprintId}`}
+      className="inline-flex items-center gap-1.5 rounded-full bg-on-hero-tint/10 px-2.5 py-1 text-[11px] font-semibold text-on-hero/80 ring-1 ring-on-hero-tint/15 transition-colors hover:bg-on-hero-tint/15 hover:text-on-hero"
+      title={onCall.isPrimary ? "Primary Support POC — open the on-call directory" : "Open the on-call directory"}
+    >
+      <LifeBuoy className="size-3 text-on-hero-accent" aria-hidden="true" />
+      On call: {onCall.name}
+      {onCall.others > 0 && <span className="text-on-hero/60">+{onCall.others}</span>}
+    </Link>
+  );
+}
+
 export function Hero({
   showWelcome,
   completion,
   sprint,
   team,
+  onCall = null,
   onConfigureSprint,
   onAddFilter,
   onShare,
@@ -82,7 +102,12 @@ export function Hero({
     <HeroShell className="flex flex-col gap-5 px-5 py-6 md:px-8 md:py-7">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          {team.program && <ProgramChip name={team.program.name} className="mb-2" />}
+          {(team.program || onCall) && (
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              {team.program && <ProgramChip name={team.program.name} />}
+              {onCall && <OnCallChip onCall={onCall} teamId={team.id} sprintId={sprint.id} />}
+            </div>
+          )}
           <HeroEyebrow>
             {sprint.name} · {formatSprintWindow(sprint)}
           </HeroEyebrow>

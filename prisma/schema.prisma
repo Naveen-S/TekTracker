@@ -136,6 +136,10 @@ model Team {
   /// NOT app users and grant NO access; they need not have signed in. Empty ⇒ no NA track is
   /// generated for this team (an empty roster deletes any existing NA filter on next sync).
   memberEmails          String[]
+  /// Admin-set cap on how many Support on-call POCs the team may nominate per sprint
+  /// (support-oncall.md decision 4; the Confluence "Final Headcount" column). `null` ⇒ the code
+  /// default DEFAULT_ONCALL_HEADCOUNT (2 — one FE + one BE). Enforced by the on-call PUT.
+  onCallHeadcount       Int?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
@@ -147,6 +151,7 @@ model Team {
   statusMappings  StatusStageMapping[]
   subComponents   JiraSubComponent[]
   capacities      SprintCapacity[]
+  supportPocs     SupportPoc[]
 
   @@index([programId])
 }
@@ -238,6 +243,7 @@ model Sprint {
   snapshots        SprintSnapshot[]
   sharedViews      SharedView[]
   capacities       SprintCapacity[]
+  supportPocs      SupportPoc[]
 
   @@index([state])
 }
@@ -427,6 +433,43 @@ model SprintCapacity {
 
   @@unique([sprintId, teamId])
   @@index([sprintId])
+}
+
+/// A team's Support on-call POC for one sprint's rotation (support-oncall.md). Keyed (team, sprint)
+/// like SprintCapacity; nothing carries over between sprints. Display-only — never a §12 metric
+/// input. ≤ 1 isPrimary per (team, sprint) and the per-team headcount cap are enforced by the
+/// replace-all PUT over one validated list (no partial unique index — Prisma would see it as drift).
+model SupportPoc {
+  id          String   @id @default(cuid())
+  teamId      String
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sprintId    String
+  sprint      Sprint   @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  email       String                       // lowercased Jira identity; need not be an app User
+  displayName String
+  phone       String?                      // PII — redacted at the logging boundary (§13)
+  area        String?                      // free text: "BE", "FE", "SCX", "OX"…
+  isPrimary   Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  updatedById String?                      // no FK (ErrorLog reasoning: survive user deletion)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([teamId, sprintId, email])
+  @@index([sprintId])
+}
+
+/// Contact details for a roster person (support-oncall.md as-built 15), keyed by the lowercased
+/// Jira email so one person has one phone even across rosters. Not a User (need not have signed
+/// in) and grants no access. Feeds the on-call dialog's member picker; never a §12 input.
+model RosterContact {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  displayName String?
+  phone       String?                      // PII — redacted at the logging boundary (§13)
+  updatedById String?                      // no FK (ErrorLog reasoning)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // ─────────────────────────────────────────────────────────────

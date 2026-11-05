@@ -339,6 +339,7 @@ export function BugReportConfig({ reports, config, statusVocabulary, priorityVoc
                     <div className="flex flex-col gap-1">
                       <Label>Source</Label>
                       <Select
+                        aria-label={`Source for ${scope.name || `scope ${index + 1}`}`}
                         value={scope.sourceType}
                         onChange={(event) =>
                           setScopes((prev) =>

@@ -64,6 +64,35 @@ export default async function AdminPage() {
     prisma.sprintCapacity.findMany({ orderBy: { sprintId: "asc" } }),
   ]);
 
+  // Roster contact details (support-oncall.md as-built 15) for the team dialog's "Contact details"
+  // list, plus the names of roster people who have signed in (shown as placeholders).
+  const rosterEmails = [...new Set(teams.flatMap((team) => team.memberEmails))];
+  const [rosterContacts, rosterUsers] = rosterEmails.length
+    ? await Promise.all([
+        prisma.rosterContact.findMany({
+          where: { email: { in: rosterEmails } },
+          select: { email: true, displayName: true, phone: true },
+        }),
+        prisma.user.findMany({
+          where: { email: { in: rosterEmails, mode: "insensitive" } },
+          select: { email: true, displayName: true },
+        }),
+      ])
+    : [[], []];
+  const contactByEmail = new Map(rosterContacts.map((contact) => [contact.email, contact]));
+  const userNameByEmail = new Map(
+    rosterUsers.map((rosterUser) => [rosterUser.email.toLowerCase(), rosterUser.displayName]),
+  );
+  const teamsWithContacts = teams.map((team) => ({
+    ...team,
+    rosterContacts: team.memberEmails.map((email) => ({
+      email,
+      displayName: contactByEmail.get(email)?.displayName ?? "",
+      phone: contactByEmail.get(email)?.phone ?? "",
+      signedInName: userNameByEmail.get(email) ?? "",
+    })),
+  }));
+
   // Recent server-side failures (observability-and-errors.md). Read here rather than through a new
   // API route: the page is already global-admin-gated, and router.refresh() re-reads it. Guarded
   // because the ErrorLog table only exists once migration 13 has been deployed to this environment
@@ -109,7 +138,7 @@ export default async function AdminPage() {
       askContext={{ page: "other", label: "Your teams" }}
     >
       <AdminPanel
-        teams={teams}
+        teams={teamsWithContacts}
         programs={programs}
         sprints={sprints}
         jiraComponents={jiraComponents}

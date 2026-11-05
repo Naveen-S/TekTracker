@@ -30,8 +30,11 @@ const LEVELS = { debug: 10, info: 20, warn: 30, error: 40 };
  * therefore redacted without anyone having to remember. The two login call sites that legitimately
  * need to say *who* pass {@link maskEmail} output under a key that deliberately does NOT match this
  * pattern (`actor`) — the value is already masked, so re-redacting it would only destroy triage.
+ *
+ * `phone` is here for the same reason (support-oncall.md (k)): Support on-call POCs carry personal
+ * phone numbers, and none may reach stdout or `ErrorLog.details` under any key containing "phone".
  */
-const SECRET_KEY = /token|secret|password|authorization|cookie|api[-_]?key|credential|email/i;
+const SECRET_KEY = /token|secret|password|authorization|cookie|api[-_]?key|credential|email|phone/i;
 
 /**
  * Secret shapes that appear inside FREE TEXT, where key-based redaction cannot reach.

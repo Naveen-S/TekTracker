@@ -1,79 +1,72 @@
 # Current Feature
 
-**Modern = the artifact look — replace the blue Modern theme app-wide**
-(@context/features/modern-artifact-theme.md). Switching to Modern gives every StoryBoard page the
-claude.ai vulnerability-tracker artifact's look: lavender→peach page, white cards with lavender
-borders, a light header card with a purple→pink→orange gradient title, gradient KPI stripes, a
-purple accent with blue→purple gradient primaries, artifact-coloured status chips and charts.
-Picked next because Naveen liked the `/security` artifact look (as-built 14–18) and wants it as
-the whole app's Modern theme; it also retires `/security`'s look toggle (and its flash).
+**Support on-call — per-sprint Support POCs + Primary POC directory at `/oncall`**
+(@context/features/support-oncall.md). Moves the per-release Confluence "AEC Support POD POC
+Details" page into StoryBoard: managers nominate each team's Support POCs per sprint (one optional
+Primary, up to an admin cap), and anyone signed in, Support included, finds the right person by
+team, module or name, with the team's open External / Internal bug counts beside them. Picked next
+because it was queued behind the Modern theme and is built on its tokens.
 
 ## Status
 
-**Done 2026-10-24 · verified · uncommitted** on `feature/modern-artifact-theme` (cut from
-`3129931`).
-- **Decisions:** O1 = light, O2 = themed.
-- **Amended during the build:**
-  - gradient-bordered, tinted header and scoreboard;
-  - a light sidebar;
-  - status colours app-wide;
-  - a theme-aware logo and favicon;
-  - a View Transition theme switch;
-  - micro-animations.
+**Done 2026-10-24 · verified · uncommitted** on `feature/support-oncall`, **stacked on
+`feature/modern-artifact-theme`** (retarget to `main` once that PR merges).
 - **Verification:**
   - lint 0;
-  - 15 migrations, up to date;
-  - cold env-free build: exit 0, **65 ƒ**, **0 warnings**;
-  - **60 headless renders** (10 pages × 2 themes × 3 widths): 0 console errors, 0 overflow;
-  - Tekion vs baseline: identical except intended changes and live data;
-  - switching: back to Tekion exactly, and no flash with JS blocked;
-  - exports measure the same in both themes.
-- **Pending:** Naveen's authed browser pass and commit.
+  - **16 migrations**, up to date (`add_support_oncall`, regenerated 2026-10-25 with
+    `RosterContact`); the §9 `SupportPoc` / `RosterContact` blocks and `Team.onCallHeadcount` are
+    byte-identical to the schema (10 older models differ only in comment wording, already on `main`);
+  - cold env-free Node 22 build: exit 0, **67 ƒ**, **0 warnings**;
+  - 12/12 pure fixtures + 7/7 zod;
+  - **API/page smoke 28/28** (RBAC, cap, primaries, 409/404, no roster leak, the live-team pulse
+    equals an SQL hand count);
+  - phone redacted in `ErrorLog.details`;
+  - **24 headless renders** (390/1440 × Tekion/Modern): 0 overflow, 0 console errors.
+- **Added 2026-10-25 (Naveen):** an `/oncall` program picker; roster contact details (name + phone)
+  in the admin team dialog and a one-pick member dropdown in the POC dialog (`RosterContact`,
+  folded into migration 16); and a **themed dropdown app-wide** replacing every native select
+  (themed-select.md). Verified: env-free build 67 ƒ / 0 warnings, 18/18 roster API checks, 28/28
+  on-call smoke, 23/23 program-picker checks, headless dialog flows and an app-wide dropdown sweep
+  (8 pages + 7 dialogs, both themes, 390/1440), redaction re-checked.
+- **Pending:**
+  - Naveen restarts `yarn dev` (his running server has the pre-migration Prisma client cached);
+  - his authed pass, plus one real rotation entered;
+  - Naveen runs the office DB bundle for migration 16 (generated and rehearsed 2026-11-01:
+    `output/storyboard-dba-migration-2026-11-01-add_support_oncall/`, `00` → `01` → `02`) before the image rolls out;
+  - the commit.
 
-**Next:** Naveen commits this branch. Then context/features/support-oncall.md, which is queued
-(it moves the invariants to 67 ƒ / 16 migrations).
+**Next:** Naveen commits both branches (Modern first), runs the migration-16 office bundle, then
+the carried-over security-tracker items below.
 
-Carried over from the security tracker (committed in `3129931`): Naveen's office DB bundle for
-migration 15 (`00` → `01` → `02` → `02b`) before the image rolls out, the same-morning parity check
+Carried over from the security tracker (committed in `3129931`; its migration-15 office bundle has
+been run, confirmed by Naveen 2026-11-01): the same-morning parity check
 against the artifact, and setting `workbenchUrl` in Admin → Security tracker. Then PR 2
 (`feature/security-tracker-updates`).
 
 ## Goals
 
-- **Phase 0** — temporary dev-only `?mt=dark|light` / `?mx=fixed|themed` switch (sessionStorage) so
-  Naveen can see O1/O2 on the real board, a dialog, a toast, the loader, the countdown and a sprint
-  export page. Stop for his decision; delete the switch in Phase 5.
-- **Phase 1 — tokens + frame** (`src/app/globals.css`, `src/components/ui/*`): rewrite
-  `:root.theme-modern` with artifact values (purple `--primary`, lavender neutrals, `--ink #241e33`,
-  sidebar, `--chart-cat-*`, radius), the `--bg-app` page gradient, gradient `Button` default +
-  sidebar active item, lavender `::selection`, artifact-tinted status chips.
-- **Phase 2 — light headers** (`ui/hero-shell.jsx` + hero users): `--on-hero*` tokens (Tekion
-  byte-identical), white header card + gradient title under Modern, theme-aware `onDark`
-  `Button`/`Select`, `text-white` → on-hero tokens inside hero subtrees only.
-- **Phase 3 — shared components:** lavender cards (`bugs/panel.jsx`, admin `SectionCard`,
-  `security/kit.jsx` `SecPanel`, skeletons), gradient KPI stripes (`metric-grid`, `bug-kpi-cards`,
-  security `Kpi`), charts on the validated Modern `--chart-cat-*` set.
-- **Phase 4 — fold `/security` into the theme:** delete `security/look.jsx` + the
-  `sprintTracker_securityLook` writer, re-key the `sec-*` overrides to the theme, drop the emoji,
-  one header.
-- **Phase 5** — build Naveen's O1/O2 choices, then remove the Phase 0 switch (grep `mt=` / `mx=`).
+- **Schema** (`prisma/schema.prisma`): `SupportPoc` (team, sprint) + `Team.onCallHeadcount`;
+  migration 16.
+- **Pure logic** (`src/lib/oncall/rotation.mjs`, `pulse.mjs`): current rotation, window label,
+  cap, bug pulse.
+- **Zod** (`src/lib/schemas/oncall.js`, `team.js`): list rules (≤ 1 Primary, unique emails, ≤ 50).
+- **API** `PUT /api/teams/[teamId]/sprints/[sprintId]/oncall`: replace-all, `TEAM_MANAGER_ROLES`,
+  cap, CLOSED → 409.
+- **Loader** (`src/lib/oncall/data.js`): every team, batched; editor-only suggestions.
+- **UI**: `/oncall` (`src/app/oncall/*`, `src/components/oncall/*`), edit dialog, admin headcount
+  field, sidebar item, board-hero chip.
+- **Redaction** (`src/lib/log.js`): `phone` on the key list.
+- **Roster contacts** (`RosterContact`, `src/lib/teams/roster-contacts.js`, team POST/PATCH,
+  admin dialog) + the POC member picker; **themed `Select`** (`src/components/ui/select.jsx`).
 
 ## Notes
 
-- **Mechanism unchanged:** `theme-modern` on `<html>`, `THEME_INIT` in `layout.jsx` before first
-  paint, `useLocalPref("theme")`, stored value `"modern"`. No new theme, label or key.
-- **`modern:` is `&:is(.theme-modern *)`** — matches descendants of `<html>`, never `<html>` itself.
-- **Never hard-code a hex in a component** — add a token. Tailwind v4: `@theme` / `@custom-variant`
-  / `@utility` in `globals.css`; no config file, no inline styles.
-- **Tekion must be byte-identical** except listed decision-14 tweaks; before/after screenshots of
-  every page at 1440 px prove it.
-- **Gradient text** keeps icons outside the clip and has a solid fallback for forced colours.
-- **Exports render from the live DOM** — the `theme-modern` class reaches the offscreen print pages,
-  so O2 (a) needs a token reset scoped to the print subtree.
-- **Chart palette:** validate with the dataviz `validate_palette.js` (light, vs the white card);
-  never eyeball. If O1 = light, re-run the scoreboard ΔE check (CIEDE2000 + Machado CVD).
-- **Restart the dev server after `globals.css` changes** before any screenshot.
-- **Invariants unchanged: 65 ƒ Dynamic / 15 migrations.** No schema change, no new route.
+- **Sprint dates are IST midnights stored as 18:30Z.** Format sprint dates in local time (like
+  `formatDate`); a UTC-pinned label reads one day early.
+- **A running dev server caches the Prisma client.** After a migration, it throws "Unknown field"
+  until restarted. Smoke against a scratch-copy `next start` instead of stopping Naveen's server.
+- **The on-call PUT never logs its body**; `phone` redaction is the safety net.
+- **Viewers never receive a team's roster:** `suggestions` is null unless `canEdit`.
 
 ## Carry-forward — critical for any new feature
 
@@ -83,8 +76,9 @@ details live in [legacy-history.md](legacy-history.md); house conventions live i
 layer that sits between them.)
 
 **Repo / branch state (2026-09-04)**
-- **Baseline invariants to preserve:** **65 ƒ Dynamic** routes / **15 Prisma migrations**
-  (…`add_security_tracker`, 2026-10-20). The path there: 50 / 13 through `add_error_log`, then the
+- **Baseline invariants to preserve:** **67 ƒ Dynamic** routes / **16 Prisma migrations**
+  (…`add_support_oncall`, 2026-10-24: `/oncall` + its PUT route, +1 migration, on top of 65 / 15 at
+  …`add_security_tracker`, 2026-10-20). The path there: 50 / 13 through `add_error_log`, then the
   Claude Connector (+7 routes / +1 migration), then Ask StoryBoard (+2 routes: `/api/ask` and `/ask`,
   2026-10-05), then the ElevenLabs answer voice (+1: `/api/ask/speech`) — 60 / 14 on `main` @
   `6ace5c0` — then the security tracker (+5: `/security` + four `/api/security/*`, +1 migration). Node 22, dev on **:3002**. A feature that changes either count must say so and justify
@@ -100,9 +94,12 @@ layer that sits between them.)
   - Every new migration gets an incremental psql bundle from the `dba-migration-bundle` skill
     (`scripts/dba-migration-bundle.mjs`). Naveen applies it via the jumpserver **before** the image
     rollout.
-  - **Office DB head:** 14 migrations (`…add_claude_connector`), confirmed by Naveen 2026-10-20.
-  - The bundle for 15 (`…add_security_tracker`, + `02b-seed.sql`) is generated and rehearsed
-    (2026-10-20) and **pending Naveen's run**. Once he confirms it, update this head to 15.
+  - **Office DB head:** 15 migrations (`…add_security_tracker`), confirmed by Naveen 2026-11-01.
+    *(It was 14 (`…add_claude_connector`) as of 2026-10-20; the bundle for 15, + `02b-seed.sql`,
+    has since been run.)*
+  - The bundle for 16 (`…add_support_oncall`, incl. `RosterContact`) is generated and rehearsed
+    (2026-11-01, `output/storyboard-dba-migration-2026-11-01-add_support_oncall/`) and **pending Naveen's run**. Once he confirms it, update this
+    head to 16.
   - The bundle for 14 (`…add_claude_connector`) has been **run by Naveen** (confirmed 2026-10-20).
     *(It was refreshed and re-rehearsed 2026-10-09 at `bc47524`, with the same DDL and checksum.)*
 - **`main` is at `c8c2731`** ("Editable filters.") — it carries editable filters, the roll-up export
@@ -242,3 +239,50 @@ migration and every post-v1 feature) has been archived to
 [legacy-history.md](legacy-history.md) to keep this file focused on the current feature.
 
 Append new "Done" entries there, earliest → latest.
+- 2026-10-24 — Picked context/features/support-oncall.md as the current feature (per-sprint Support POCs + Primary, `/oncall` directory with a bug pulse).
+- 2026-10-24 — **Implemented the Support on-call directory.**
+  - **What shipped:**
+    - `SupportPoc` (team, sprint) + `Team.onCallHeadcount` (migration `add_support_oncall`, **16**);
+    - pure `lib/oncall/{rotation,pulse}.mjs`;
+    - the replace-all `PUT …/oncall` (`TEAM_MANAGER_ROLES`, cap, ≤ 1 Primary, CLOSED → 409);
+    - the batched `getOnCallData` (roster sent only to editors);
+    - `/oncall` with program-grouped cards (Primary first, tel/mailto/copy, modules, bug pulse "as on
+      the board", search, sprint picker, `?team=` focus ring);
+    - the edit dialog, admin headcount field, sidebar item and board-hero "On call" chip;
+    - `phone` on the redactor list.
+  - **Verification:**
+    - lint 0; 16 migrations up to date;
+    - cold env-free Node 22 build: **67 ƒ**, 0 warnings;
+    - 12 pure fixtures + 7 zod checks; **28/28 API/page smoke** (incl. a live-team pulse equal to an
+      SQL hand count);
+    - phone redacted in `ErrorLog`;
+    - 24 headless renders with 0 overflow and 0 errors.
+  - **As-built:**
+    - stacked on `feature/modern-artifact-theme` (not yet merged);
+    - the rotation window is local-time because IST-midnight dates read a day early in UTC;
+    - plain program headings rather than `ProgramChip`;
+    - no mobile top-bar link (gap noted).
+  - **Done.**
+  - **Next:** Naveen's authed pass and commit, then the migration-16 DB bundle.
+- 2026-10-25 — **Extended the on-call feature (Naveen).**
+  - **What shipped:**
+    - an `/oncall` program picker (client-side filter, `?program=`, opens on the viewer's own
+      program, search spans all programs);
+    - `RosterContact` (email-keyed name + phone), folded into migration 16 after reverting it on
+      Neon (0 rows lost; still 16 migrations), saved through the team POST/PATCH as
+      `rosterContacts` in one transaction;
+    - a "Contact details" list in the admin team dialog;
+    - a "Person" picker in the POC dialog (roster ∪ members, signed in or not; a pick fills name +
+      phone; duplicates disabled; "Someone not on the roster…" for typed emails);
+    - the shared `Select` rebuilt as a themed drop-in across all 30 dropdowns (portal list, filter
+      box above 8 options, hints, keyboard, Esc-safe inside dialogs), plus `aria-label`s on three
+      admin selects that had none.
+  - **Verification:** lint 0 on `src/`; env-free Node 22 build 67 ƒ / 0 warnings; 18/18 roster
+    API + loader checks; 28/28 on-call smoke; 23/23 program-picker checks; headless picker,
+    admin-dialog and dialog-dropdown flows; app-wide dropdown sweep at 390/1440 in both themes;
+    redaction re-checked; fixtures torn down to 0.
+  - **Noticed, not changed:** 10 §9 models differ from `schema.prisma` in comment wording only
+    (fields identical, already on `main`); `yarn lint` also scans `.claude/worktrees/` from another
+    session (794 problems there, 0 in `src/`).
+  - **Next:** Naveen's authed pass and commit; the migration-16 office bundle (now including
+    `RosterContact`).

@@ -2714,3 +2714,22 @@ context/features/editable-filters.md.
   - **Invariants unchanged:** 65 ƒ / 15 migrations, no schema change, §12 untouched.
   - **Done.**
   - **Next:** Naveen's authed pass and commit, then context/features/support-oncall.md.
+- 2026-10-24 — **Support on-call directory (`/oncall`)** (support-oncall.md).
+  - **What shipped:** per-sprint Support POCs with one optional Primary per team, an admin cap
+    (`Team.onCallHeadcount`, default 2), and an org-wide directory any signed-in user can search
+    by team, module or person, with a read-only External / Internal bug pulse from the board's own
+    tracks.
+  - **Invariants:** 65 → **67 ƒ**, 15 → **16 migrations**.
+  - **Verification:** lint, env-free Node 22 build, 12 fixtures + 7 zod checks, 28/28 smoke, and 24
+    headless renders, all green.
+  - **Uncommitted;** stacked on the Modern theme branch.
+- **2026-10-25 — On-call extensions + themed select (Naveen).** support-oncall.md as-built 14–16,
+  themed-select.md.
+  - **What:** an `/oncall` program picker; email-keyed `RosterContact` (name + phone) entered in the
+    admin team dialog and picked in the POC dialog; the shared `Select` rebuilt as a theme-matched
+    drop-in for all 30 dropdowns.
+  - **Migration:** `RosterContact` folded into migration 16 (reverted by hand on Neon with 0 rows,
+    regenerated as `20261025180446_add_support_oncall`); still **67 ƒ / 16 migrations**.
+  - **Verification:** env-free build, 18/18 roster API checks, 28/28 on-call smoke, 23/23 picker
+    checks, headless dialog flows and an app-wide dropdown sweep, all green.
+  - **Uncommitted;** stacked on the Modern theme branch.

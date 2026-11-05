@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth";
 import { requireAdmin } from "@/lib/rbac";
 import { withRoute, parseJsonBody } from "@/lib/api/route-helpers";
 import { teamCreateSchema } from "@/lib/schemas/team";
+import { saveRosterContacts } from "@/lib/teams/roster-contacts";
 
 export const dynamic = "force-dynamic";
 
@@ -25,8 +26,12 @@ export const GET = withRoute("teams", async () => {
 });
 
 export const POST = withRoute("teams", async (request) => {
-  await requireAdmin();
-  const data = await parseJsonBody(request, teamCreateSchema);
-  const team = await prisma.team.create({ data });
+  const user = await requireAdmin();
+  const { rosterContacts, ...data } = await parseJsonBody(request, teamCreateSchema);
+  const team = await prisma.$transaction(async (tx) => {
+    const created = await tx.team.create({ data });
+    if (rosterContacts) await saveRosterContacts(tx, created.memberEmails, rosterContacts, user.id);
+    return created;
+  });
   return Response.json(team);
 });
