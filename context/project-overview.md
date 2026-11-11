@@ -6,7 +6,7 @@
 > **[BUILT]**, **[PARTIAL]**, **[PLANNED]**, or **[GAP]** so the as-built state is never confused
 > with the target state.
 >
-> Last reviewed: 2026-10-24 · Owner: Naveen · Audience: engineers + Claude Code.
+> Last reviewed: 2026-11-10 · Owner: Naveen · Audience: engineers + Claude Code.
 >
 > **Rename note (2026-07-31):** the product was renamed to **StoryBoard** (was "Sprint Tracker",
 > earlier codename "Tek Tracker" / "TekTracker"). The rename is display/branding only — no schema,
@@ -107,7 +107,9 @@ Key relationships:
 - **Velocity** — Story points completed per week (**all work — throughput lens**, §12), with a naive
   linear projection to sprint end (superseded by snapshot velocity where ≥2 daily snapshots exist).
 - **Sync** — Pull the latest issues for every filter from Jira Cloud (refreshes the issue list and raw
-  status; **does not** change manual stage progress).
+  status; **does not** change manual stage progress). *(**[Amended 2026-11-05]** except from two
+  Jira statuses: a completed status completes the checklist and Blocked blocks the issue —
+  sync-jira-status-rules.md.)*
 - **Share view** — Share the exact configured view with someone else (e.g. EM → senior EM/Director).
 - **Export** — A PDF/PNG report (weekly/daily leadership update) with key metrics + per-item breakdown.
 - **Delivery Matrix** — The main grid: rows are issues grouped by filter, columns are stages, with
@@ -120,11 +122,11 @@ Key relationships:
 | Feature | State | Notes |
 |---|---|---|
 | Add Jira filters (by filter ID or JQL) | **[BUILT]** | AddFilter dialog → CRUD POST + immediate sync. |
-| Update stages per work item | **[BUILT]** | Manual checklist (idempotent PUT, server-owned cascade), hybrid-seeded on sync; a per-track **"Sync stages"** button overwrites stages from live Jira status. See context/features/sync-stages-from-jira.md. |
+| Update stages per work item | **[BUILT]** | Manual checklist (idempotent PUT, server-owned cascade), hybrid-seeded on sync; a per-track **"Sync stages"** button overwrites stages from live Jira status. **[Amended 2026-11-05]** Both syncs complete the checklist for completed Jira statuses and block Jira-Blocked issues. See context/features/sync-stages-from-jira.md, sync-jira-status-rules.md. |
 | Mark work item as blocked | **[BUILT]** | Health chip → PUT blocked. |
 | Remove Jira filter | **[BUILT]** | DELETE; progress survives by design (§9). |
 | Edit Jira filter (track) | **[BUILT]** | Pencil on each Connected-JQL card → the create dialog, prefilled: name, source (Filter ID ↔ JQL), workflow type, accent colour. Re-syncs only when the source/workflow changed (a rename or recolour is a lone PATCH). Gives the step-4 `PATCH …/filters/[filterId]` its first caller; that route now refuses the generated `NEEDS_ATTENTION` track in both directions. See context/features/editable-filters.md. |
-| Sync Jira (pull live status) | **[BUILT]** | Server-side sync engine + `POST …/sync` with hybrid stage seeding. See context/features/sync-hybrid-seeding.md. |
+| Sync Jira (pull live status) | **[BUILT]** | Server-side sync engine + `POST …/sync` with hybrid stage seeding. See context/features/sync-hybrid-seeding.md. **[Amended 2026-11-05]** Applies the Jira status rules to existing rows too (completed → full checklist; Blocked → blocked, lifted only when the sync set it); the toast reports the counts. See context/features/sync-jira-status-rules.md. |
 | Configure sprint (dates, name) | **[PARTIAL]** | Admin-gated API + admin-only UI (SprintConfig dialog + `/admin`); field-discovery UI still absent. |
 | Reorder filters | **[BUILT]** | Drag → PUT `…/filters/order`. |
 | Export PDF / PNG | **[BUILT]** | Offscreen A4 pages → PDF/PNG via `html2canvas-pro` + `jsPDF` (dynamic-imported); shares the `/bugs` PDF design system via the shared export kit (`lib/export/`, `components/export/print-kit.jsx`) with clickable Jira-key chips. See context/features/export-visual-consistency.md. |
@@ -204,6 +206,13 @@ See context/features/sync-hybrid-seeding.md.
 > **overwriting** existing rows behind a confirm (resetting `updatedById` to null so it's
 > idempotent; an unmapped status never wipes a row). This is the deferred "re-seed forward" shipped
 > as an explicit, scoped action. See context/features/sync-stages-from-jira.md.
+
+> **[Amended 2026-11-05]** The always-on sync now has two status-driven exceptions to create-only:
+> an issue in a **completed** Jira status (UAT, Testing, Support Validation, Support Clarification,
+> Won't Fix, Not Applicable, Done, Closed, Released) gets its whole checklist completed, and a
+> **Blocked** Jira status blocks the row (`blockedReason` "Blocked in Jira"; lifted again only when
+> the sync set it). The per-track "Sync stages" applies the same two rules. See
+> context/features/sync-jira-status-rules.md.
 
 ---
 
@@ -1923,7 +1932,10 @@ spec-internal ambiguities to resolve.
     replaced look identical in the data. When someone asks "was my progress overwritten?", the honest
     answer today is that it cannot be determined. *Fix:* add `createdAt` (and/or record the overwriting
     action) if stage provenance ever needs auditing. **Pre-existing — surfaced 2026-08-28 while auditing
-    a report of altered filter data; not introduced by any feature.**
+    a report of altered filter data; not introduced by any feature.** **[Amended 2026-11-05]** The
+    always-on sync now overwrites too, for completed Jira statuses only (sync-jira-status-rules.md),
+    also resetting `updatedById`. `seededFromStatus` records the status that did it, but a completed
+    row still can't say whether hand-set stages were replaced.
 14. **A sync silently empties a track when Jira returns nothing.** `syncTeamSprint` REPLACES a filter's
     Issue cache with whatever the query returns, so a stale `sub-component[dropdown]` value, a renamed
     component, or a token that has lost project scope wipes the track rather than erroring — the same
@@ -2217,6 +2229,16 @@ All previously open decisions are now resolved:
     picks people from the admin roster, with names and phones from a new email-keyed
     `RosterContact` (as-built 15). Folded into migration 16 (uncommitted, not on the office DB):
     still **67 ƒ / 16 migrations**.
+
+- **Jira status rules in sync (2026-11-05, Naveen).** Amends the HYBRID stage model's "manual edits
+  win" for two Jira statuses only. **Completed** (UAT, Testing, Support Validation, Support
+  Clarification, Won't Fix, Not Applicable; plus Done, Closed and Released, added by Claude) checks
+  the whole checklist. **Blocked** sets `blocked` with the reason "Blocked in Jira", and the sync
+  lifts only a block carrying that reason. Both the top-level Sync Jira (and so the cron and
+  One-Click Sprint Start) and the per-track Sync stages apply them, the latter at Naveen's request
+  the same day. The lists live in code, not `StatusStageMapping`, so no re-seed is needed. No schema
+  change, no route: **67 ƒ / 16 migrations unchanged**; §12 untouched. See
+  context/features/sync-jira-status-rules.md.
 
 - **Themed select app-wide (2026-10-25, Naveen).** No native dropdowns: the shared `Select` is
   rebuilt in place as a drop-in (same props and `<option>` children, event-shaped `onChange`), with

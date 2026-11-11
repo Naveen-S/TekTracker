@@ -7,6 +7,9 @@
  * Invariants:
  * - IssueProgress is CREATE-ONLY here (decision 5): existing rows are never re-seeded — manual
  *   edits win. `seededFromStatus` records what seeded a row (null when no mapping matched).
+ *   Two exceptions, from the issue's Jira status (sync-jira-status-rules.md, resolveStatusRules):
+ *   a completed status completes the checklist, and a Blocked status blocks the row (lifted again
+ *   only when the sync set it).
  * - Network calls happen OUTSIDE transactions; each filter's cache replace is atomic.
  * - Progress rows whose key left every filter survive untouched (§9 decoupling).
  */
@@ -21,8 +24,12 @@ import { ensureNeedsAttentionFilter } from "@/lib/needs-attention/ensure-filter"
 import {
   buildSeededStages,
   groupStageUpdates,
+  isBlockedJiraStatus,
+  JIRA_BLOCKED_REASON,
   reshapeStageCompletion,
+  resolveBlockedRule,
   resolveStageResync,
+  resolveStatusRules,
 } from "@/lib/sync/seeding.mjs";
 import {
   getJiraAuthForUser,
@@ -110,7 +117,8 @@ function annotateTrackFailure(error, filter) {
  * Sync all filters of a team+sprint with the calling user's Jira credential.
  * @param {{ teamId: string, sprintId: string, userId: string }} args
  * @returns {Promise<{ filters: Array<object>, warnings: Array<object>, progressSeeded: number,
- *   workflowsReevaluated: number }>}
+ *   workflowsReevaluated: number, statusCompleted: number, statusBlocked: number,
+ *   statusUnblocked: number }>}
  */
 export async function syncTeamSprint({ teamId, sprintId, userId }) {
   const team = await prisma.team.findUnique({ where: { id: teamId } });
@@ -212,7 +220,14 @@ export async function syncTeamSprint({ teamId, sprintId, userId }) {
 
   const existingProgress = await prisma.issueProgress.findMany({
     where: { teamId, sprintId },
-    select: { id: true, jiraKey: true, workflowType: true, stageCompletion: true },
+    select: {
+      id: true,
+      jiraKey: true,
+      workflowType: true,
+      stageCompletion: true,
+      blocked: true,
+      blockedReason: true,
+    },
   });
   const progressKeys = new Set(existingProgress.map((progress) => progress.jiraKey));
   const mappings = await prisma.statusStageMapping.findMany({
@@ -220,12 +235,18 @@ export async function syncTeamSprint({ teamId, sprintId, userId }) {
   });
 
   // 3. Seed progress for keys that have none (create-only; sync is not a manual edit, so no
-  //    updatedById attribution).
+  //    updatedById attribution). A completed status seeds a full checklist (buildSeededStages) and a
+  //    Blocked status seeds a blocked row (sync-jira-status-rules.md).
   const toCreate = [];
+  let statusCompleted = 0;
+  let statusBlocked = 0;
+  let statusUnblocked = 0;
   for (const [jiraKey, entry] of byKey) {
     if (progressKeys.has(jiraKey)) continue;
     const workflowType = owningWorkflowType(entry.types);
     const { stages, seededFromStatus } = buildSeededStages(workflowType, entry.jiraStatus, mappings);
+    const blocked = isBlockedJiraStatus(entry.jiraStatus);
+    if (blocked) statusBlocked += 1;
     toCreate.push({
       teamId,
       sprintId,
@@ -233,36 +254,49 @@ export async function syncTeamSprint({ teamId, sprintId, userId }) {
       workflowType,
       stageCompletion: stages,
       seededFromStatus,
+      ...(blocked ? { blocked: true, blockedReason: JIRA_BLOCKED_REASON } : {}),
     });
   }
 
-  // 4. Re-evaluate owning workflows for existing rows still in the cache (decision 6).
-  const reevaluations = [];
+  // 4. Existing rows still in the cache: re-evaluate the owning workflow (decision 6), then apply
+  //    the Jira status rules on top of the reshaped stages — the only overwrite this sync makes.
+  const updates = [];
+  let reevaluated = 0;
   for (const progress of existingProgress) {
     const entry = byKey.get(progress.jiraKey);
     if (!entry) continue;
+    const data = {};
     const owning = owningWorkflowType(entry.types);
-    if (owning === progress.workflowType) continue;
-    reevaluations.push({
-      id: progress.id,
-      workflowType: owning,
-      stageCompletion: reshapeStageCompletion(progress.stageCompletion, owning),
+    let stageCompletion = progress.stageCompletion;
+    if (owning !== progress.workflowType) {
+      stageCompletion = reshapeStageCompletion(progress.stageCompletion, owning);
+      data.workflowType = owning;
+      data.stageCompletion = stageCompletion;
+      reevaluated += 1;
+    }
+    const rules = resolveStatusRules({
+      jiraStatus: entry.jiraStatus,
+      stageCompletion,
+      blocked: progress.blocked,
+      blockedReason: progress.blockedReason,
     });
+    Object.assign(data, rules.data);
+    if (rules.completed) statusCompleted += 1;
+    if (rules.blocked) statusBlocked += 1;
+    if (rules.unblocked) statusUnblocked += 1;
+    if (Object.keys(data).length > 0) updates.push({ id: progress.id, data });
   }
 
-  // Re-evaluations carry a per-row stage array, so they can't be collapsed like the stage re-sync's
-  // writes (groupStageUpdates) — raise the budget instead: each row is one round-trip to Neon and
-  // the default 5s ceiling is ~100 rows (P2028).
+  // Updates carry a per-row payload, so they can't be collapsed like the stage re-sync's writes
+  // (groupStageUpdates) — raise the budget instead: each row is one round-trip to Neon and the
+  // default 5s ceiling is ~100 rows (P2028). Only rows that actually change are written.
   await prisma.$transaction(
     async (tx) => {
       if (toCreate.length > 0) {
         await tx.issueProgress.createMany({ data: toCreate });
       }
-      for (const change of reevaluations) {
-        await tx.issueProgress.update({
-          where: { id: change.id },
-          data: { workflowType: change.workflowType, stageCompletion: change.stageCompletion },
-        });
+      for (const change of updates) {
+        await tx.issueProgress.update({ where: { id: change.id }, data: change.data });
       }
     },
     { timeout: 30_000 },
@@ -272,7 +306,10 @@ export async function syncTeamSprint({ teamId, sprintId, userId }) {
     tracks: filterSummaries.length,
     issues: filterSummaries.reduce((sum, filter) => sum + filter.total, 0),
     progressSeeded: toCreate.length,
-    workflowsReevaluated: reevaluations.length,
+    workflowsReevaluated: reevaluated,
+    statusCompleted,
+    statusBlocked,
+    statusUnblocked,
     warnings: warnings.length,
   });
 
@@ -280,7 +317,10 @@ export async function syncTeamSprint({ teamId, sprintId, userId }) {
     filters: filterSummaries,
     warnings,
     progressSeeded: toCreate.length,
-    workflowsReevaluated: reevaluations.length,
+    workflowsReevaluated: reevaluated,
+    statusCompleted,
+    statusBlocked,
+    statusUnblocked,
   };
 }
 
@@ -296,10 +336,14 @@ export async function syncTeamSprint({ teamId, sprintId, userId }) {
  * - Resets `updatedById` to null (status-derived, not a manual edit) so re-runs stay idempotent —
  *   only hand-edits made AFTER an apply count as "manual" again.
  * - An unmapped status never wipes an existing row (resolveStageResync); it's counted, not applied.
+ * - Completed Jira statuses check every stage, and the Blocked rule (resolveBlockedRule) runs here
+ *   exactly as in Sync Jira (sync-jira-status-rules.md). A Blocked status leaves the stages alone
+ *   and is not reported as unmapped — it is handled.
  *
  * @param {{ teamId: string, sprintId: string, filterId: string, userId: string }} args
  * @returns {Promise<{ filterId: string, filterName: string, total: number, applied: number,
- *   unmapped: number, overwroteManual: number, warnings: Array<object> }>}
+ *   unmapped: number, overwroteManual: number, statusBlocked: number, statusUnblocked: number,
+ *   warnings: Array<object> }>}
  */
 export async function syncFilterStagesFromJira({ teamId, sprintId, filterId, userId }) {
   const team = await prisma.team.findUnique({ where: { id: teamId } });
@@ -380,7 +424,7 @@ export async function syncFilterStagesFromJira({ teamId, sprintId, filterId, use
   });
   const existingProgress = await prisma.issueProgress.findMany({
     where: { teamId, sprintId, jiraKey: { in: keys } },
-    select: { id: true, jiraKey: true, updatedById: true },
+    select: { id: true, jiraKey: true, updatedById: true, blocked: true, blockedReason: true },
   });
   const progressByKey = new Map(existingProgress.map((progress) => [progress.jiraKey, progress]));
 
@@ -389,22 +433,41 @@ export async function syncFilterStagesFromJira({ teamId, sprintId, filterId, use
   const toUpdate = [];
   let unmapped = 0;
   let overwroteManual = 0;
+  let statusBlocked = 0;
+  let statusUnblocked = 0;
   const unmappedStatuses = [];
+  // Blocked-rule writes, by payload: there are only two (block / lift), so one updateMany each.
+  const blockIds = [];
+  const unblockIds = [];
   for (const jiraKey of keys) {
     const owning = owningWorkflowType(typesByKey.get(jiraKey) ?? [filter.workflowType]);
     const existing = progressByKey.get(jiraKey) ?? null;
-    const plan = resolveStageResync({
-      workflowType: owning,
-      jiraStatus: freshStatusByKey.get(jiraKey),
-      mappings,
-      existing,
-    });
-    if (plan.unmapped) {
+    const jiraStatus = freshStatusByKey.get(jiraKey);
+    const plan = resolveStageResync({ workflowType: owning, jiraStatus, mappings, existing });
+    const blockedStatus = isBlockedJiraStatus(jiraStatus);
+    // Blocked is handled by the Blocked rule, so it isn't "unmapped" (its stages still stay put).
+    if (plan.unmapped && !blockedStatus) {
       unmapped += 1;
       // Keep the STATUS NAMES, not just the count: "3 unmapped" sends you hunting, whereas
       // "no mapping for \"In Review\"" is the fix.
-      const status = freshStatusByKey.get(jiraKey);
-      if (status) unmappedStatuses.push(status);
+      if (jiraStatus) unmappedStatuses.push(jiraStatus);
+    }
+    if (existing) {
+      const rule = resolveBlockedRule({
+        jiraStatus,
+        blocked: existing.blocked,
+        blockedReason: existing.blockedReason,
+      });
+      if (rule.blocked) {
+        blockIds.push(existing.id);
+        statusBlocked += 1;
+      }
+      if (rule.unblocked) {
+        unblockIds.push(existing.id);
+        statusUnblocked += 1;
+      }
+    } else if (blockedStatus) {
+      statusBlocked += 1;
     }
     if (!plan.write) continue;
     if (plan.overwroteManual) overwroteManual += 1;
@@ -423,6 +486,7 @@ export async function syncFilterStagesFromJira({ teamId, sprintId, filterId, use
         workflowType: owning,
         stageCompletion: plan.stages,
         seededFromStatus: plan.seededFromStatus,
+        ...(blockedStatus ? { blocked: true, blockedReason: JIRA_BLOCKED_REASON } : {}),
       });
     }
   }
@@ -442,6 +506,19 @@ export async function syncFilterStagesFromJira({ teamId, sprintId, filterId, use
           where: { id: { in: group.ids } },
           // status-derived, not a manual edit — keeps repeated syncs idempotent (see contract above)
           data: { ...group.data, updatedById: null },
+        });
+      }
+      // The Blocked rule never touches stages or updatedById — blocking isn't a stage edit.
+      if (blockIds.length > 0) {
+        await tx.issueProgress.updateMany({
+          where: { id: { in: blockIds } },
+          data: { blocked: true, blockedReason: JIRA_BLOCKED_REASON },
+        });
+      }
+      if (unblockIds.length > 0) {
+        await tx.issueProgress.updateMany({
+          where: { id: { in: unblockIds } },
+          data: { blocked: false, blockedReason: null },
         });
       }
     },
@@ -466,6 +543,8 @@ export async function syncFilterStagesFromJira({ teamId, sprintId, filterId, use
     applied: toCreate.length + toUpdate.length,
     unmapped,
     overwroteManual,
+    statusBlocked,
+    statusUnblocked,
   });
 
   return {
@@ -475,6 +554,8 @@ export async function syncFilterStagesFromJira({ teamId, sprintId, filterId, use
     applied: toCreate.length + toUpdate.length,
     unmapped,
     overwroteManual,
+    statusBlocked,
+    statusUnblocked,
     warnings,
   };
 }

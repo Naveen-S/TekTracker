@@ -1,49 +1,28 @@
 # Current Feature
 
-**Support on-call — per-sprint Support POCs + Primary POC directory at `/oncall`**
-(@context/features/support-oncall.md). Moves the per-release Confluence "AEC Support POD POC
-Details" page into StoryBoard: managers nominate each team's Support POCs per sprint (one optional
-Primary, up to an admin cap), and anyone signed in, Support included, finds the right person by
-team, module or name, with the team's open External / Internal bug counts beside them. Picked next
-because it was queued behind the Modern theme and is built on its tokens.
+**Fix: Sync Jira honours completed and Blocked Jira statuses**
+(@context/features/sync-jira-status-rules.md, **GM-11768**). The top-level Sync Jira completes the checklist of
+any issue in UAT, Testing, Support Validation, Support Clarification, Won't Fix or Not Applicable
+(plus Done / Closed / Released), and a Jira "Blocked" status turns the issue's health Blocked. The
+per-track "Sync stages" applies the same rules (Naveen, 2026-11-05).
 
 ## Status
 
-**Done 2026-10-24 · verified · uncommitted** on `feature/support-oncall`, **stacked on
-`feature/modern-artifact-theme`** (retarget to `main` once that PR merges).
-- **Verification:**
-  - lint 0;
-  - **16 migrations**, up to date (`add_support_oncall`, regenerated 2026-10-25 with
-    `RosterContact`); the §9 `SupportPoc` / `RosterContact` blocks and `Team.onCallHeadcount` are
-    byte-identical to the schema (10 older models differ only in comment wording, already on `main`);
-  - cold env-free Node 22 build: exit 0, **67 ƒ**, **0 warnings**;
-  - 12/12 pure fixtures + 7/7 zod;
-  - **API/page smoke 28/28** (RBAC, cap, primaries, 409/404, no roster leak, the live-team pulse
-    equals an SQL hand count);
-  - phone redacted in `ErrorLog.details`;
-  - **24 headless renders** (390/1440 × Tekion/Modern): 0 overflow, 0 console errors.
-- **Added 2026-10-25 (Naveen):** an `/oncall` program picker; roster contact details (name + phone)
-  in the admin team dialog and a one-pick member dropdown in the POC dialog (`RosterContact`,
-  folded into migration 16); and a **themed dropdown app-wide** replacing every native select
-  (themed-select.md). Verified: env-free build 67 ƒ / 0 warnings, 18/18 roster API checks, 28/28
-  on-call smoke, 23/23 program-picker checks, headless dialog flows and an app-wide dropdown sweep
-  (8 pages + 7 dialogs, both themes, 390/1440), redaction re-checked.
-- **Pending:**
-  - Naveen restarts `yarn dev` (his running server has the pre-migration Prisma client cached);
-  - his authed pass, plus one real rotation entered;
-  - Naveen runs the office DB bundle for migration 16 (generated and rehearsed 2026-11-01:
-    `output/storyboard-dba-migration-2026-11-01-add_support_oncall/`, `00` → `01` → `02`) before the image rolls out;
-  - the commit.
+**Done 2026-11-10 · verified · uncommitted** on `fix/GM-11768-sync-jira-status-rules` (off `main` @ `9d53308`).
+- **Verification:** `eslint src` 0; `prisma validate` + `migrate status` up to date (**16
+  migrations, no schema change**); clean env-free Node 22 build exit 0, **67 ƒ**, 0 warnings;
+  **15/15 pure fixtures**; **31/31 runtime smoke** against real Jira + Neon on a throwaway team,
+  torn down to 0 rows.
+- **No office DB bundle needed** (no migration, no seed change).
+- **Pending:** Naveen's authed Sync Jira / Sync stages on a real team; the commit.
 
-**Next:** Naveen commits both branches (Modern first), runs the migration-16 office bundle, then
-the carried-over security-tracker items below.
+**Next:** Naveen commits this fix and runs the still-pending migration-16 office bundle (Support
+on-call), then the carried-over security-tracker items (parity check, `workbenchUrl`, PR 2).
 
-Carried over from the security tracker (committed in `3129931`; its migration-15 office bundle has
-been run, confirmed by Naveen 2026-11-01): the same-morning parity check
-against the artifact, and setting `workbenchUrl` in Admin → Security tracker. Then PR 2
-(`feature/security-tracker-updates`).
+The previous feature (Support on-call) merged to `main` as `9d53308` (#9); its migration-16 office
+bundle is still pending Naveen's run (see Carry-forward).
 
-## Goals
+## Previous feature goals (Support on-call)
 
 - **Schema** (`prisma/schema.prisma`): `SupportPoc` (team, sprint) + `Team.onCallHeadcount`;
   migration 16.
@@ -286,3 +265,18 @@ Append new "Done" entries there, earliest → latest.
     session (794 problems there, 0 in `src/`).
   - **Next:** Naveen's authed pass and commit; the migration-16 office bundle (now including
     `RosterContact`).
+- 2026-11-05 — **Fix: Sync Jira honours completed and Blocked Jira statuses** (sync-jira-status-rules.md). Completed statuses check every stage (new rows, per-track Sync stages, and a forward-complete of existing rows on Sync Jira); Jira Blocked → `blocked` with reason "Blocked in Jira", lifted only when the sync set it. 13/13 fixtures, env-free build 67 ƒ / 0 warnings, no migration. **Next:** Naveen's authed sync and commit.
+- 2026-11-05 — **Same rules in the per-track Sync stages (Naveen).** The Blocked rule is shared (`resolveBlockedRule`); a Blocked status keeps its stages and is no longer reported as unmapped. 15/15 fixtures, env-free build 67 ƒ / 0 warnings.
+- 2026-11-10 — **Implemented the Sync Jira status rules fix** (sync-jira-status-rules.md).
+  - **What shipped:** `COMPLETED_JIRA_STATUSES` / `BLOCKED_JIRA_STATUSES` / `JIRA_BLOCKED_REASON`
+    + `resolveBlockedRule` / `resolveStatusRules` in `lib/sync/seeding.mjs`; both
+    `syncTeamSprint` and `syncFilterStagesFromJira` apply them; toast counts on the board.
+  - **Verification:** `eslint src` 0; schema valid, 16 migrations up to date; clean env-free build
+    67 ƒ / 0 warnings; 15/15 fixtures; **31/31 runtime smoke** (real Jira read-only + Neon, `next
+    start` of a scratch copy: 401s, forward-complete, Blocked set / hand block kept / own block
+    lifted, idempotent re-sync, Sync stages parity); torn down to 0 rows.
+  - **As-built:** Done / Closed / Released added to the six requested statuses; status-derived
+    writes reset `updatedById`; live Jira had moved two fixture issues to UAT / Done, so the smoke
+    asserts on live status; §14.13's provenance gap now covers the always-on sync too (noted).
+  - **Done.**
+  - **Next:** Naveen's authed pass and commit; the migration-16 office bundle.

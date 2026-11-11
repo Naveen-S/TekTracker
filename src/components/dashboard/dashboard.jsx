@@ -50,6 +50,9 @@ function condenseSync(summary) {
     `+${added} / −${removed} issues`,
   ];
   if (summary.progressSeeded > 0) parts.push(`${summary.progressSeeded} checklist(s) seeded`);
+  if (summary.statusCompleted > 0) parts.push(`${summary.statusCompleted} completed from Jira`);
+  if (summary.statusBlocked > 0) parts.push(`${summary.statusBlocked} blocked in Jira`);
+  if (summary.statusUnblocked > 0) parts.push(`${summary.statusUnblocked} unblocked`);
   return parts.join(" · ");
 }
 
@@ -77,6 +80,8 @@ function formatSyncWarnings(warnings) {
 function condenseStageSync(summary) {
   const parts = [summary.filterName, `${summary.applied} item${summary.applied === 1 ? "" : "s"} synced`];
   if (summary.unmapped > 0) parts.push(`${summary.unmapped} unmapped`);
+  if (summary.statusBlocked > 0) parts.push(`${summary.statusBlocked} blocked in Jira`);
+  if (summary.statusUnblocked > 0) parts.push(`${summary.statusUnblocked} unblocked`);
   return parts.join(" · ");
 }
 
