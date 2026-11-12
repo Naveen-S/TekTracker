@@ -1,5 +1,6 @@
 /**
- * Personal settings (claude-connector-analysis.md §Scope e) — today, one card: pairing the
+ * The "Claude Code" page, at /settings (claude-connector-analysis.md §Scope e; renamed from
+ * "Settings" 2026-11-11, URL unchanged) — one card: pairing the
  * StoryBoard Connector that runs "Analyse with Claude" on the user's own Claude Code. Open to every
  * signed-in user; the pairing routes are self-scoped.
  */
@@ -14,7 +15,7 @@ import { SettingsTopBar } from "@/components/settings/settings-top-bar";
 import { ClaudeConnectorCard } from "@/components/settings/claude-connector-card";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Settings · StoryBoard" };
+export const metadata = { title: "Claude Code · StoryBoard" };
 
 export default async function SettingsPage() {
   const user = await getCurrentUser();
@@ -35,9 +36,11 @@ export default async function SettingsPage() {
         <SettingsTopBar user={viewer} hasBugReport={hasBugReport} />
         <main className="flex w-full flex-1 flex-col gap-5 p-4 md:p-6">
           <HeroShell className="px-5 py-6 md:px-8 md:py-7">
-            <HeroEyebrow>Settings</HeroEyebrow>
-            <HeroTitle>{viewer.displayName || viewer.email}</HeroTitle>
-            <HeroCopy className="mt-2">Personal integrations for your StoryBoard account.</HeroCopy>
+            <HeroEyebrow>{viewer.displayName || viewer.email}</HeroEyebrow>
+            <HeroTitle>Claude Code</HeroTitle>
+            <HeroCopy className="mt-2">
+              Connect your own Claude Code to StoryBoard. Analyse with Claude, Ask StoryBoard and the SOW Slack sync run on it.
+            </HeroCopy>
           </HeroShell>
           <ClaudeConnectorCard analysisEnabled={analysisSettings.enabled} />
         </main>

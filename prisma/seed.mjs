@@ -6,7 +6,8 @@
  *   2. the global default `StatusStageMapping` rows (`teamId = null`) — the hybrid model's
  *      Jira-status → stage seeding (§6);
  *   3. the Claude analysis settings singleton;
- *   4. the security tracker settings, programs and release calendar (create-only).
+ *   4. the security tracker settings, programs and release calendar (create-only);
+ *   5. the first SOW, "Configurator AI", with its plan and risks (create-only, by slug).
  * The "three workflows' metadata" lives in code (`src/lib/workflows.js`), not the DB.
  *
  * Idempotent: re-running produces no duplicates. The admin is upserted by email; the global mappings
@@ -32,6 +33,12 @@ import {
   SECURITY_SETTINGS_ID,
   settingsCreatePayload,
 } from "../src/lib/security/defaults.mjs";
+import {
+  CONFIGURATOR_AI_SEED,
+  DEFAULT_KIND_RULES,
+  DEFAULT_KIND_WEIGHTS,
+} from "../src/lib/sow/defaults.mjs";
+import { seedPlan } from "../src/lib/sow/template.mjs";
 
 // ── Global StatusStageMapping defaults (teamId = null) ───────────────────────────────────────────
 // Map each raw Jira status to the HIGHEST lifecycle stage it implies (seeding auto-checks 0..n per
@@ -119,6 +126,61 @@ function buildStatusStageRows() {
   return rows;
 }
 
+const day = (iso) => (iso ? new Date(`${iso}T00:00:00Z`) : null);
+
+/** Create one SOW with its plan and risks unless its slug already exists. Returns true if created. */
+async function seedSow(prisma, seed) {
+  const existing = await prisma.sow.findUnique({ where: { slug: seed.slug }, select: { id: true } });
+  if (existing) return false;
+  const program = await prisma.program.findUnique({ where: { key: seed.programKey }, select: { id: true } });
+  await prisma.$transaction(async (tx) => {
+    const sow = await tx.sow.create({
+      data: {
+        name: seed.name,
+        slug: seed.slug,
+        description: seed.description,
+        ownerName: seed.ownerName,
+        programId: program?.id ?? null,
+        sourceType: seed.sourceType,
+        jiraFilterId: seed.jiraFilterId,
+        homeProjectKeys: seed.homeProjectKeys,
+        slackChannelId: seed.slackChannelId ?? null,
+        feedChannels: seed.feedChannels ?? [],
+        references: seed.references ?? [],
+        kindRules: DEFAULT_KIND_RULES,
+        kindWeights: DEFAULT_KIND_WEIGHTS,
+        startDate: day(seed.startDate),
+        launchDate: day(seed.launchDate),
+      },
+    });
+    for (const [phaseIndex, phase] of seedPlan(seed).entries()) {
+      await tx.sowPhase.create({
+        data: {
+          sowId: sow.id,
+          name: phase.name,
+          sortOrder: phaseIndex,
+          startDate: day(phase.startDate),
+          endDate: day(phase.endDate),
+          kinds: phase.kinds,
+          items: {
+            create: phase.items.map((item, itemIndex) => ({
+              ...item,
+              sowId: sow.id,
+              baselineDate: day(item.baselineDate),
+              currentDate: day(item.currentDate),
+              sortOrder: itemIndex,
+            })),
+          },
+        },
+      });
+    }
+    await tx.sowRisk.createMany({
+      data: seed.risks.map((risk, index) => ({ ...risk, sowId: sow.id, sortOrder: index })),
+    });
+  });
+  return true;
+}
+
 async function main() {
   const adminEmail = process.env.SEED_ADMIN_EMAIL?.trim();
   if (!adminEmail) {
@@ -185,6 +247,10 @@ async function main() {
       });
     }
 
+    // 5. SOW tracker (sow-tracker.md decision 10): the first SOW. CREATE-ONLY by slug — once it
+    //    exists, an admin's plan edits are never reset. Its tickets arrive with the first Refresh.
+    const sowSeeded = await seedSow(prisma, CONFIGURATOR_AI_SEED);
+
     console.log(
       `Bootstrap seed complete:\n` +
         `  • admin user: ${admin.email} (isAdmin=${admin.isAdmin})\n` +
@@ -192,7 +258,8 @@ async function main() {
         `(${SEEDABLE_WORKFLOW_TYPES.join(", ")}; CUSTOM skipped)\n` +
         `  • Claude analysis settings: enabled=${analysisSettings.enabled}\n` +
         `  • security tracker: settings + ${DEFAULT_SECURITY_PROGRAMS.length} programs + ` +
-        `${DEFAULT_RELEASE_CALENDAR.length} release months (create-only)`,
+        `${DEFAULT_RELEASE_CALENDAR.length} release months (create-only)\n` +
+        `  • SOW "${CONFIGURATOR_AI_SEED.name}": ${sowSeeded ? "created" : "already present, left as is"}`,
     );
   } finally {
     await prisma.$disconnect();

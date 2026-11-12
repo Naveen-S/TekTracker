@@ -29,6 +29,7 @@ import { refreshBugReport } from "@/lib/bug-report/refresh";
 import { resolveRefreshAuth } from "@/lib/jira/refresh-auth";
 import { refreshSecurityTracker, writeSecuritySnapshots } from "@/lib/security/refresh";
 import { loadSecurityConfig } from "@/lib/security/settings";
+import { refreshSow, writeSowSnapshot } from "@/lib/sow/refresh";
 import { ERROR_CODES } from "@/lib/errors";
 import { SprintState } from "@/generated/prisma/client";
 
@@ -182,6 +183,7 @@ export async function runDailyJob({ capturedOn } = {}) {
 
     const bugReports = await runBugReports(day);
     const security = await runSecurity(capturedOn ?? new Date());
+    const sows = await runSows(capturedOn ?? new Date());
     const prunedErrors = await pruneErrorLog();
     const prunedAnalysisJobs = await pruneAnalysisJobs();
 
@@ -197,6 +199,8 @@ export async function runDailyJob({ capturedOn } = {}) {
       bugReports: bugReports.length,
       bugReportFailures: bugReports.filter((report) => report.error).length,
       securityFailed: Boolean(security?.error),
+      sows: sows.length,
+      sowFailures: sows.filter((sow) => sow.error).length,
       prunedErrors,
       prunedAnalysisJobs,
     });
@@ -210,6 +214,7 @@ export async function runDailyJob({ capturedOn } = {}) {
       sprints: sprintSummaries,
       bugReports,
       security,
+      sows,
     };
   });
 }
@@ -292,5 +297,55 @@ async function runSecurity(asOf) {
       logger.error("cron.security_snapshot_failed", { err: snapshotError });
       return { error: error.message, snapshotRows: 0 };
     }
+  }
+}
+
+/**
+ * SOW tracker step (sow-tracker.md decision 11): refresh every ACTIVE SOW's mirror and write its
+ * daily snapshot, run last so it can never cost the sprint, bug-report or security work anything.
+ * SOWs are isolated from each other. A failed refresh keeps that SOW's previous mirror and still
+ * writes today's snapshot from it (the runSecurity reasoning: a stale point beats a hole).
+ */
+async function runSows(asOf) {
+  const sows = await prisma.sow.findMany({ where: { status: "ACTIVE" }, orderBy: { launchDate: "asc" } });
+  if (sows.length === 0) return [];
+  let refreshAuth = null;
+  let authError = null;
+  try {
+    refreshAuth = await resolveRefreshAuth(null);
+  } catch (error) {
+    authError = error;
+  }
+
+  const summaries = [];
+  for (const sow of sows) {
+    try {
+      if (authError) throw authError;
+      const result = await refreshSow(sow.id, { auth: refreshAuth.auth, refreshedByEmail: refreshAuth.email, asOf });
+      summaries.push({ sow: sow.name, issues: result.issues, progressPct: result.progressPct });
+    } catch (error) {
+      logger.error("cron.sow_failed", { err: error, sow: sow.slug });
+      await recordError({
+        error,
+        code: error.code ?? ERROR_CODES.SOW_REFRESH_FAILED,
+        status: error.status ?? 500,
+        source: "cron",
+        route: "cron.daily.sow",
+        details: { sow: sow.name },
+      });
+      summaries.push({ sow: sow.name, error: error.message, ...(await staleSowSnapshot(sow, asOf)) });
+    }
+  }
+  return summaries;
+}
+
+async function staleSowSnapshot(sow, asOf) {
+  try {
+    const issues = await prisma.sowIssue.findMany({ where: { sowId: sow.id } });
+    const snapshot = await writeSowSnapshot(sow, issues, asOf);
+    return { progressPct: snapshot.progressPct, fromStaleMirror: true };
+  } catch (snapshotError) {
+    logger.error("cron.sow_snapshot_failed", { err: snapshotError, sow: sow.slug });
+    return {};
   }
 }

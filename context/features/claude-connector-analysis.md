@@ -367,3 +367,18 @@ validated against a safe charset. Progress lines throttled to one POST / 2 s.
       instant before), and the enabled one after 17.2 s.
     - Lint 0; env-free build 60 ƒ Dynamic, 0 warnings. `ASK_MIN_CONNECTOR_VERSION` stays 1.1.0.
     - Pre-existing since the original Connector feature; it was surfaced, not introduced, by Ask.
+
+## Amendment 2026-11-11 (Naveen) — "Settings" is now "Claude Code"
+
+The sidebar item for `/settings` reads **Claude Code** with a live **Connected / Not connected**
+indicator, so people notice it and connect their own Claude Code. The route, the pairing flow and
+the card are unchanged.
+
+- `src/lib/use-connector-status.js` reads the self-scoped `GET /api/me/connector` on mount and
+  every 20 s while the tab is visible (a connector counts as online for 30 s after its last poll).
+- Connected = the connector is online. Paired-but-offline and never-paired both read
+  "Not connected": a pulsing amber dot (still under reduced motion) and an amber outline on the
+  item. On the collapsed rail the dot sits on the icon and the tooltip carries the state.
+- The page hero, tab title and top-bar subtitle say "Claude Code"; messages that pointed at
+  "Settings → Claude Connector" now point at the Claude Code page.
+- Cost: one small read per open tab every 20 s. No schema or route change.

@@ -12,10 +12,10 @@ import { z } from "zod";
  */
 
 /** The data packs the model may ask for (lib/ask/packs.js builds each one). */
-export const ASK_PACKS = ["rollup", "team", "bugs", "trend", "leaderboard", "ticket"];
+export const ASK_PACKS = ["rollup", "team", "bugs", "trend", "leaderboard", "ticket", "sow"];
 
 /** Where the question was asked — decides the default pack(s) sent in round 1. */
-export const ASK_PAGES = ["board", "rollup", "bugs", "leaderboard", "ask", "other"];
+export const ASK_PAGES = ["board", "rollup", "bugs", "leaderboard", "sow", "ask", "other"];
 
 export const ASK_MAX_TURNS = 12;
 export const ASK_MAX_TURN_CHARS = 1000;
@@ -32,6 +32,7 @@ export const askBodySchema = z.object({
       programId: id.optional(),
       bugReportSlug: id.optional(),
       bugScopeId: id.optional(),
+      sowSlug: id.optional(),
     })
     .default({ page: "other" }),
   messages: z
@@ -129,6 +130,7 @@ const needItemZod = z.object({
   bugReport: z.string().trim().default(""),
   bugScope: z.string().trim().default(""),
   jiraKey: z.string().trim().default(""),
+  sow: z.string().trim().default(""),
 });
 
 export const askRoundOneZodSchema = z
@@ -158,8 +160,9 @@ const NEED_ITEM_JSON = {
     bugReport: { type: "string", description: "Bug report slug from the catalog, or empty" },
     bugScope: { type: "string", description: "Bug scope name (e.g. External), or empty for all" },
     jiraKey: { type: "string", description: "Jira key, only for the ticket pack" },
+    sow: { type: "string", description: "SOW slug or name from the catalog, only for the sow pack" },
   },
-  required: ["pack", "team", "program", "sprint", "bugReport", "bugScope", "jiraKey"],
+  required: ["pack", "team", "program", "sprint", "bugReport", "bugScope", "jiraKey", "sow"],
   additionalProperties: false,
 };
 

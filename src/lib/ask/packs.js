@@ -12,6 +12,9 @@ import { prisma } from "@/lib/db";
 import { getDigestData, getRollupData, getSprintSelection } from "@/lib/dashboard-data";
 import { getBugReportData } from "@/lib/bug-report-data";
 import { getSprintBoards } from "@/lib/leaderboard-data";
+import { getSowData } from "@/lib/sow/data";
+import { shapeSowPack } from "@/lib/ask/shape-sow.mjs";
+import { selectKnowledge } from "@/lib/sow/knowledge.mjs";
 import { hasLeaderboardAccess, hasProgramAccess, visibleTeamIds } from "@/lib/rbac";
 import {
   buildTrendSeries,
@@ -45,7 +48,7 @@ const norm = (value) => (value ?? "").trim().toLowerCase();
  * Per-request state: the viewer, one clock, and memoized reads.
  * @param {import("@/generated/prisma/client").User} user
  */
-export function createAskContext(user, asOf = new Date()) {
+export function createAskContext(user, asOf = new Date(), question = "") {
   const memo = new Map();
   const once = (key, load) => {
     if (!memo.has(key)) memo.set(key, load());
@@ -54,6 +57,8 @@ export function createAskContext(user, asOf = new Date()) {
   return {
     user,
     asOf,
+    // The question (with recent turns) — lets a pack pick the page sections that match it.
+    question,
     visibleTeamIds: () => once("visible", () => visibleTeamIds(user)),
     canViewPrograms: () => once("programs", () => hasProgramAccess(user)),
     canViewLeaderboard: () => once("leaderboard", () => hasLeaderboardAccess(user)),
@@ -74,7 +79,7 @@ export async function buildCatalog(ctx) {
     ctx.canViewLeaderboard(),
     ctx.sprintSelection(),
   ]);
-  const [teams, memberships, programs, bugReports] = await Promise.all([
+  const [teams, memberships, programs, bugReports, sows] = await Promise.all([
     prisma.team.findMany({
       where: visible === null ? {} : { id: { in: visible } },
       orderBy: { name: "asc" },
@@ -94,6 +99,12 @@ export async function buildCatalog(ctx) {
       where: { isActive: true },
       orderBy: { name: "asc" },
       select: { id: true, slug: true, name: true, scopes: { orderBy: { sortOrder: "asc" }, select: { id: true, name: true } } },
+    }),
+    // SOWs are open to every signed-in user (sow-tracker.md decision 2).
+    prisma.sow.findMany({
+      where: { status: { not: "ARCHIVED" } },
+      orderBy: { launchDate: "asc" },
+      select: { slug: true, name: true, status: true, launchDate: true, program: { select: { key: true } } },
     }),
   ]);
   const roleByTeam = new Map(memberships.map((row) => [row.teamId, row.role]));
@@ -126,8 +137,9 @@ export async function buildCatalog(ctx) {
       scopes: report.scopes.map((scope) => scope.name),
     })),
     leaderboardAvailable: canViewLeaderboard,
+    sows: sows.map((sow) => ({ slug: sow.slug, name: sow.name, status: sow.status, launch: isoDate(sow.launchDate), ...(sow.program ? { program: sow.program.key } : {}) })),
   };
-  const index = { teams, programs, sprints, selectedSprint, bugReports, roleByTeam, canViewPrograms };
+  const index = { teams, programs, sprints, selectedSprint, bugReports, roleByTeam, canViewPrograms, sows };
   return { catalog, index };
 }
 
@@ -213,6 +225,16 @@ function resolveNeed(need, index, ids = {}) {
     }
   }
 
+  if (need.pack === "sow") {
+    const sow = need.sow
+      ? findOne(index.sows, need.sow, ["slug", "name"])
+      : (index.sows.find((candidate) => candidate.slug === ids.sowSlug) ?? (index.sows.length === 1 ? index.sows[0] : null));
+    if (!sow) {
+      return { ...resolved, error: need.sow ? `No SOW named "${need.sow}" in StoryBoard` : "No SOW was specified — name one from the catalog" };
+    }
+    resolved.sowSlug = sow.slug;
+  }
+
   if (need.pack === "ticket") {
     const jiraKey = (need.jiraKey ?? "").trim().toUpperCase();
     if (!JIRA_KEY_PATTERN.test(jiraKey)) return { ...resolved, error: "No valid Jira key was given" };
@@ -231,6 +253,8 @@ export function defaultNeeds(context) {
       return [{ pack: "bugs" }];
     case "leaderboard":
       return [{ pack: "leaderboard" }];
+    case "sow":
+      return [{ pack: "sow" }];
     default:
       return [{ pack: "rollup" }];
   }
@@ -238,7 +262,7 @@ export function defaultNeeds(context) {
 
 /** A stable identity for a resolved need, so the same pack is never loaded twice. */
 const needKey = (resolved) =>
-  [resolved.pack, resolved.teamId, resolved.programId, resolved.sprintId, resolved.bugReportSlug, resolved.bugScopeId, resolved.jiraKey]
+  [resolved.pack, resolved.teamId, resolved.programId, resolved.sprintId, resolved.bugReportSlug, resolved.bugScopeId, resolved.jiraKey, resolved.sowSlug]
     .map((part) => part ?? "")
     .join("|");
 
@@ -447,6 +471,16 @@ async function ticketPack(ctx, { jiraKey }) {
   return { label: `ticket ${jiraKey}`, data: shapeTicketPack({ jiraKey, sprintHits, bugHits, asOf: ctx.asOf }) };
 }
 
+/** One SOW's page view, shaped. Open to every signed-in user, like /sow itself; hidden items excluded. */
+async function sowPack(ctx, { sowSlug }) {
+  const [view, stored] = await Promise.all([
+    getSowData(sowSlug, ctx.asOf),
+    prisma.sow.findUnique({ where: { slug: sowSlug }, select: { knowledge: true } }),
+  ]);
+  if (!view) return { label: "sow", data: unavailable(`No SOW "${sowSlug}" in StoryBoard`) };
+  return { label: `SOW · ${view.sow.name}`, data: shapeSowPack(view, { knowledge: selectKnowledge(stored?.knowledge, ctx.question) }) };
+}
+
 /**
  * Resolve + load a list of needs, skipping any already in `loaded` (keyed by needKey).
  *
@@ -484,6 +518,8 @@ function buildPack(ctx, resolved, index) {
       return leaderboardPack(ctx, resolved, index);
     case "ticket":
       return ticketPack(ctx, resolved);
+    case "sow":
+      return sowPack(ctx, resolved);
     default:
       return Promise.resolve({ label: resolved.pack, data: unavailable("Unknown data pack") });
   }

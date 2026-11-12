@@ -18,6 +18,7 @@
  * ASK): StoryBoard sends the question with the data it may be answered from, and Claude replies with
  * NO tools and NO MCP servers at all. When StoryBoard's data can't answer it, a follow-up round
  * (kind ASK_DEEP) may read ORBIT DeepContext's Jira graph — the same read-only ceiling as analyses.
+ * A SOW Slack sync (kind SLACK_SYNC, 1.2.0) may use three read-only Slack tools and nothing else.
  *
  * Zero dependencies; Node >= 18. Source: claude-connector-analysis.md in the StoryBoard repo.
  */
@@ -26,13 +27,18 @@ import { mkdir, readFile, writeFile, rm, chmod } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const VERSION = "1.1.1";
+const VERSION = "1.2.1";
 const HOME_DIR = join(homedir(), ".storyboard");
 const CONFIG_PATH = join(HOME_DIR, "connector.json");
 const WORK_DIR = join(HOME_DIR, "work");
 
 /** Local safety ceiling — only read-only ORBIT tools, whatever the server sends. */
 const TOOL_CEILING = /^mcp__plugin_orbit_orbit-(deepcontext|estimate)__[a-z_]+$/;
+/**
+ * A SLACK_SYNC job (a SOW's pre-QA channel) gets a different, equally narrow ceiling: three
+ * read-only Slack tools (channel, thread, file) and nothing else — it cannot post, search or touch any other connector.
+ */
+const SLACK_CEILING = /^mcp__claude_ai_Slack__slack_read_(channel|thread|file)$/;
 const SAFE_NAME = /^[\w.\-[\]]{1,64}$/;
 const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 const MAX_TIMEOUT_MINUTES = 60;
@@ -114,9 +120,12 @@ function api(config, claude) {
 
 /** Turn a stream-json tool_use into a short human line for the StoryBoard dialog. */
 function describeToolUse(name, input) {
-  const tool = name.replace(/^mcp__plugin_orbit_orbit-(deepcontext|estimate)__/, "");
+  const tool = name.replace(/^mcp__plugin_orbit_orbit-(deepcontext|estimate)__/, "").replace(/^mcp__claude_ai_Slack__/, "");
   const query = input?.query ?? input?.queries?.[0]?.query ?? input?.jql ?? input?.topic ?? "";
   const labels = {
+    slack_read_channel: "Reading the Slack channel",
+    slack_read_thread: "Reading a Slack thread",
+    slack_read_file: "Looking at a screenshot",
     get_deep_context_instructions: "Reading DeepContext instructions",
     get_jira_issues: "Reading the Jira ticket",
     search: "Searching DeepContext",
@@ -133,10 +142,12 @@ function describeToolUse(name, input) {
 }
 
 const isAsk = (job) => job.kind === "ASK";
+const isSlackSync = (job) => job.kind === "SLACK_SYNC";
+const ceilingFor = (job) => (isSlackSync(job) ? SLACK_CEILING : TOOL_CEILING);
 
 function buildArgs(job) {
   // An Ask question is answered from the data in its prompt alone: no tools, whatever was sent.
-  const tools = isAsk(job) ? [] : (job.allowedTools ?? []).filter((tool) => TOOL_CEILING.test(tool));
+  const tools = isAsk(job) ? [] : (job.allowedTools ?? []).filter((tool) => ceilingFor(job).test(tool));
   if (!isAsk(job) && tools.length === 0) throw new Error("No permitted tools in the job");
   if (!SAFE_NAME.test(job.model)) throw new Error("Invalid model name");
   const effort = EFFORTS.includes(job.effort) ? job.effort : "medium";
@@ -180,7 +191,12 @@ function runClaude(job, onProgress) {
       stdio: [isAsk(job) ? "pipe" : "ignore", "pipe", "pipe"],
       env: {
         ...process.env,
-        ENABLE_CLAUDEAI_MCP_SERVERS: "false",
+        // Slack is a claude.ai connector, so a Slack sync must load them; `--allowedTools` and
+        // `--tools ""` still limit the run to the Slack reads. Everything else keeps them off.
+        ENABLE_CLAUDEAI_MCP_SERVERS: isSlackSync(job) ? "true" : "false",
+        // claude.ai connectors connect in the background; a run that starts before Slack is
+        // ready has no Slack tools and returns an empty result at once (1.2.1 fix). Wait for it.
+        ...(isSlackSync(job) ? { MCP_CONNECTION_NONBLOCKING: "false" } : {}),
         // A spoken answer from data already in the prompt needs no extended thinking: measured
         // 22 s → 7 s per round with the same answer.
         ...(isAsk(job) ? { MAX_THINKING_TOKENS: "0" } : {}),
@@ -249,7 +265,9 @@ async function handleJob(client, job) {
     ? "Ask StoryBoard question"
     : job.kind === "ASK_DEEP"
       ? "Ask StoryBoard question (DeepContext)"
-      : job.jiraKey;
+      : isSlackSync(job)
+        ? "Slack channel sync"
+        : job.jiraKey;
   log(`▶ ${label} (${job.kind.toLowerCase()}, ${job.model})`);
   let lastSent = 0;
   let pending = null;

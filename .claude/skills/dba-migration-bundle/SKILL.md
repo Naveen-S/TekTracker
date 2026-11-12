@@ -38,6 +38,7 @@ Bundles live in `output/` (gitignored; artifacts). History so far:
 | `storyboard-dba-migration-2026-09-29-add_claude_connector/` | 14 | 13 |
 | `storyboard-dba-migration-2026-10-20-add_security_tracker/` (+ `02b-seed`) | 15 | 14 |
 | `storyboard-dba-migration-2026-11-01-add_support_oncall/` | 16 | 15 |
+| `storyboard-dba-migration-2026-11-11-add_sow_tracker/` (+ `02b-seed`) | 17 | 16 |
 
 The rehearsal script rebuilds the office state by chaining these, so **never delete an old bundle
 from `output/`**. Add a row here for each new one.

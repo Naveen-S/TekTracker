@@ -13,7 +13,8 @@ import {
   ISSUE_ANALYSIS_SYSTEM_APPEND,
   buildIssueAnalysisPrompt,
 } from "@/lib/ai/issue-analysis.mjs";
-import { ASK_DEEP_TOOLS } from "@/lib/ask/deep.mjs";
+import { ASK_DEEP_DOC_TOOLS, ASK_DEEP_TOOLS } from "@/lib/ask/deep.mjs";
+import { SLACK_SYNC_TOOLS } from "@/lib/sow/slack.mjs";
 
 /**
  * Ask StoryBoard jobs (ask-storyboard.md as-built 13–14): a question round answered by the asker's
@@ -40,12 +41,31 @@ export const ASK_JOB = Object.freeze({
 export const ASK_DEEP_JOB = Object.freeze({
   ...ASK_JOB,
   kind: "ASK_DEEP",
-  maxBudgetUsd: 1,
-  timeoutMinutes: 3,
+  maxBudgetUsd: 1.5,
+  // A SOW question also searches Confluence and code (sow-tracker.md round 5), which takes longer.
+  timeoutMinutes: 4,
 });
 
 /** Both Ask kinds: a spoken question waits on them, so they jump ticket analyses in the queue. */
 export const ASK_KINDS = [ASK_JOB.kind, ASK_DEEP_JOB.kind];
+
+/**
+ * One Slack channel of a SOW (sow-tracker.md rounds 2 and 4) — the pre-QA issues channel or a
+ * docs-and-decisions channel: the requesting admin's connector reads it with read-only Slack
+ * tools and returns a structured result. Not about
+ * one ticket, so `jiraKey` holds a sentinel. Measured on Haiku at low effort: ~35 s and ~$0.21 for
+ * a 40-message channel (claude.ai connectors must be loaded for that run — Slack lives there).
+ */
+export const SLACK_SYNC_JOB = Object.freeze({
+  kind: "SLACK_SYNC",
+  jiraKey: "SLACK_SYNC",
+  source: "SOW",
+  model: "haiku",
+  effort: "low",
+  maxBudgetUsd: 3,
+  // A first full read of a busy channel took 2.4 minutes (#configurator-ai, 122 messages).
+  timeoutMinutes: 8,
+});
 
 /** A queued job the connector never claimed within this window is failed (connector went away). */
 const QUEUE_GRACE_MS = 60_000;
@@ -112,7 +132,25 @@ export function buildJobPayload(job, settings) {
       effort: job.effort,
       maxBudgetUsd: Math.min(spec.maxBudgetUsd, settings.maxBudgetUsd),
       timeoutMinutes: spec.timeoutMinutes,
-      allowedTools: spec === ASK_DEEP_JOB ? ASK_DEEP_TOOLS : [],
+      // A SOW question's deep round may also search Confluence and code (still read-only).
+      allowedTools: spec === ASK_DEEP_JOB ? (job.context.deepTools === "docs" ? ASK_DEEP_DOC_TOOLS : ASK_DEEP_TOOLS) : [],
+    };
+  }
+  if (job.kind === SLACK_SYNC_JOB.kind) {
+    // Prompt, system text and schema were built server-side (lib/sow/slack-sync.js). The connector
+    // filters the tools against its own Slack-only ceiling for this kind.
+    return {
+      jobId: job.id,
+      jiraKey: job.jiraKey,
+      kind: job.kind,
+      prompt: job.context.prompt,
+      appendSystemPrompt: job.context.system,
+      jsonSchema: job.context.jsonSchema,
+      model: job.model,
+      effort: job.effort,
+      maxBudgetUsd: Math.min(SLACK_SYNC_JOB.maxBudgetUsd, settings.maxBudgetUsd),
+      timeoutMinutes: SLACK_SYNC_JOB.timeoutMinutes,
+      allowedTools: SLACK_SYNC_TOOLS,
     };
   }
   return {

@@ -35,7 +35,7 @@ export function SettingsTopBar({ user, hasBugReport }) {
         <span className="hidden h-5.5 w-px bg-border sm:block" aria-hidden="true" />
         <div className="hidden leading-tight sm:block">
           <Wordmark className="block text-sm" />
-          <p className="text-[11px] text-muted-foreground">Settings</p>
+          <p className="text-[11px] text-muted-foreground">Claude Code</p>
         </div>
       </div>
 

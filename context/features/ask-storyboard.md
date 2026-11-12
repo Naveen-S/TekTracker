@@ -502,3 +502,36 @@ ai-insights.md · risk-comments-rollup-digest.md · program-rollup.md · leaderb
 gm-bug-report.md · enhancing-bug-board.md · trend-burndown.md · observability-and-errors.md ·
 `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/01-metadata/manifest.md`
 · `…/02-guides/progressive-web-apps.md` · `…/04-functions/generate-metadata.md` (`appleWebApp`).
+
+## Amendment 2026-11-11 (Naveen) — Ask knows the SOWs, grounded in their docs and code
+
+- **A `sow` data pack** (`lib/ask/shape-sow.mjs`, built from `getSowData` — the SOW page's own view,
+  hidden feed items excluded): launch and slip, health and its reasons, weighted progress vs plan,
+  phases with their plan items (baseline vs current, past due), epics, by-kind counts, up to 40
+  tickets, the issue funnel and up to 15 open pre-QA Slack issues (with their screenshot
+  descriptions), people load, risks, dependencies, up to 25 decisions and 30 documents (curated +
+  shared in Slack, with links). SOWs are open to every signed-in user, so the pack has no gate.
+- **Catalog + routing:** the catalog lists non-archived SOWs; `need.sow` names one; a SOW page
+  sends `page: "sow"` + `sowSlug` and starts with the pack; anywhere else round 1 asks for it.
+  A lone SOW is used when none is named. SOW pages get their own starter questions.
+- **Prompt rules:** progress is weighted; slips are vs baseline; decisions, pre-QA issues and
+  Slack docs are Claude extractions to attribute ("per the decision log, on <date> in <channel>");
+  a doc question puts the URL in detail; speech says channel names without "#".
+- **The deep round for a SOW** searches the SOW's own documents and code, not just Jira:
+  scope = its Confluence spaces and pages (curated list + Confluence links shared in its channels),
+  its repositories (list + repos of shared PRs) and its Jira projects (home + every project its
+  tickets come from). It gets DeepContext's read-only `search`, `batch_search` and
+  `get_document_chunks` on top of the Jira tools (`deepTools: "docs"` on the job), its own system
+  prompt (documents first, code for "how is it built", Jira for tickets; first detail line names
+  the sources) and the label "ORBIT DeepContext (Confluence, code, Jira)". `ASK_DEEP_JOB` is now
+  4 min / $1.50 (was 3 / $1). No route or schema change.
+- **Verified live:** "Are we on track for the Major Release?", "Where is the RAG design doc?",
+  "What is still open from pre-QA testing?" and "How is Configurator AI doing?" (asked from a
+  non-SOW page; round 1 requested the sow pack) all grounded, via the asker's connector; "What
+  did we decide about the chat layout?" first fell through to the deep round, which searched DRP
+  and AEC, cited pages with links and honestly said not found — after the decision-log fixes
+  (sow-tracker.md round 5) it is answered from the decision log.
+- **Primary pages (round 6, sow-tracker.md):** StoryBoard stores its own copy of each SOW's primary
+  Confluence pages and the `sow` pack carries the sections that match the question (`ctx.question`
+  = the question plus the last two turns, set in `prepareQuestion`). Repo and environment questions
+  are answered from the pack in ~20 s, without a deep round.

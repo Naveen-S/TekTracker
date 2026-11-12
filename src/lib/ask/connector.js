@@ -76,7 +76,7 @@ export async function checkConnector(userId) {
   if (!versionAtLeast(connector.connectorVersion, ASK_MIN_CONNECTOR_VERSION)) {
     return {
       available: false,
-      hint: "Update your StoryBoard Connector (Settings → Claude Connector) so your Claude can answer.",
+      hint: "Update your StoryBoard Connector (Claude Code in the sidebar) so your Claude can answer.",
       reason: "outdated",
     };
   }
@@ -98,9 +98,9 @@ export async function checkConnector(userId) {
 
 const NO_ENGINE_MESSAGES = {
   disabled: "Ask needs Claude analysis switched on by an admin, or an AI provider on the server.",
-  unpaired: "Pair a StoryBoard Connector in Settings → Claude Connector to use Ask.",
+  unpaired: "Pair a StoryBoard Connector on the Claude Code page to use Ask.",
   offline: "Start your StoryBoard Connector to use Ask — it answers with your Claude.",
-  outdated: "Update your StoryBoard Connector (Settings → Claude Connector) to use Ask.",
+  outdated: "Update your StoryBoard Connector (Claude Code in the sidebar) to use Ask.",
   busy: "Your Claude is busy with a ticket analysis — ask again when it finishes.",
 };
 
@@ -130,7 +130,7 @@ function pendingNote({ kind, status, round, progressNote }) {
     if (status === "RUNNING" && progressNote && !progressNote.startsWith("Starting")) {
       return `Not in StoryBoard — ${progressNote.charAt(0).toLowerCase()}${progressNote.slice(1)}`;
     }
-    return "Not in StoryBoard — searching Jira with DeepContext…";
+    return "Not in StoryBoard — searching with ORBIT DeepContext…";
   }
   if (round === 2) return "Your Claude is reading more StoryBoard data…";
   if (status === "RUNNING") return "Your Claude is answering…";
@@ -174,6 +174,7 @@ export async function queueAskJob(user, round) {
         needs: round.needs ?? [],
         packs: round.packs,
         asOf: round.asOf,
+        ...(round.deepTools ? { deepTools: round.deepTools } : {}),
         system: round.system,
         prompt: round.prompt,
         jsonSchema: round.jsonSchema,

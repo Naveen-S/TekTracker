@@ -6,7 +6,7 @@
 > **[BUILT]**, **[PARTIAL]**, **[PLANNED]**, or **[GAP]** so the as-built state is never confused
 > with the target state.
 >
-> Last reviewed: 2026-11-10 · Owner: Naveen · Audience: engineers + Claude Code.
+> Last reviewed: 2026-11-12 · Owner: Naveen · Audience: engineers + Claude Code.
 >
 > **Rename note (2026-07-31):** the product was renamed to **StoryBoard** (was "Sprint Tracker",
 > earlier codename "Tek Tracker" / "TekTracker"). The rename is display/branding only — no schema,
@@ -145,10 +145,11 @@ Key relationships:
 | Default scrum team & release (per-user board default) | **[BUILT]** | Each user pins a default team + release (`User.defaultTeamId`/`defaultSprintId`), resolved server-side in `getDashboardData`/`getSprintSelection`; set via a **star** in the top bar (`PATCH /api/me`). Board-only, additive. See context/features/default-team-release.md. |
 | Program grouping + Program roll-up | **[BUILT]** | First-class `Program` groups scrum teams (`Team.programId`, SetNull); admins CRUD programs + assign teams (Programs admin section + team-dialog picker). Leadership (`PROGRAM_ROLES` + admin) scope `/rollup` to a program via a picker → aggregate across **all** its teams; reuses the entire roll-up stack (only the team-set source changes). See context/features/program-rollup.md. |
 | Scrum-team member roster + auto "Needs attention" track | **[BUILT]** | Admin-entered per-team `Team.memberEmails String[]` (Jira assignee identities, distinct from RBAC `TeamMembership`) power an always-on `WorkflowType.NEEDS_ATTENTION` board track auto-generated/refreshed inside `syncTeamSprint` from `assignee in (roster) AND ("sub-component[dropdown]" IS EMPTY OR fixVersion IS EMPTY)` — the team's own items missing a sub-component/fix version that every sub-component-scoped filter misses. Partitioned out of the delivery matrix into its own panel; excluded from all §12 metrics (one additive no-op guard). See context/features/needs-attention-roster.md. |
-| Ask StoryBoard — grounded voice Q&A | **[BUILT]** | Ask a question out loud (or type it) and hear a 1–3 sentence answer grounded ONLY in StoryBoard data the viewer can see: roll-up/program, one team's board, bug reports, trend vs earlier sprints, leaderboard, one ticket. Browser speech in and out (no vendor); the server-side `lib/ai` provider answers through RBAC-checked **data packs** (`lib/ask/`) and a two-round JSON contract (answer, or request ≤ 3 more packs) — at most two model calls, cited Jira keys/sources sanitized to what was sent, `AI_ASK_MODEL` for a fast tier, 30 questions / 10 min / user. Sidebar launcher + ⌘/Ctrl+K on every page (context-aware), a one-tap "talk" floating button on every screen size (opens Ask already listening), and an installable full-screen **`/ask`** page (web manifest + "Ask" shortcut, Siri/Assistant recipe). The conversation is kept in the browser only (localStorage per user, 12 h, cleared on logout), so closing the panel, changing page or reloading keeps it, and follow-ups keep their context — nothing is stored server-side. Each question goes to the asker's own **Claude Connector first** (tool-less Haiku, ~7–9 s per Claude run). The server provider (Gemini) answers when the connector is offline, outdated or busy, or fails the round. Needs connector 1.1.0 or later. Ask is on when **either** engine is set up: `AI_PROVIDER` **or** admin Claude analysis (no Gemini key needed; without one, an asker whose connector can't answer is told how to fix it). The AI Digest still needs `AI_PROVIDER`. Answers can be spoken in a custom **ElevenLabs voice** (`POST /api/ask/speech`; set `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID`). The browser voice is the fallback, and the only voice when those are unset. When StoryBoard's data can't answer (and nothing was access-denied), the asker's Connector searches Jira through read-only **ORBIT DeepContext**, scoped to the program/teams in view. See context/features/ask-storyboard.md. |
+| Ask StoryBoard — grounded voice Q&A | **[BUILT]** | Ask a question out loud (or type it) and hear a 1–3 sentence answer grounded ONLY in StoryBoard data the viewer can see: roll-up/program, one team's board, bug reports, trend vs earlier sprints, leaderboard, one ticket. Browser speech in and out (no vendor); the server-side `lib/ai` provider answers through RBAC-checked **data packs** (`lib/ask/`) and a two-round JSON contract (answer, or request ≤ 3 more packs) — at most two model calls, cited Jira keys/sources sanitized to what was sent, `AI_ASK_MODEL` for a fast tier, 30 questions / 10 min / user. Sidebar launcher + ⌘/Ctrl+K on every page (context-aware), a one-tap "talk" floating button on every screen size (opens Ask already listening), and an installable full-screen **`/ask`** page (web manifest + "Ask" shortcut, Siri/Assistant recipe). The conversation is kept in the browser only (localStorage per user, 12 h, cleared on logout), so closing the panel, changing page or reloading keeps it, and follow-ups keep their context — nothing is stored server-side. Each question goes to the asker's own **Claude Connector first** (tool-less Haiku, ~7–9 s per Claude run). The server provider (Gemini) answers when the connector is offline, outdated or busy, or fails the round. Needs connector 1.1.0 or later. Ask is on when **either** engine is set up: `AI_PROVIDER` **or** admin Claude analysis (no Gemini key needed; without one, an asker whose connector can't answer is told how to fix it). The AI Digest still needs `AI_PROVIDER`. Answers can be spoken in a custom **ElevenLabs voice** (`POST /api/ask/speech`; set `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID`). The browser voice is the fallback, and the only voice when those are unset. When StoryBoard's data can't answer (and nothing was access-denied), the asker's Connector searches Jira through read-only **ORBIT DeepContext**, scoped to the program/teams in view. Ask also knows each **SOW** (a `sow` pack: timeline, slips, progress vs plan, epics, pre-QA issues, risks, decision log, docs); for a SOW question the DeepContext round searches that SOW's Confluence pages and repos as well as its Jira projects (2026-11-11). StoryBoard also keeps its own copy of each SOW's **primary Confluence pages** (re-read on Refresh Jira) and sends Ask the sections that match the question, so a new page is answerable before DeepContext indexes it. See context/features/ask-storyboard.md. |
 | Brand: Jigsaw logo + tagline | **[BUILT]** | Concept-A "Jigsaw" mark (inline SVG, `components/ui/brand.jsx`) replaces the placeholder "T" — bare on the ink sidebar, tiled only for the unreferenced 256 px app icon — in the sidebar, login card, mobile top bars, share header and welcome hero; two-tone wordmark ("Board" in the theme primary / on-ink accent) + the tagline *"Every piece. One picture."* in Instrument Serif italic. favicon = an adaptive `icon.svg` (ink piece flips white under `prefers-color-scheme: dark`; replaces `icon.png`) + a light-tone `favicon.ico` fallback for Safari; `public/app-icon.png` keeps the tiled app icon. A **`BrandLoader`** (the mark assembling itself over a faint ghost of the finished picture; white piece lands last, a teal halo blooms on the veil) is the indicator for the long-wait tier — the `PageLoader` veil + the AI digest wait; button spinners stay rings. **[Amended 2026-09-29]** the veil centres only the mark and hangs its label + elapsed-time line below it, so text appearing mid-wait never moves it. **[Amended 2026-10-22]** the mark (and the SVG favicon, `public/icon-modern.svg`) re-hues to the artifact purples under Modern; Safari's `favicon.ico` and the app icon stay teal (modern-artifact-theme.md). Presentation-only. See context/features/brand-logo-tagline.md. |
 | Claude Connector — per-ticket "Analyse with Claude" | **[BUILT]** | A sparkle on every `/` board track row (Roadmap, Tech Debt incl. Vulnerability, External, Internal), the Needs-attention panel, `/bugs` ticket rows and `/rollup` risks opens a per-ticket analysis: root cause (or implementation areas), similar past tickets, triage & sizing — plus a security section for Vulnerability tickets and a missing sub-component/fix-version suggestion for Needs-attention ones. It runs on the **user's own Claude Code** (company subscription + signed-in ORBIT DeepContext) through a local **StoryBoard Connector** (`public/storyboard-connector.mjs`, paired from `/settings`) that long-polls StoryBoard, runs `claude -p` headless with read-only DeepContext tools only, and posts a zod-gated result. Saved latest-only for everyone who can see the ticket; admin sets allowed models, effort, per-run budget and timeout. Separate from the server-side AI Digest. See context/features/claude-connector-analysis.md. |
 | Security vulnerability tracker (`/security`) | **[BUILT in part]** | Read-only, all-programs P0–P4 remediation dashboard (DR_GM, AEPlatform, DR_Honda, Fleet_Honda, DigitalRetailing, DR_Ford + an "All programs" rollup), ported from the read side of the claude.ai "Programs Team Vulnerability Tracker" artifact so everyone sees the same server-computed numbers. Nightly + admin-refreshed mirror of raw Jira facts and the Confluence vocabulary, classified at read time: KPIs, remediated %, coverage, status by priority, vulnerability mix, progress first with a hoverable fixed/new/backlog chart, release plans, fix-once campaigns, effort, the 1.0/2.0 split, and a computed **risk register** collapsed at the bottom (S1–S8 heatmap + headlines in the rollup, ranked cards with week-over-week deltas per program), in the artifact's own colours; the page frame follows the app theme (Tekion = the StoryBoard frame, Modern = the artifact frame — the 2026-10-21 look toggle was folded into the theme, modern-artifact-theme.md); every number links to Jira. Admin config in `/admin`. **Triage and every Jira write stay in the artifact** (a later writes spec); parity with the artifact is pending Naveen's same-morning check. See context/features/security-vulnerability-tracker.md. |
+| SOW tracker (`/sow`) | **[BUILT in part]** | A view for fixed-timeline SOWs / program projects, **outside every scrum board** (first SOW: Configurator AI). `/sow` lists them; `/sow/[slug]` is a visual overview — a date-scaled timeline with gate milestones and baseline-vs-current slips, weighted progress against a straight-line plan, a scope map (one square per ticket, by epic), an issue funnel (pre-QA Slack → internal QA → UAT), people load, and a risks / dependencies / docs rail — with a drill-in panel behind every tile down to one ticket. Tickets come from one Jira filter or JQL per SOW, sorted into kinds by editable rules; progress is weighted by kind (stories most, bugs least) and epics roll up from their tickets. Pre-QA issues are read from a Slack channel through an admin's **Claude Connector** (no Slack token on the server); status follows reactions, with an admin override, and each screenshot carries a short description of what it shows plus a link to open it in Slack. Further **docs-and-decisions channels** are read in the same Sync Slack run for a decision log and the documents shared there (never as issues). Any signed-in user reads; global admins create (standard template or a copy), edit, refresh and share. Public read-only share link and a landscape PDF. **Not built:** nightly Slack sync, PNG export. See context/features/sow-tracker.md. |
 | Support on-call directory (`/oncall`) | **[BUILT]** | Moves the per-release Confluence "AEC Support POD POC Details" page into StoryBoard. Each scrum team's managers (`TEAM_MANAGER_ROLES` + global admin) nominate the team's **Support POCs for each sprint** (email, name, optional phone and area) and may flag **one Primary**, up to an admin-set `Team.onCallHeadcount` cap (default 2), picking each POC from everyone an admin added to the team (name + phone from the admin's roster contact details, `RosterContact`). `/oncall` lets **any signed-in user** (Support included) find the right person by team, program (a picker that opens on the viewer's own program; search always spans all programs), module (claimed sub-components) or name, with `tel:` / `mailto:` / copy on every POC, at phone width. The default rotation is the latest sprint whose dev cycle has started; a picker shows others, and CLOSED sprints are read-only. Each card shows the team's open **External / Internal bug counts "as on the board"** (per-issue completion < 100 over its SUPPORT / INTERNAL_BUG tracks; display-only, no Jira call). The board hero shows "On call: {Primary} +N", linking to the card. Phone numbers are PII and are on the log redactor's key list. PagerDuty, the escalation matrix and non-StoryBoard contacts are **not** built. See context/features/support-oncall.md. |
 
 ---
@@ -398,6 +399,7 @@ model Program {
 
   teams       Team[]
   securityPrograms SecurityProgram[]
+  sows        Sow[]
 }
 
 /// A scrum team. ED roll-ups are just "the set of teams a user is an ED/TPM member of".
@@ -1165,6 +1167,258 @@ model SecurityRelease {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// ─────────────────────────────────────────────────────────────
+// SOW tracker (sow-tracker.md, 2026-11-10)
+// ─────────────────────────────────────────────────────────────
+
+/// A SOW / program project on a FIXED timeline (e.g. "Configurator AI"), rendered at /sow/[slug].
+/// Sits OUTSIDE every scrum board: no Team, no Sprint, no stages. The third non-sprint read path
+/// (after BugReport and the security tracker), on the same shape — this config row, a raw-fact
+/// mirror (SowIssue) and read-time classification (lib/sow/*.mjs). Optionally linked to a Program
+/// (SetNull). Any signed-in user reads; global admins write.
+model Sow {
+  id                   String           @id @default(cuid())
+  name                 String                          // "Configurator AI"
+  slug                 String           @unique        // URL segment, e.g. "configurator-ai"
+  description          String?
+  ownerName            String?
+  status               String           @default("ACTIVE") // ACTIVE | COMPLETED | ARCHIVED (zod-gated)
+  programId            String?
+  program              Program?         @relation(fields: [programId], references: [id], onDelete: SetNull)
+  sourceType           FilterSourceType
+  jql                  String?
+  jiraFilterId         String?
+  resolvedJql          String?                         // last JQL resolved from jiraFilterId
+  /// Projects that are "ours". A ticket from any other project that no project rule claims is
+  /// flagged a cross-team DEPENDENCY at read time (a flag, not a kind).
+  homeProjectKeys      String[]
+  kindRules            Json                            // ordered [{ kind, projects?, issueTypes?, labels? }], first match wins
+  kindWeights          Json                            // { STORY: 5, TECH: 3, … } — Epics roll up, never weighed
+  startDate            DateTime                        // calendar day (UTC midnight)
+  launchDate           DateTime                        // calendar day (UTC midnight)
+  lastRefreshedAt      DateTime?
+  lastRefreshedByEmail String?
+  lastRefreshError     String?
+  /// The Slack channel where issues are raised BEFORE the official QA hand-off (e.g. "C0CE3GZ6JSD").
+  /// Read through an admin's Claude Connector, never a server-side Slack token; null = not tracked.
+  slackChannelId       String?
+  slackChannelName     String?
+  slackLastSyncedAt    DateTime?
+  slackSyncError       String?
+  /// Extra Slack channels read ONLY for decisions and shared documents (never for issues):
+  /// [{ id, name?, lastSyncedAt?, error? }]. Read in the same Sync Slack run, one job per channel.
+  feedChannels         Json             @default("[]")
+  /// Curated reading list for people joining the SOW (Perf, QA, new engineers): ordered
+  /// [{ group, label, url?, kind }] where kind is CONFLUENCE | REPO | LINK. The Confluence folder
+  /// and the repos also define what Ask StoryBoard may ground an answer about this SOW in.
+  references           Json             @default("[]")
+  /// StoryBoard's own copy of the reading list's PRIMARY Confluence pages, split into sections:
+  /// [{ url, pageId, title, version, fetchedAt, error?, sections: [{ heading, text }] }]. Re-read on
+  /// every Refresh Jira (and nightly). Ask StoryBoard answers from the sections that match a
+  /// question, so a new page works before ORBIT DeepContext has indexed it. Server-side only.
+  knowledge            Json             @default("[]")
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  phases      SowPhase[]
+  planItems   SowPlanItem[]
+  risks       SowRisk[]
+  issues      SowIssue[]
+  slackIssues SowSlackIssue[]
+  feedItems   SowFeedItem[]
+  shares      SowShare[]
+
+  @@index([programId])
+}
+
+/// One step of the SOW journey (Set-up, Design, Development, Internal QA, UAT, Private Prod,
+/// Launch). `kinds` lists the ticket kinds that surface under this phase on the page. Current
+/// dates only — baselines live on plan items, where slips are read (decision 14).
+model SowPhase {
+  id        String   @id @default(cuid())
+  sowId     String
+  sow       Sow      @relation(fields: [sowId], references: [id], onDelete: Cascade)
+  name      String
+  sortOrder Int      @default(0)
+  startDate DateTime                                   // calendar day (UTC midnight)
+  endDate   DateTime                                   // calendar day (UTC midnight), inclusive
+  kinds     String[]                                   // e.g. ["EPIC", "STORY", "TECH"]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items SowPlanItem[]
+
+  @@index([sowId, sortOrder])
+}
+
+/// A hand-kept plan row: a milestone or a non-Jira task (PRD sign-off, Legal review). One table
+/// for both (decision 12); `isGate` marks the diamonds on the journey. `baselineDate` is the
+/// original commitment and `currentDate` today's, so a slip is their difference. `jiraKey` is an
+/// optional FK-less link to a mirrored ticket whose live progress the row then shows.
+model SowPlanItem {
+  id           String   @id @default(cuid())
+  sowId        String
+  sow          Sow      @relation(fields: [sowId], references: [id], onDelete: Cascade)
+  phaseId      String
+  phase        SowPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  title        String
+  status       String   @default("NOT_STARTED")        // NOT_STARTED | IN_PROGRESS | DONE | AT_RISK (zod-gated)
+  baselineDate DateTime?                               // calendar day (UTC midnight)
+  currentDate  DateTime?                               // calendar day (UTC midnight)
+  isGate       Boolean  @default(false)
+  jiraKey      String?
+  comment      String?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([sowId])
+  @@index([phaseId, sortOrder])
+}
+
+/// A hand-kept risk, blocker or open decision on a SOW. Display-only context for leadership.
+model SowRisk {
+  id        String    @id @default(cuid())
+  sowId     String
+  sow       Sow       @relation(fields: [sowId], references: [id], onDelete: Cascade)
+  type      String    @default("RISK")                 // RISK | BLOCKER | DECISION (zod-gated)
+  title     String
+  ownerName String?
+  status    String    @default("OPEN")                 // OPEN | MITIGATED | CLOSED (zod-gated)
+  note      String?
+  dueDate   DateTime?                                  // calendar day (UTC midnight)
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([sowId, sortOrder])
+}
+
+/// Replace-on-refresh mirror of the SOW's Jira source. RAW JIRA FACTS ONLY: kind, the dependency
+/// flag, epic roll-up and progress are computed at READ time, so a rule or weight edit re-renders
+/// with no Jira refresh (the BugReportIssue / SecurityIssue precedent).
+model SowIssue {
+  id             String    @id @default(cuid())
+  sowId          String
+  sow            Sow       @relation(fields: [sowId], references: [id], onDelete: Cascade)
+  jiraKey        String
+  projectKey     String
+  summary        String
+  issueType      String
+  status         String
+  statusCategory String                                // Jira statusCategory key: new | indeterminate | done
+  priority       String?
+  assigneeName   String?
+  parentKey      String?                               // Jira parent (epic, or story for a sub-task)
+  labels         String[]
+  components     String[]
+  fixVersions    String[]
+  storyPoints    Float?
+  dueDate        DateTime?
+  jiraCreatedAt  DateTime?
+  jiraUpdatedAt  DateTime?
+  resolvedAt     DateTime?
+  lastSyncedAt   DateTime  @default(now())
+
+  @@unique([sowId, jiraKey])
+}
+
+/// One top-level post from a SOW's pre-QA Slack channel, as an admin's Claude Connector read it.
+/// RAW FACTS (author, text, reactions, replies) plus an admin OVERRIDE; whether it is an issue and
+/// its status are computed at READ time (lib/sow/slack.mjs): the override wins, then reactions,
+/// then a linked Jira ticket. Upserted by (sowId, ts), so an override survives every re-sync.
+/// Never part of the weighted progress — Slack posts are not Jira scope.
+model SowSlackIssue {
+  id             String    @id @default(cuid())
+  sowId          String
+  sow            Sow       @relation(fields: [sowId], references: [id], onDelete: Cascade)
+  ts             String                                // Slack message ts — the post's identity
+  authorName     String
+  authorId       String?                               // Slack user id — builds the file link
+  postedAt       DateTime
+  title          String                                // one-sentence summary written at sync time
+  text           String
+  reactions      String[]                              // emoji names, e.g. ["ack"]
+  replyCount     Int       @default(0)
+  lastReplyAt    DateTime?
+  mentions       String[]
+  jiraKeys       String[]                              // keys found in the post or its thread
+  sessionId      String?
+  hasMedia       Boolean   @default(false)
+  /// Attachments as [{ id, name, kind: IMAGE | VIDEO | OTHER, description? }]. The file itself
+  /// stays in Slack (private); `description` is what Claude saw in a screenshot at sync time.
+  files          Json      @default("[]")
+  suggestedIssue Boolean   @default(false)             // the extraction's call: a defect report?
+  overrideStatus String?                               // ISSUE | NOT_ISSUE | FIXED (zod-gated); null = automatic
+  linkedJiraKey  String?                               // admin-linked ticket; FK-less, joined at read time
+  note           String?
+  updatedById    String?                               // no FK (ErrorLog reasoning)
+  lastSyncedAt   DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([sowId, ts])
+}
+
+/// One decision or shared document pulled from a SOW's docs-and-decisions Slack channel by an
+/// admin's Claude Connector. `key` is stable across syncs (channel + message ts + kind + the doc's
+/// URL, or the decision's order within its message), so a re-sync updates rows in place and keeps
+/// an admin's `hidden`. Signed-in viewers only; never on the public share page.
+model SowFeedItem {
+  id           String   @id @default(cuid())
+  sowId        String
+  sow          Sow      @relation(fields: [sowId], references: [id], onDelete: Cascade)
+  key          String
+  channelId    String
+  kind         String                                  // DECISION | DOC (zod-gated)
+  ts           String                                  // the top-level Slack message it came from
+  postedAt     DateTime
+  authorName   String
+  title        String
+  summary      String?
+  url          String?                                 // DOC only: the shared link (https)
+  hidden       Boolean  @default(false)                // admin: not a real decision / not useful
+  lastSyncedAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([sowId, key])
+  @@index([sowId, postedAt])
+}
+
+/// Daily progress of one SOW, as it read that day — feeds "vs last week". No FK: history must
+/// survive a SOW's deletion (the ErrorLog / SecuritySnapshot reasoning).
+model SowSnapshot {
+  id          String   @id @default(cuid())
+  sowId       String
+  sowName     String
+  capturedOn  DateTime                                 // UTC midnight — one row per SOW per day
+  progressPct Float
+  totalIssues Int
+  doneIssues  Int
+  openBugs    Int
+  byKind      Json                                     // { STORY: { total, done, inProgress }, … }
+
+  @@unique([sowId, capturedOn])
+  @@index([capturedOn])
+}
+
+/// A public, read-only link to one SOW at /sow/share/[token]. The token is a bearer capability
+/// (192 random bits, app-generated — never the cuid default), live only, optionally expiring;
+/// revoking deletes the row.
+model SowShare {
+  id          String    @id @default(cuid())
+  token       String    @unique
+  sowId       String
+  sow         Sow       @relation(fields: [sowId], references: [id], onDelete: Cascade)
+  createdById String?                                  // no FK (ErrorLog reasoning)
+  createdByEmail String?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([sowId])
+}
 ```
 
 ### Entity-relationship diagram
@@ -1210,6 +1464,16 @@ erDiagram
     BUG_REPORT ||--o{ BUG_REPORT_SNAPSHOT : "history"
     BUG_REPORT_SCOPE ||--o{ BUG_SLA_TARGET : "SLA days by priority"
     BUG_REPORT_SCOPE ||--o{ BUG_REPORT_ISSUE : "universe of""
+
+    PROGRAM |o--o{ SOW : "optionally groups"
+    SOW ||--o{ SOW_PHASE : "has"
+    SOW ||--o{ SOW_PLAN_ITEM : "plans"
+    SOW_PHASE ||--o{ SOW_PLAN_ITEM : "contains"
+    SOW ||--o{ SOW_RISK : "tracks"
+    SOW ||--o{ SOW_ISSUE : "mirrors"
+    SOW ||--o{ SOW_SLACK_ISSUE : "pre-QA posts"
+    SOW ||--o{ SOW_SHARE : "shared by"
+    SOW ||--o{ SOW_FEED_ITEM : "decisions & docs"
 
     USER ||--o| CONNECTOR_TOKEN : "pairs"
     USER ||--o{ ANALYSIS_JOB : "requests"
@@ -1457,6 +1721,77 @@ erDiagram
         string month UK
         datetime shipDate
     }
+    SOW {
+        string id PK
+        string slug UK
+        string programId FK "null = unlinked"
+        FilterSourceType sourceType
+        json kindRules
+        json kindWeights
+        datetime launchDate
+        string slackChannelId
+        json references
+    }
+    SOW_PHASE {
+        string id PK
+        string sowId FK
+        datetime startDate
+        datetime endDate
+        string_arr kinds
+    }
+    SOW_PLAN_ITEM {
+        string id PK
+        string sowId FK
+        string phaseId FK
+        string status
+        datetime baselineDate
+        datetime currentDate
+        bool isGate
+        string jiraKey "no FK by design"
+    }
+    SOW_RISK {
+        string id PK
+        string sowId FK
+        string type
+        string status
+    }
+    SOW_ISSUE {
+        string id PK
+        string sowId FK
+        string jiraKey "unique per SOW"
+        string statusCategory
+        string parentKey
+    }
+    SOW_SLACK_ISSUE {
+        string id PK
+        string sowId FK
+        string ts "unique per SOW"
+        string_arr reactions
+        bool suggestedIssue
+        string overrideStatus
+        string linkedJiraKey "no FK by design"
+    }
+    SOW_FEED_ITEM {
+        string id PK
+        string sowId FK
+        string key "unique per SOW"
+        string channelId
+        string kind "DECISION | DOC"
+        string url
+        bool hidden
+    }
+    SOW_SNAPSHOT {
+        string id PK
+        string sowId "no FK by design"
+        datetime capturedOn
+        float progressPct
+    }
+    SOW_SHARE {
+        string id PK
+        string token UK
+        string sowId FK
+        datetime expiresAt
+    }
     ERROR_LOG {
         string id PK
         string requestId
@@ -1478,6 +1813,10 @@ erDiagram
 > (optional, SetNull). `SecurityIssue` is a raw-fact mirror joined to programs at READ time;
 > `SecuritySnapshot.programKey` has no FK so history survives a program's removal;
 > `SecurityTrackerSettings` is a singleton (security-vulnerability-tracker.md).
+>
+> **Note — the SOW cluster (2026-11-10) links to the spine only through `Sow.programId`**
+> (optional, SetNull). `SowSnapshot.sowId`, `SowPlanItem.jiraKey` and `SowSlackIssue.linkedJiraKey`
+> are FK-less and joined at read time (sow-tracker.md).
 >
 > **Note — `RosterContact` (2026-10-25) is unlinked by design**: keyed by email so one person has
 > one name + phone across every roster that lists them, joined to `Team.memberEmails` and
@@ -1600,6 +1939,18 @@ erDiagram
   question) is wiped when they finish, and the waiting request deletes the row. No schema change:
   `kind`/`source` were already free strings.
 
+- **The SOW cluster (added 2026-11-10) is the third non-sprint read path**, for fixed-timeline
+  SOWs / program projects that sit outside every scrum board. Same shape as `/bugs` and
+  `/security`: a config row (`Sow`: Jira source, ordered kind rules, kind weights, optional
+  `Program` link), a replace-on-refresh mirror of **raw Jira facts** (`SowIssue`) classified at
+  read time (`lib/sow/*.mjs`), and a daily FK-less `SowSnapshot`. What is new is hand-kept plan
+  data: `SowPhase` and `SowPlanItem` (milestones and non-Jira tasks in one table, with a
+  **baseline** and a **current** date so a slip is their difference) and `SowRisk`.
+  `SowSlackIssue` holds posts from the SOW's pre-QA Slack channel as an admin's Claude Connector
+  read them (raw facts + an admin override; status is read-time); `SowFeedItem` holds decisions
+  and shared documents from its docs-and-decisions channels (stable key, admin `hidden`). `SowShare` is a second
+  public-token surface. Nothing here feeds §12. See context/features/sow-tracker.md.
+
 - **The Security tracker cluster (added 2026-10-20) is the second non-sprint read path**, on the
   `/bugs` precedent: an admin config singleton (`SecurityTrackerSettings`, also holding the parsed
   Confluence vocabulary and refresh provenance), `SecurityProgram` (one Jira component each; an
@@ -1699,6 +2050,8 @@ UI/UX *direction* is the spec above; this table is the *history* of what shipped
 | 2026-10-24 | Modern = the artifact look app-wide — light gradient-bordered headers + scoreboard, gradient title, purple accent, light sidebar, artifact status chips/charts, themed logo + favicon, View-Transition theme switch, micro-animations (sliding toggle pill, drill-down reveal, copy→check, empty-state entrance, icon hover replays); `/security` look toggle folded into the theme | modern-artifact-theme.md |
 | 2026-10-25 | `/oncall` program picker; on-call member picker (name + phone from the roster); admin roster "Contact details" | support-oncall.md (as-built 14–15) |
 | 2026-10-25 | Themed dropdown app-wide — the shared `Select` gets a theme-matched list (portal, filter box above 8 options, second-line hints, keyboard), replacing the browser's native menu on all 30 dropdowns | themed-select.md |
+| 2026-11-11 | Sidebar "Settings" renamed **"Claude Code"** with a live Connected / Not connected indicator (green dot; pulsing amber dot and an amber outline when not connected; a corner dot on the collapsed rail); the `/settings` page hero and tab title follow. URL unchanged | claude-connector-analysis.md |
+| 2026-11-10 | `/sow` SOW tracker — list cards with a mini timeline; SOW overview (date-scaled timeline, progress-vs-plan chart, scope map, issue funnel, people load, watch list) with a right-hand drill-in panel; new / settings / plan / risks / share / export dialogs; "SOWs" sidebar item | sow-tracker.md |
 | 2026-10-24 | `/oncall` Support on-call directory (program-grouped team cards, Primary first, tel/mailto/copy, bug pulse, search, sprint picker), on-call edit dialog, "On-call" sidebar item, board-hero "On call" chip, admin on-call headcount field | support-oncall.md |
 
 ---
@@ -1867,6 +2220,19 @@ file store. Token is **plaintext on disk** in `.sessions/`. Acceptable for a loc
    teams the viewer can edit. **[Amended 2026-10-25]** roster phones (`RosterContact.phone`) follow
    the same rule: visible on `/admin` (global admins) and in the on-call picker for teams the viewer
    can edit, never to other viewers; `rosterContacts` in an error's details is redacted (verified).
+
+10. **SOW tracker surfaces** (added 2026-11-10, sow-tracker.md). (a) A second public-token page,
+    `/sow/share/[token]`: 192-bit app-generated token, live only, optional expiry, revocable,
+    `robots: noindex`, one generic page for unknown / expired / revoked. It shows ticket titles and
+    assignee names, and never the pre-QA Slack text, authors, channel, people load or reading list
+    (verified), nor the decision log or Slack-shared docs. (b) The server holds **no Slack credential**: a Slack read is a `SLACK_SYNC` job on
+    the requesting admin's own Claude Connector (1.2.1+, which waits for the Slack connection), whose local ceiling for that kind is
+    exactly `slack_read_channel`, `slack_read_thread` and `slack_read_file` (the last so Claude
+    can describe a screenshot; the image itself is never stored — only that description). That run loads claude.ai connectors
+    (Slack lives there), the one job kind that does. Slack message text is treated as data: it
+    reaches Claude with no other tool and returns through a zod gate. (c) Slack text is stored in
+    StoryBoard's database and shown to **every signed-in user** — a wider audience than the
+    channel's members; decided with Naveen as "no access control for now".
 
 ---
 
@@ -2245,6 +2611,38 @@ All previously open decisions are now resolved:
   a portaled, theme-token list, a filter box above 8 options, `hint` second lines and full keyboard
   support. Supersedes ui-port.md decision 5. Presentation only: no schema or route change.
   See context/features/themed-select.md.
+
+- **SOW tracker (ratified 2026-11-10, two rounds with Naveen).** A third non-sprint read path for
+  fixed-timeline SOWs / program projects, outside every scrum board.
+  - **Round 1:** many SOWs, each optionally linked to a Program; any signed-in user reads and
+    global admins write ("no access control for now"); one Jira filter per SOW, auto-classified by
+    editable project + issue-type rules; progress weighted by kind with epics rolling up (by plain
+    count a wave of QA bugs would wrongly pull completion down); one plan with baseline vs current
+    dates; manual tracker rows, risks, dependencies, PDF and a public share link; one built-in
+    template plus Duplicate; seed "Configurator AI" on the deck's Option 1 dates.
+  - **Round 2:** the page is a one-screen visual overview with a drill-in panel behind every tile
+    (it replaced a stacked phase journey Naveen found too list-like); the pre-QA Slack channel is
+    read **through the Claude Connector**, not a bot token; Slack issue status follows reactions
+    with an admin override.
+  - **As-built calls by Claude, flagged:** credit by Jira status NAME before category, because
+    Tekion files "Groomed" as in-progress (Configurator AI read 40% with nothing started; it now
+    reads 3%); the reading list (`Sow.references`) added after Naveen shared the Confluence folder.
+  - **Round 4 (2026-11-11, Naveen):** extra Slack channels "just for the docs and decisions" —
+    read in the same Sync Slack batch, one connector job per channel run in sequence, into a
+    decision log and a Slack-shared docs list (`SowFeedItem`); admins can hide a wrong item.
+    An empty read (the Slack connector sometimes fails to load in a headless run) is a failure
+    and is retried once automatically.
+  - **Round 5 (2026-11-11, Naveen):** Ask StoryBoard answers about SOWs (a `sow` data pack; a
+    deep round over the SOW's Confluence, code and Jira); connector 1.2.1 waits for the Slack
+    connection (the cause of empty reads); decisions and docs accumulate across syncs (never
+    removed by a sync) with a weekly full re-read.
+  - **Round 6 (2026-11-11, Naveen):** the "Repositories, Services and Request Templates" and
+    "Configurator – An Overview" pages are the SOW's primary sources: StoryBoard reads them on every
+    Refresh Jira (`Sow.knowledge`) and Ask answers from their matching sections; the 16 real
+    repositories (with notes) and the stage / preprod / prod links join the reading list.
+  - **Invariants moved and declared:** **67 → 80 ƒ Dynamic** (3 pages + 10 API routes) and
+    **16 → 17 migrations** (`add_sow_tracker`). §12 untouched; no Jira write.
+  - See context/features/sow-tracker.md.
 
 ---
 

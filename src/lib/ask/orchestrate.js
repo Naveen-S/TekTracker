@@ -30,7 +30,16 @@ import {
 import { buildCatalog, createAskContext, defaultNeeds, loadPacks } from "@/lib/ask/packs";
 import { awaitAskJob, checkConnector, noEngineError, queueAskJob, withConnectorHint } from "@/lib/ask/connector";
 import { ConnectorOfflineError } from "@/lib/connector/errors";
-import { ASK_DEEP_SYSTEM_PROMPT, DEEP_SOURCE, DEEP_SOURCE_LABEL, buildDeepPrompt, sanitizeDeepAnswer } from "@/lib/ask/deep.mjs";
+import {
+  ASK_DEEP_SOW_SYSTEM_PROMPT,
+  ASK_DEEP_SYSTEM_PROMPT,
+  DEEP_DOC_SOURCE_LABEL,
+  DEEP_SOURCE,
+  DEEP_SOURCE_LABEL,
+  buildDeepPrompt,
+  isSowContext,
+  sanitizeDeepAnswer,
+} from "@/lib/ask/deep.mjs";
 import { buildDeepScope } from "@/lib/ask/deep-scope";
 import { ASK_DEEP_JOB } from "@/lib/connector/jobs";
 
@@ -45,7 +54,9 @@ const pickAnswer = (reply) => Object.fromEntries(ANSWER_KEYS.map((key) => [key, 
 
 /** Everything a round's prompt is built from — rebuilt identically when a question resumes. */
 async function prepareQuestion(user, { context, messages }) {
-  const ctx = createAskContext(user);
+  const transcript = normalizeTranscript(messages, { maxTurns: ASK_MAX_TURNS, maxChars: ASK_MAX_TURN_CHARS });
+  // The question and the last two turns steer which page sections a SOW pack carries.
+  const ctx = createAskContext(user, new Date(), [...transcript.history.slice(-2).map((turn) => turn.text), transcript.question].join("\n"));
   const { catalog, index } = await buildCatalog(ctx);
   // The sprint on screen is "the default" the user means — not necessarily the ACTIVE Gate.
   const pageSprint = index.sprints.find((sprint) => sprint.id === context.sprintId);
@@ -56,13 +67,11 @@ async function prepareQuestion(user, { context, messages }) {
     programId: context.programId,
     bugReportSlug: context.bugReportSlug,
     bugScopeId: context.bugScopeId,
+    sowSlug: context.sowSlug,
   };
   const loaded = new Set();
   const packs = await loadPacks(ctx, index, defaultNeeds(context), { ids, loaded });
-  const { history, question } = normalizeTranscript(messages, {
-    maxTurns: ASK_MAX_TURNS,
-    maxChars: ASK_MAX_TURN_CHARS,
-  });
+  const { history, question } = transcript;
   return {
     ctx,
     index,
@@ -172,10 +181,13 @@ async function settle(user, state, answer, meta, { connector = true } = {}) {
   if (!clean.grounded && !denied && connector && (await checkConnector(user.id)).available) {
     const scope = await buildDeepScope(state.ctx, state.context);
     const { today, viewer, history, question } = state;
+    // A SOW question searches that SOW's Confluence pages and repos as well as Jira.
+    const docs = Boolean(scope.sow);
     return queueAskJob(user, {
       kind: ASK_DEEP_JOB.kind,
       round: 1,
-      system: ASK_DEEP_SYSTEM_PROMPT,
+      deepTools: docs ? "docs" : "jira",
+      system: docs ? ASK_DEEP_SOW_SYSTEM_PROMPT : ASK_DEEP_SYSTEM_PROMPT,
       prompt: buildDeepPrompt({ today, viewer, scope, history, question }),
       jsonSchema: askAnswerContract.json,
       packs: state.packs,
@@ -190,7 +202,7 @@ function finish(state, answer, { rounds, provider, model, started, costUsd = nul
   const { packs, context, question, turns, ctx } = state;
   const clean = deep ? sanitizeDeepAnswer(answer) : sanitizeAnswer(answer, packs);
   const packsUsed = deep
-    ? [{ pack: DEEP_SOURCE, label: DEEP_SOURCE_LABEL, available: true }]
+    ? [{ pack: DEEP_SOURCE, label: isSowContext(context) ? DEEP_DOC_SOURCE_LABEL : DEEP_SOURCE_LABEL, available: true }]
     : packs.map(({ pack, label, data }) => ({ pack, label, available: !data?.unavailable }));
   // P5: what was asked is never logged — only its shape and cost.
   logger.info("ask.answered", {

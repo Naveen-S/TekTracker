@@ -52,7 +52,7 @@ There is no test suite yet (deliberate) — run /verify for the house verificati
 
 ## Structure
 
-- `src/app/` — App Router pages (`/`, `/login`, `/admin`, `/rollup`, `/oncall`, `/share/[token]`) and API
+- `src/app/` — App Router pages (`/`, `/login`, `/admin`, `/rollup`, `/oncall`, `/sow`, `/share/[token]`) and API
   route handlers under `src/app/api/`
 - `src/components/` — `auth/`, `dashboard/`, `rollup/`, `admin/`, `ui/`
 - `src/lib/` — domain logic: pure `metrics.mjs`, `dashboard-data.js`, `workflows.mjs`, `rbac.js`,

@@ -97,6 +97,7 @@ model Program {
 
   teams       Team[]
   securityPrograms SecurityProgram[]
+  sows        Sow[]
 }
 
 /// A scrum team. ED roll-ups are just "the set of teams a user is an ED/TPM member of".
@@ -888,4 +889,256 @@ model SecurityRelease {
   note      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────
+// SOW tracker (sow-tracker.md, 2026-11-10)
+// ─────────────────────────────────────────────────────────────
+
+/// A SOW / program project on a FIXED timeline (e.g. "Configurator AI"), rendered at /sow/[slug].
+/// Sits OUTSIDE every scrum board: no Team, no Sprint, no stages. The third non-sprint read path
+/// (after BugReport and the security tracker), on the same shape — this config row, a raw-fact
+/// mirror (SowIssue) and read-time classification (lib/sow/*.mjs). Optionally linked to a Program
+/// (SetNull). Any signed-in user reads; global admins write.
+model Sow {
+  id                   String           @id @default(cuid())
+  name                 String                          // "Configurator AI"
+  slug                 String           @unique        // URL segment, e.g. "configurator-ai"
+  description          String?
+  ownerName            String?
+  status               String           @default("ACTIVE") // ACTIVE | COMPLETED | ARCHIVED (zod-gated)
+  programId            String?
+  program              Program?         @relation(fields: [programId], references: [id], onDelete: SetNull)
+  sourceType           FilterSourceType
+  jql                  String?
+  jiraFilterId         String?
+  resolvedJql          String?                         // last JQL resolved from jiraFilterId
+  /// Projects that are "ours". A ticket from any other project that no project rule claims is
+  /// flagged a cross-team DEPENDENCY at read time (a flag, not a kind).
+  homeProjectKeys      String[]
+  kindRules            Json                            // ordered [{ kind, projects?, issueTypes?, labels? }], first match wins
+  kindWeights          Json                            // { STORY: 5, TECH: 3, … } — Epics roll up, never weighed
+  startDate            DateTime                        // calendar day (UTC midnight)
+  launchDate           DateTime                        // calendar day (UTC midnight)
+  lastRefreshedAt      DateTime?
+  lastRefreshedByEmail String?
+  lastRefreshError     String?
+  /// The Slack channel where issues are raised BEFORE the official QA hand-off (e.g. "C0CE3GZ6JSD").
+  /// Read through an admin's Claude Connector, never a server-side Slack token; null = not tracked.
+  slackChannelId       String?
+  slackChannelName     String?
+  slackLastSyncedAt    DateTime?
+  slackSyncError       String?
+  /// Extra Slack channels read ONLY for decisions and shared documents (never for issues):
+  /// [{ id, name?, lastSyncedAt?, error? }]. Read in the same Sync Slack run, one job per channel.
+  feedChannels         Json             @default("[]")
+  /// Curated reading list for people joining the SOW (Perf, QA, new engineers): ordered
+  /// [{ group, label, url?, kind }] where kind is CONFLUENCE | REPO | LINK. The Confluence folder
+  /// and the repos also define what Ask StoryBoard may ground an answer about this SOW in.
+  references           Json             @default("[]")
+  /// StoryBoard's own copy of the reading list's PRIMARY Confluence pages, split into sections:
+  /// [{ url, pageId, title, version, fetchedAt, error?, sections: [{ heading, text }] }]. Re-read on
+  /// every Refresh Jira (and nightly). Ask StoryBoard answers from the sections that match a
+  /// question, so a new page works before ORBIT DeepContext has indexed it. Server-side only.
+  knowledge            Json             @default("[]")
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  phases      SowPhase[]
+  planItems   SowPlanItem[]
+  risks       SowRisk[]
+  issues      SowIssue[]
+  slackIssues SowSlackIssue[]
+  feedItems   SowFeedItem[]
+  shares      SowShare[]
+
+  @@index([programId])
+}
+
+/// One step of the SOW journey (Set-up, Design, Development, Internal QA, UAT, Private Prod,
+/// Launch). `kinds` lists the ticket kinds that surface under this phase on the page. Current
+/// dates only — baselines live on plan items, where slips are read (decision 14).
+model SowPhase {
+  id        String   @id @default(cuid())
+  sowId     String
+  sow       Sow      @relation(fields: [sowId], references: [id], onDelete: Cascade)
+  name      String
+  sortOrder Int      @default(0)
+  startDate DateTime                                   // calendar day (UTC midnight)
+  endDate   DateTime                                   // calendar day (UTC midnight), inclusive
+  kinds     String[]                                   // e.g. ["EPIC", "STORY", "TECH"]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items SowPlanItem[]
+
+  @@index([sowId, sortOrder])
+}
+
+/// A hand-kept plan row: a milestone or a non-Jira task (PRD sign-off, Legal review). One table
+/// for both (decision 12); `isGate` marks the diamonds on the journey. `baselineDate` is the
+/// original commitment and `currentDate` today's, so a slip is their difference. `jiraKey` is an
+/// optional FK-less link to a mirrored ticket whose live progress the row then shows.
+model SowPlanItem {
+  id           String   @id @default(cuid())
+  sowId        String
+  sow          Sow      @relation(fields: [sowId], references: [id], onDelete: Cascade)
+  phaseId      String
+  phase        SowPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  title        String
+  status       String   @default("NOT_STARTED")        // NOT_STARTED | IN_PROGRESS | DONE | AT_RISK (zod-gated)
+  baselineDate DateTime?                               // calendar day (UTC midnight)
+  currentDate  DateTime?                               // calendar day (UTC midnight)
+  isGate       Boolean  @default(false)
+  jiraKey      String?
+  comment      String?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([sowId])
+  @@index([phaseId, sortOrder])
+}
+
+/// A hand-kept risk, blocker or open decision on a SOW. Display-only context for leadership.
+model SowRisk {
+  id        String    @id @default(cuid())
+  sowId     String
+  sow       Sow       @relation(fields: [sowId], references: [id], onDelete: Cascade)
+  type      String    @default("RISK")                 // RISK | BLOCKER | DECISION (zod-gated)
+  title     String
+  ownerName String?
+  status    String    @default("OPEN")                 // OPEN | MITIGATED | CLOSED (zod-gated)
+  note      String?
+  dueDate   DateTime?                                  // calendar day (UTC midnight)
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([sowId, sortOrder])
+}
+
+/// Replace-on-refresh mirror of the SOW's Jira source. RAW JIRA FACTS ONLY: kind, the dependency
+/// flag, epic roll-up and progress are computed at READ time, so a rule or weight edit re-renders
+/// with no Jira refresh (the BugReportIssue / SecurityIssue precedent).
+model SowIssue {
+  id             String    @id @default(cuid())
+  sowId          String
+  sow            Sow       @relation(fields: [sowId], references: [id], onDelete: Cascade)
+  jiraKey        String
+  projectKey     String
+  summary        String
+  issueType      String
+  status         String
+  statusCategory String                                // Jira statusCategory key: new | indeterminate | done
+  priority       String?
+  assigneeName   String?
+  parentKey      String?                               // Jira parent (epic, or story for a sub-task)
+  labels         String[]
+  components     String[]
+  fixVersions    String[]
+  storyPoints    Float?
+  dueDate        DateTime?
+  jiraCreatedAt  DateTime?
+  jiraUpdatedAt  DateTime?
+  resolvedAt     DateTime?
+  lastSyncedAt   DateTime  @default(now())
+
+  @@unique([sowId, jiraKey])
+}
+
+/// One top-level post from a SOW's pre-QA Slack channel, as an admin's Claude Connector read it.
+/// RAW FACTS (author, text, reactions, replies) plus an admin OVERRIDE; whether it is an issue and
+/// its status are computed at READ time (lib/sow/slack.mjs): the override wins, then reactions,
+/// then a linked Jira ticket. Upserted by (sowId, ts), so an override survives every re-sync.
+/// Never part of the weighted progress — Slack posts are not Jira scope.
+model SowSlackIssue {
+  id             String    @id @default(cuid())
+  sowId          String
+  sow            Sow       @relation(fields: [sowId], references: [id], onDelete: Cascade)
+  ts             String                                // Slack message ts — the post's identity
+  authorName     String
+  authorId       String?                               // Slack user id — builds the file link
+  postedAt       DateTime
+  title          String                                // one-sentence summary written at sync time
+  text           String
+  reactions      String[]                              // emoji names, e.g. ["ack"]
+  replyCount     Int       @default(0)
+  lastReplyAt    DateTime?
+  mentions       String[]
+  jiraKeys       String[]                              // keys found in the post or its thread
+  sessionId      String?
+  hasMedia       Boolean   @default(false)
+  /// Attachments as [{ id, name, kind: IMAGE | VIDEO | OTHER, description? }]. The file itself
+  /// stays in Slack (private); `description` is what Claude saw in a screenshot at sync time.
+  files          Json      @default("[]")
+  suggestedIssue Boolean   @default(false)             // the extraction's call: a defect report?
+  overrideStatus String?                               // ISSUE | NOT_ISSUE | FIXED (zod-gated); null = automatic
+  linkedJiraKey  String?                               // admin-linked ticket; FK-less, joined at read time
+  note           String?
+  updatedById    String?                               // no FK (ErrorLog reasoning)
+  lastSyncedAt   DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([sowId, ts])
+}
+
+/// One decision or shared document pulled from a SOW's docs-and-decisions Slack channel by an
+/// admin's Claude Connector. `key` is stable across syncs (channel + message ts + kind + the doc's
+/// URL, or the decision's order within its message), so a re-sync updates rows in place and keeps
+/// an admin's `hidden`. Signed-in viewers only; never on the public share page.
+model SowFeedItem {
+  id           String   @id @default(cuid())
+  sowId        String
+  sow          Sow      @relation(fields: [sowId], references: [id], onDelete: Cascade)
+  key          String
+  channelId    String
+  kind         String                                  // DECISION | DOC (zod-gated)
+  ts           String                                  // the top-level Slack message it came from
+  postedAt     DateTime
+  authorName   String
+  title        String
+  summary      String?
+  url          String?                                 // DOC only: the shared link (https)
+  hidden       Boolean  @default(false)                // admin: not a real decision / not useful
+  lastSyncedAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([sowId, key])
+  @@index([sowId, postedAt])
+}
+
+/// Daily progress of one SOW, as it read that day — feeds "vs last week". No FK: history must
+/// survive a SOW's deletion (the ErrorLog / SecuritySnapshot reasoning).
+model SowSnapshot {
+  id          String   @id @default(cuid())
+  sowId       String
+  sowName     String
+  capturedOn  DateTime                                 // UTC midnight — one row per SOW per day
+  progressPct Float
+  totalIssues Int
+  doneIssues  Int
+  openBugs    Int
+  byKind      Json                                     // { STORY: { total, done, inProgress }, … }
+
+  @@unique([sowId, capturedOn])
+  @@index([capturedOn])
+}
+
+/// A public, read-only link to one SOW at /sow/share/[token]. The token is a bearer capability
+/// (192 random bits, app-generated — never the cuid default), live only, optionally expiring;
+/// revoking deletes the row.
+model SowShare {
+  id          String    @id @default(cuid())
+  token       String    @unique
+  sowId       String
+  sow         Sow       @relation(fields: [sowId], references: [id], onDelete: Cascade)
+  createdById String?                                  // no FK (ErrorLog reasoning)
+  createdByEmail String?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([sowId])
 }

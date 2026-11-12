@@ -38,6 +38,12 @@ const STARTERS = {
     "Which team has the best points per developer?",
     "Who delivered the most points this sprint?",
   ],
+  sow: [
+    "Are we on track for the launch?",
+    "What was decided this month?",
+    "What's still open from pre-QA testing?",
+    "Where is the RAG design doc?",
+  ],
   default: [
     "Is this sprint on track?",
     "Which team needs attention?",

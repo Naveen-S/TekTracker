@@ -66,6 +66,8 @@ export const ERROR_CODES = Object.freeze({
   // in a refresh's `warnings` — the old vocabulary is kept — never a 5xx on its own.
   SECURITY_REFRESH_FAILED: "SECURITY_REFRESH_FAILED",
   SECURITY_VOCAB_UNAVAILABLE: "SECURITY_VOCAB_UNAVAILABLE",
+  // SOW tracker (sow-tracker.md) — a nightly refresh of one SOW failed; its old mirror is kept.
+  SOW_REFRESH_FAILED: "SOW_REFRESH_FAILED",
   // fallback
   INTERNAL: "INTERNAL",
 });

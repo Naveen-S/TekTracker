@@ -20,24 +20,44 @@ import {
   Layers,
   LayoutGrid,
   LifeBuoy,
+  Milestone,
   PanelLeft,
   PanelLeftClose,
   Settings,
   ShieldCheck,
+  SquareTerminal,
   Trophy,
-  UserCog,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandMark, Wordmark } from "./brand";
 import { NavLink } from "./nav-link";
 import { useLocalPref } from "@/lib/use-local-pref";
+import { useConnectorStatus } from "@/lib/use-connector-status";
 
 const COLLAPSE_KEY = "sprintTracker_sidebarCollapsed";
+
+/** Claude Code connection states (lib/use-connector-status): wording + whether it needs attention. */
+const CONNECTION = {
+  connected: { label: "Connected", dot: "bg-success", attention: false },
+  offline: { label: "Not connected", dot: "bg-warn", attention: true },
+  unpaired: { label: "Not connected", dot: "bg-warn", attention: true },
+};
+
+/** The status dot: steady green when connected, a pulsing amber one when it needs connecting. */
+function ConnectionDot({ state, className }) {
+  return (
+    <span className={cn("relative flex size-2.5 shrink-0", className)} aria-hidden="true">
+      {state.attention && <span className={cn("absolute inset-0 animate-ping rounded-full opacity-75 motion-reduce:hidden", state.dot)} />}
+      <span className={cn("relative size-2.5 rounded-full ring-2 ring-ink modern:ring-card", state.dot)} />
+    </span>
+  );
+}
 
 export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess, onAsk = null }) {
   const pathname = usePathname();
   const [collapsedPref, setCollapsedPref] = useLocalPref(COLLAPSE_KEY, "false");
   const collapsed = collapsedPref === "true";
+  const connection = CONNECTION[useConnectorStatus(Boolean(user))] ?? null;
 
   const nav = [
     { href: "/", label: "My board", icon: LayoutGrid, active: pathname === "/" },
@@ -57,10 +77,14 @@ export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess, onAsk = n
       : []),
     // Who to call per team — every signed-in user, Support included (support-oncall.md decision 3).
     { href: "/oncall", label: "On-call", icon: LifeBuoy, active: pathname.startsWith("/oncall") },
+    // Fixed-timeline SOWs / program projects, outside the scrum boards (sow-tracker.md decision 2).
+    { href: "/sow", label: "SOWs", icon: Milestone, active: pathname.startsWith("/sow") },
     // Org-level and read-only, so every signed-in user (security-vulnerability-tracker.md P1).
     { href: "/security", label: "Security", icon: ShieldCheck, active: pathname.startsWith("/security") },
-    // Personal settings — the Claude Connector pairing (claude-connector-analysis.md), for everyone.
-    { href: "/settings", label: "Settings", icon: UserCog, active: pathname.startsWith("/settings") },
+    // The user's own Claude Code connection (the Connector pairing, claude-connector-analysis.md),
+    // for everyone. Named for what it is, with a live connected / not-connected indicator, so
+    // people notice it and connect: Analyse with Claude, Ask and the SOW Slack sync all run on it.
+    { href: "/settings", label: "Claude Code", icon: SquareTerminal, active: pathname.startsWith("/settings"), connection },
     ...(user?.isAdmin
       ? [{ href: "/admin", label: "Admin", icon: Settings, active: pathname.startsWith("/admin") }]
       : []),
@@ -86,11 +110,11 @@ export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess, onAsk = n
       </Link>
 
       <nav className="mt-2 flex flex-col gap-1 px-2.5">
-        {nav.map(({ href, label, icon: Icon, active }) => (
+        {nav.map(({ href, label, icon: Icon, active, connection: state }) => (
           <NavLink
             key={href}
             href={href}
-            title={collapsed ? label : undefined}
+            title={collapsed ? (state ? `${label} — ${state.label}` : label) : undefined}
             aria-current={active ? "page" : undefined}
             className={cn(
               "flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
@@ -98,10 +122,25 @@ export function AppSidebar({ user, hasBugReport, hasLeaderboardAccess, onAsk = n
               active
                 ? "bg-primary text-white shadow-brand modern:bg-linear-to-r modern:from-grad-start modern:to-grad-end modern:text-primary-foreground"
                 : "text-white/60 hover:bg-white/10 hover:text-white modern:text-muted-foreground modern:hover:bg-accent modern:hover:text-foreground",
+              // Not connected: a quiet amber outline keeps the item noticeable until it is.
+              state?.attention && !active && "text-white ring-1 ring-warn/60 modern:text-foreground",
             )}
           >
-            <Icon className="size-[18px] shrink-0" />
-            {!collapsed && <span className="whitespace-nowrap">{label}</span>}
+            <span className="relative shrink-0">
+              <Icon className="size-[18px]" />
+              {state && collapsed && <ConnectionDot state={state} className="absolute -top-1 -right-1" />}
+            </span>
+            {!collapsed && (
+              <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                <span className="whitespace-nowrap">{label}</span>
+                {state && (
+                  <span className={cn("text-[11px] font-medium", active ? "text-white/85 modern:text-primary-foreground/85" : "text-white/55 modern:text-muted-foreground")}>
+                    {state.label}
+                  </span>
+                )}
+              </span>
+            )}
+            {state && !collapsed && <ConnectionDot state={state} />}
           </NavLink>
         ))}
       </nav>

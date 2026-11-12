@@ -1,51 +1,57 @@
 # Current Feature
 
-**Fix: Sync Jira honours completed and Blocked Jira statuses**
-(@context/features/sync-jira-status-rules.md, **GM-11768**). The top-level Sync Jira completes the checklist of
-any issue in UAT, Testing, Support Validation, Support Clarification, Won't Fix or Not Applicable
-(plus Done / Closed / Released), and a Jira "Blocked" status turns the issue's health Blocked. The
-per-track "Sync stages" applies the same rules (Naveen, 2026-11-05).
+**SOW tracker — a phase-journey view for fixed-timeline projects at `/sow`**
+(@context/features/sow-tracker.md). One page per SOW / program project (first: **Configurator AI**,
+Jira filter 71390), outside every scrum board: a phase stepper with gate milestones, a weighted
+progress % whose epics roll up from their children, tickets auto-classified into kinds, manual
+tracker rows, risks, cross-team dependencies, a PDF export and a public share link. Post-v1
+feature (not a migration-plan step), picked because the Configurator AI SOW is in flight and is
+tracked in a pptx today.
 
 ## Status
 
-**Done 2026-11-10 · verified · uncommitted** on `fix/GM-11768-sync-jira-status-rules` (off `main` @ `9d53308`).
-- **Verification:** `eslint src` 0; `prisma validate` + `migrate status` up to date (**16
-  migrations, no schema change**); clean env-free Node 22 build exit 0, **67 ƒ**, 0 warnings;
-  **15/15 pure fixtures**; **31/31 runtime smoke** against real Jira + Neon on a throwaway team,
-  torn down to 0 rows.
-- **No office DB bundle needed** (no migration, no seed change).
-- **Pending:** Naveen's authed Sync Jira / Sync stages on a real team; the commit.
+**Done 2026-11-12 · verified · uncommitted**, on `feature/GM-11784-sow-tracker` (Jira **GM-11784**),
+now in the **main checkout** (moved from the worktree `.claude/worktrees/sow-tracker` by patch,
+identical tree; the worktree is detached and can be removed once the commit lands). Cut from `main`
+@ `9d53308`.
+- **Verification (2026-11-12):** lint 0; 17 migrations, up to date, no drift; cold env-free Node 22
+  build **80 ƒ / 0 warnings**; **36/36 pure fixtures**; `next start` smoke **19/19**, including 403
+  on every admin write for a throwaway non-admin (deleted, 0 left).
+- **Done (Naveen 2026-11-11):** the authed pass and the PDF.
+- **Pending:**
+  - Naveen's commit and PR "GM-11784 - Feature/sow tracker";
+  - running the migration-17 office bundle
+    (`output/storyboard-dba-migration-2026-11-11-add_sow_tracker/`, 00 → 01 → 02 → 02b) before the
+    image rollout;
+  - connector 1.2.1 on his laptop.
 
-**Next:** Naveen commits this fix and runs the still-pending migration-16 office bundle (Support
-on-call), then the carried-over security-tracker items (parity check, `workbenchUrl`, PR 2).
-
-The previous feature (Support on-call) merged to `main` as `9d53308` (#9); its migration-16 office
-bundle is still pending Naveen's run (see Carry-forward).
+**Next:** Naveen commits and runs the migration-17 bundle. Then the carried-over items: the
+security-tracker parity check against the artifact and `workbenchUrl`, then PR 2
+(`feature/security-tracker-updates`). SOW follow-ups parked in the spec: nightly Slack sync and a
+PNG export.
 
 ## Previous feature goals (Support on-call)
 
-- **Schema** (`prisma/schema.prisma`): `SupportPoc` (team, sprint) + `Team.onCallHeadcount`;
-  migration 16.
-- **Pure logic** (`src/lib/oncall/rotation.mjs`, `pulse.mjs`): current rotation, window label,
-  cap, bug pulse.
-- **Zod** (`src/lib/schemas/oncall.js`, `team.js`): list rules (≤ 1 Primary, unique emails, ≤ 50).
-- **API** `PUT /api/teams/[teamId]/sprints/[sprintId]/oncall`: replace-all, `TEAM_MANAGER_ROLES`,
-  cap, CLOSED → 409.
-- **Loader** (`src/lib/oncall/data.js`): every team, batched; editor-only suggestions.
-- **UI**: `/oncall` (`src/app/oncall/*`, `src/components/oncall/*`), edit dialog, admin headcount
-  field, sidebar item, board-hero chip.
-- **Redaction** (`src/lib/log.js`): `phone` on the key list.
-- **Roster contacts** (`RosterContact`, `src/lib/teams/roster-contacts.js`, team POST/PATCH,
-  admin dialog) + the POC member picker; **themed `Select`** (`src/components/ui/select.jsx`).
+- **Schema** (`prisma/schema.prisma`): `Sow`, `SowPhase`, `SowPlanItem`, `SowRisk`, `SowIssue`,
+  `SowSnapshot`, `SowShare`; migration 17 `add_sow_tracker`.
+- **Pure logic** (`src/lib/sow/*.mjs`): kind rules, weighted progress + epic roll-up, timeline
+  (phase state, slip, health), the standard template.
+- **Zod** (`src/lib/schemas/sow.js`).
+- **Server** (`src/lib/sow/{refresh,data,write}.js`): mirror refresh, page loader, writes.
+- **API** `api/sows/**`: create/duplicate, patch/delete, refresh, plan PUT, risks PUT, shares.
+- **Pages** `/sow`, `/sow/[slug]`, public `/sow/share/[token]`; **components** `src/components/sow/*`.
+- **Export** (A4 landscape) on the shared export kit.
+- **Wiring:** sidebar item, daily cron step, create-only seed of Configurator AI.
 
 ## Notes
 
-- **Sprint dates are IST midnights stored as 18:30Z.** Format sprint dates in local time (like
-  `formatDate`); a UTC-pinned label reads one day early.
-- **A running dev server caches the Prisma client.** After a migration, it throws "Unknown field"
-  until restarted. Smoke against a scratch-copy `next start` instead of stopping Naveen's server.
-- **The on-call PUT never logs its body**; `phone` redaction is the safety net.
-- **Viewers never receive a team's roster:** `suggestions` is null unless `canEdit`.
+- **Mirror = raw Jira facts only**; kind, dependency flag and progress are read-time.
+- `statusCategory` is stored as Jira's **key** (`new` / `indeterminate` / `done`).
+- **Dates are calendar days** (UTC midnight in the DB, compared as `YYYY-MM-DD` in IST).
+- Any signed-in user reads; **global admins** write. The share page reads by token only.
+- Invariants this moved: **67 → 80 ƒ Dynamic**, **16 → 17 migrations**.
+- **Slack is read by an admin's Claude Connector** (job kind `SLACK_SYNC`, connector 1.2.1); the
+  server has no Slack token. Set `SLACK_WORKSPACE_URL` for thread links.
 
 ## Carry-forward — critical for any new feature
 
@@ -55,7 +61,9 @@ details live in [legacy-history.md](legacy-history.md); house conventions live i
 layer that sits between them.)
 
 **Repo / branch state (2026-09-04)**
-- **Baseline invariants to preserve:** **67 ƒ Dynamic** routes / **16 Prisma migrations**
+- **Baseline invariants to preserve:** **80 ƒ Dynamic** routes / **17 Prisma migrations** once
+  `feature/GM-11784-sow-tracker` merges (…`add_sow_tracker`, 2026-11-10/11: 3 pages + 10 API routes, +1 migration);
+  `main` is at 67 / 16
   (…`add_support_oncall`, 2026-10-24: `/oncall` + its PUT route, +1 migration, on top of 65 / 15 at
   …`add_security_tracker`, 2026-10-20). The path there: 50 / 13 through `add_error_log`, then the
   Claude Connector (+7 routes / +1 migration), then Ask StoryBoard (+2 routes: `/api/ask` and `/ask`,
@@ -73,12 +81,12 @@ layer that sits between them.)
   - Every new migration gets an incremental psql bundle from the `dba-migration-bundle` skill
     (`scripts/dba-migration-bundle.mjs`). Naveen applies it via the jumpserver **before** the image
     rollout.
-  - **Office DB head:** 15 migrations (`…add_security_tracker`), confirmed by Naveen 2026-11-01.
-    *(It was 14 (`…add_claude_connector`) as of 2026-10-20; the bundle for 15, + `02b-seed.sql`,
-    has since been run.)*
-  - The bundle for 16 (`…add_support_oncall`, incl. `RosterContact`) is generated and rehearsed
-    (2026-11-01, `output/storyboard-dba-migration-2026-11-01-add_support_oncall/`) and **pending Naveen's run**. Once he confirms it, update this
-    head to 16.
+  - **Office DB head:** 16 migrations (`…add_support_oncall`), confirmed by Naveen 2026-11-11.
+    *(It was 15 (`…add_security_tracker`) as of 2026-11-01; the bundle for 16 has since been run.)*
+  - The bundle for 17 (`…add_sow_tracker`, + `02b-seed.sql` creating the Configurator AI SOW) is
+    generated and rehearsed (2026-11-11,
+    `output/storyboard-dba-migration-2026-11-11-add_sow_tracker/`) and **pending Naveen's run**.
+    Once he confirms it, update this head to 17.
   - The bundle for 14 (`…add_claude_connector`) has been **run by Naveen** (confirmed 2026-10-20).
     *(It was refreshed and re-rehearsed 2026-10-09 at `bc47524`, with the same DDL and checksum.)*
 - **`main` is at `c8c2731`** ("Editable filters.") — it carries editable filters, the roll-up export
@@ -265,6 +273,74 @@ Append new "Done" entries there, earliest → latest.
     session (794 problems there, 0 in `src/`).
   - **Next:** Naveen's authed pass and commit; the migration-16 office bundle (now including
     `RosterContact`).
+<<<<<<< HEAD
+- 2026-11-10 — Planning session with Naveen (three question rounds): drafted @context/features/sow-tracker.md and picked it as the current feature (SOW phase-journey tracker at `/sow`; first SOW Configurator AI).
+- 2026-11-10 — **Built the SOW tracker (two rounds).**
+  - **Round 1:** `Sow` + phases, plan items, risks, a raw Jira mirror, snapshots and share links
+    (migration `add_sow_tracker`, **17**); pure `lib/sow/*.mjs` (kind rules, weighted progress with
+    epic roll-up, timeline, template); refresh on the service credential; create / duplicate,
+    settings, plan and risks dialogs; public share link; landscape PDF; sidebar item; cron step;
+    Configurator AI seeded from the deck (Option 1 dates) and refreshed from filter 71390.
+  - **Round 2 (Naveen's feedback):** the page became a visual overview — date-scaled timeline,
+    progress vs plan, scope map, issue funnel, people load, watch list — with a drill-in panel
+    behind every tile; pre-QA issues read from Slack through the Claude Connector (`SLACK_SYNC`,
+    connector 1.2.0) with reaction-based status and an admin override; a reading list of the
+    Confluence folder and repos.
+  - **Verification:** lint 0; 17 migrations, no drift; env-free build **79 ƒ**, 0 warnings; 28
+    fixtures; smoke 51/52 + 21/21; real Jira refresh and real Slack sync; headless renders clean.
+  - **As-built:** credit by Jira status name (Groomed counted as in-progress by category);
+    PDF only, no PNG; a real PDF download not checked.
+  - **Next:** Naveen's authed pass and commit; the migration-17 office bundle; then the parked
+    multi-channel feed and Ask grounding.
+- 2026-11-11 — **SOW tracker round 3 (Naveen's review).** Progress chart drawn at real pixel size
+  (it scaled its text with the panel) and its two-reading NaN path fixed; distinct watch-list
+  colours for risks and dependencies; Slack attachments kept per post with a Claude-written
+  description of each issue screenshot and an "Open in Slack" link (connector ceiling now three
+  read-only Slack tools; no image stored); an empty Slack read now fails instead of stamping a
+  sync. Verified: 32 fixtures, share-page privacy, chart at three widths, lint 0, no drift,
+  env-free build 79 ƒ / 0 warnings. Next: unchanged (authed pass, commit, migration-17 bundle).
+- 2026-11-11 — Sidebar "Settings" renamed **"Claude Code"** with a live Connected / Not connected
+  indicator (`use-connector-status.js`, polls `GET /api/me/connector` every 20 s); `/settings` hero
+  and title follow, URL unchanged. Done on `feature/GM-11784-sow-tracker` alongside the SOW work. Verified:
+  lint 0; headless renders of connected, not-connected and collapsed states in both themes.
+- 2026-11-11 — **SOW docs-and-decisions channels (round 4).** Extra Slack channels per SOW read
+  only for decisions and shared documents (`SowFeedItem`, folded into migration 17); one Sync
+  Slack runs every channel in sequence; empty reads fail and retry once; Decision log drawer and
+  "Shared in Slack" docs, admin Hide / Restore. Configurator AI has #configurator-ai and
+  #configurator_ai_oem_agentic_framework. Verified: real three-channel syncs, 37 fixtures, smoke
+  11/11, lint 0, no drift, env-free build 80 ƒ / 0 warnings.
+- 2026-11-11 — **SOW round 5: Ask StoryBoard + Slack fixes.** Ask StoryBoard gets a `sow` data pack
+  and, for SOW questions, a DeepContext round over the SOW's Confluence pages, repos and Jira.
+  Empty Slack reads root-caused (claude.ai connectors connect in the background) and fixed in
+  connector 1.2.1 (`MCP_CONNECTION_NONBLOCKING=false`); decisions and docs now accumulate across
+  syncs with a weekly full re-read. Verified: lint 0, no drift, env-free build 80 ƒ / 0 warnings,
+  live Ask answers via connector and provider, a live three-channel sync on 1.2.1.
+- 2026-11-11 — Office DB bundle for migration 17 generated and rehearsed
+  (`output/storyboard-dba-migration-2026-11-11-add_sow_tracker/`, + `02b-seed.sql` for the
+  Configurator AI SOW): REHEARSAL PASSED; the seed's GM program link checked on dev in a rolled-back
+  transaction. Office head confirmed at 16 by Naveen. Pending his run, before the image rollout.
+- 2026-11-11 — **SOW round 6: primary Confluence pages for Ask.** "Repositories, Services and
+  Request Templates" and "Configurator – An Overview" are primary sources: read on every Refresh
+  Jira into `Sow.knowledge` (folded into migration 17) and sent to Ask by matching section; the 16
+  real repos (with notes) and the stage/preprod/prod links join the reading list. Office bundle
+  regenerated and re-rehearsed (REHEARSAL PASSED). Verified: 46 fixtures, lint 0, no drift,
+  env-free build 80 ƒ / 0 warnings, four live Ask answers grounded from the pages.
+- 2026-11-11 — Jira **GM-11784** "StoryBoard - SOW Tracker" created (Tech Story under GM-9485, DR_GM) for the commit and PR; `Task` is now restricted to Delivery Managers in GM.
+- 2026-11-12 — **Implemented the SOW tracker (GM-11784).**
+  - **What shipped:** `/sow`, `/sow/[slug]` and `/sow/share/[token]` over migration 17
+    `add_sow_tracker` (9 models), pure `lib/sow/*.mjs`, 10 `/api/sows/**` routes, the `SLACK_SYNC`
+    connector job (1.2.1), docs-and-decisions channels, a reading list with StoryBoard's own copy of
+    the primary Confluence pages, the Ask `sow` pack and SOW deep round, and the sidebar
+    "Claude Code" item with a connection dot.
+  - **Verification:** lint 0; 17 migrations, no drift; env-free build 80 ƒ / 0 warnings; 36/36
+    fixtures; `next start` smoke 19/19 incl. non-admin 403s; earlier rounds' live Jira, Slack and Ask
+    runs and headless renders.
+  - **As-built:** status-name credit before category; migration 17 amended four times on dev by
+    `ALTER` + checksum (never left dev; bundle regenerated); connector 1.2.1 for Slack; PDF only;
+    branch renamed to carry the Jira key and moved from the worktree to the main checkout.
+  - **Done.**
+  - **Next:** Naveen's commit and PR; the migration-17 office bundle; connector 1.2.1.
+=======
 - 2026-11-05 — **Fix: Sync Jira honours completed and Blocked Jira statuses** (sync-jira-status-rules.md). Completed statuses check every stage (new rows, per-track Sync stages, and a forward-complete of existing rows on Sync Jira); Jira Blocked → `blocked` with reason "Blocked in Jira", lifted only when the sync set it. 13/13 fixtures, env-free build 67 ƒ / 0 warnings, no migration. **Next:** Naveen's authed sync and commit.
 - 2026-11-05 — **Same rules in the per-track Sync stages (Naveen).** The Blocked rule is shared (`resolveBlockedRule`); a Blocked status keeps its stages and is no longer reported as unmapped. 15/15 fixtures, env-free build 67 ƒ / 0 warnings.
 - 2026-11-10 — **Implemented the Sync Jira status rules fix** (sync-jira-status-rules.md).
@@ -280,3 +356,4 @@ Append new "Done" entries there, earliest → latest.
     asserts on live status; §14.13's provenance gap now covers the always-on sync too (noted).
   - **Done.**
   - **Next:** Naveen's authed pass and commit; the migration-16 office bundle.
+>>>>>>> tekion/main
